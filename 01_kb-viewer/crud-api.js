@@ -34,7 +34,10 @@ function error(res, message, status = 400) {
 function isPathSafe(filePath, notesDir) {
   const resolved = path.resolve(filePath);
   const resolvedNotesDir = path.resolve(notesDir);
-  return resolved.startsWith(resolvedNotesDir);
+  // return resolved.startsWith(resolvedNotesDir);
+  // 使用 path.sep 确保精确匹配目录边界
+  return resolved === resolvedNotesDir ||
+           resolved.startsWith(resolvedNotesDir + path.sep);
 }
 
 /**
@@ -313,6 +316,166 @@ async function handleCreateDirectory(req, res, notesDir) {
   }
 }
 
+const Busboy = require('busboy');
+
+// async function handleUploadImage(req, res, notesDir, imagesDir) {
+//   try {
+//     if (!fs.existsSync(imagesDir)) {
+//       fs.mkdirSync(imagesDir, { recursive: true });
+//     }
+
+//     // 用 busboy 解析，彻底解决二进制问题
+//     const bb = Busboy({ headers: req.headers });
+
+//     let filename = null;
+//     let fileBuffer = null;
+//     let altText = '';
+//     let relativeTo = '';
+//     const fields = {};
+
+//     await new Promise((resolve, reject) => {
+//       bb.on('file', (fieldname, stream, info) => {
+//         if (fieldname !== 'image') return stream.resume();
+//         filename = info.filename;
+//         const chunks = [];
+//         stream.on('data', chunk => chunks.push(chunk));
+//         stream.on('end', () => { fileBuffer = Buffer.concat(chunks); });
+//       });
+
+//       bb.on('field', (name, val) => {
+//         if (name === 'alt') altText = val;
+//         if (name === 'relativeTo') relativeTo = val;
+//       });
+
+//       bb.on('finish', resolve);
+//       bb.on('error', reject);
+//       req.pipe(bb);
+//     });
+
+//     // 后续验证和保存逻辑保持不变
+//     if (!filename || !fileBuffer) {
+//       return error(res, '请选择要上传的图片文件');
+//     }
+
+//     const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+//     const ext = path.extname(filename).toLowerCase();
+//     if (!allowedExtensions.includes(ext)) {
+//       return error(res, `不支持的文件类型`);
+//     }
+
+//     const safeName = filename.replace(/[^\w.\u4e00-\u9fa5-]/g, '_');
+//     const timestamp = Date.now();
+//     const random = Math.random().toString(36).substring(2, 8);
+//     const finalFilename = `${timestamp}_${random}_${safeName}`;
+//     const savePath = path.join(imagesDir, finalFilename);
+
+//     fs.writeFileSync(savePath, fileBuffer);
+
+//     const fullPath = `images/${finalFilename}`;
+//     json(res, {
+//       success: true,
+//       filename: finalFilename,
+//       url: `/api/image?path=${Buffer.from(fullPath).toString('base64url')}`,
+//       message: '图片上传成功'
+//     });
+
+//   } catch (err) {
+//     console.error('图片上传错误:', err);
+//     return error(res, `上传失败: ${err.message}`, 500);
+//   }
+// }
+
+async function handleUploadImage(req, res, notesDir, imagesDir) {
+  try {
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+
+    // ← 加 limits 配置
+    const bb = Busboy({ 
+      headers: req.headers,
+      limits: {
+        fileSize: MAX_SIZE,  // 单文件最大 20MB
+        files: 1,            // 最多 1 个文件
+        fields: 10           // 最多 10 个文本字段
+      }
+    });
+
+    let filename = null;
+    let fileBuffer = null;
+    let altText = '';
+    let relativeTo = '';
+    let fileTooLarge = false;  // ← 超限标志
+
+    await new Promise((resolve, reject) => {
+      bb.on('file', (fieldname, stream, info) => {
+        if (fieldname !== 'image') return stream.resume();
+        filename = info.filename;
+        const chunks = [];
+
+        stream.on('data', chunk => chunks.push(chunk));
+        
+        // ← 监听超限事件
+        stream.on('limit', () => {
+          fileTooLarge = true;
+          stream.resume(); // 必须消费掉剩余数据，否则连接卡住
+        });
+
+        stream.on('end', () => {
+          if (!fileTooLarge) {
+            fileBuffer = Buffer.concat(chunks);
+          }
+        });
+      });
+
+      bb.on('field', (name, val) => {
+        if (name === 'alt') altText = val;
+        if (name === 'relativeTo') relativeTo = val;
+      });
+
+      bb.on('finish', resolve);
+      bb.on('error', reject);
+      req.pipe(bb);
+    });
+
+    // ← 超限提前返回
+    if (fileTooLarge) {
+      return error(res, `文件太大，最大支持 ${MAX_SIZE / 1024 / 1024}MB`, 413);
+    }
+
+    if (!filename || !fileBuffer) {
+      return error(res, '请选择要上传的图片文件');
+    }
+
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+    const ext = path.extname(filename).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      return error(res, `不支持的文件类型，仅支持: ${allowedExtensions.join(', ')}`);
+    }
+
+    const safeName = filename.replace(/[^\w.\u4e00-\u9fa5-]/g, '_');
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const finalFilename = `${timestamp}_${random}_${safeName}`;
+    const savePath = path.join(imagesDir, finalFilename);
+
+    fs.writeFileSync(savePath, fileBuffer);
+
+    const fullPath = `images/${finalFilename}`;
+    json(res, {
+      success: true,
+      filename: finalFilename,
+      url: `/api/image?path=${Buffer.from(fullPath).toString('base64url')}`,
+      message: '图片上传成功'
+    });
+
+  } catch (err) {
+    console.error('图片上传错误:', err);
+    return error(res, `上传失败: ${err.message}`, 500);
+  }
+}
 // ── 导出模块 ──────────────────────────────────────
 
 module.exports = {
@@ -320,6 +483,7 @@ module.exports = {
   handleUpdateFile,
   handleDeleteFile,
   handleCreateDirectory,
+  handleUploadImage,
   isPathSafe,
   isValidFilename,
   isValidDirname

@@ -6,12 +6,19 @@
 <title>个人知识库</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate icon" type="image/x-icon" href="/favicon.svg">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
 
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script> -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
+<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"> -->
+
+<!-- 改为本地 -->
+<script src="/libs/marked.min.js"></script>
+<script src="/libs/highlight.min.js"></script>
+<link rel="stylesheet" href="/libs/github-dark.min.css">
+
+<style>
+/* @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap'); */
+@import url('https://fonts.loli.net/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
 :root {
   --bg:         #0c0d0f;
   --bg2:        #141518;
@@ -761,10 +768,16 @@ mark {
 /* TOC sidebar */
 #toc-sidebar {
   position: fixed;
+  /*
   top: calc(var(--topbar-h) + 44px); /* Below main toolbar */
+  /*height: calc(100% - var(--topbar-h) - 44px); /* Subtract both toolbars */
+
+  /*这里设置为初始值，由js进行优化*/
+  top: 88px;
+  height: calc(100% - 88px);
+
   right: 0;
   width: 240px;
-  height: calc(100% - var(--topbar-h) - 44px); /* Subtract both toolbars */
   background: var(--bg2);
   border-left: 1px solid var(--border);
   padding: 20px;
@@ -777,10 +790,10 @@ mark {
   transform: translateX(0);
 }
 
-#toc-sidebar.visible ~ #workspace #main #content {
+/* #toc-sidebar.visible ~ #workspace #main #content {
   padding-right: 240px;
   transition: padding-right 0.25s ease;
-}
+} */
 
 .toc-header {
   font-size: 11px;
@@ -860,7 +873,7 @@ mark {
   --purple:     #7950f2;
 }
 
-@media (max-width: 1200px) {
+/* @media (max-width: 1200px) {
   #md-view {
     padding: 32px 40px;
     max-width: 90%;
@@ -869,7 +882,7 @@ mark {
     width: 240px;
     min-width: 240px;
   }
-}
+} */
 
 @media (max-width: 800px) {
   #md-view {
@@ -906,9 +919,9 @@ mark {
     height: calc(100% - 88px);
     width: 200px; /* Slightly narrower on mobile */
   }
-  #toc-sidebar.visible ~ #workspace #main #content {
+  /* #toc-sidebar.visible ~ #workspace #main #content {
     padding-right: 200px;
-  }
+  } */
 }
 
   /* 图片放大镜样式 */
@@ -1226,6 +1239,12 @@ renderer.image = function(href, title, text) {
     return `<img src="${href}" alt="${text || ''}" class="zoomable-image" title="${imgTitle}">`;
   }
 
+  //增加 对api路径的处理
+  // 已经是 API 路径，直接用，不要再编码
+  if (href.startsWith('/api/')) {
+    return `<img src="${href}" alt="${text || ''}" class="zoomable-image" title="${imgTitle}">`;
+  }
+
   // 解析图片路径（考虑当前文件位置）
   const resolvedPath = resolveImagePath(href, this.currentFilePath);
 
@@ -1237,6 +1256,20 @@ renderer.image = function(href, title, text) {
 marked.use({ renderer });
 
 // ═══════════════════ BOOT
+// JS 动态计算工具栏实际高度
+function updateTocPosition() {
+  const mainToolbar = document.getElementById('main-toolbar');
+  const tocSidebar = document.getElementById('toc-sidebar');
+  if (!mainToolbar || !tocSidebar) return;
+  
+  const topbarH = 44; // var(--topbar-h)
+  const toolbarH = mainToolbar.offsetHeight;
+  const totalTop = topbarH + toolbarH;
+  
+  tocSidebar.style.top = `${totalTop}px`;
+  tocSidebar.style.height = `calc(100% - ${totalTop}px)`;
+}
+
 async function boot() {
   try {
     const data = await apiFetch('/api/tree');
@@ -1246,6 +1279,32 @@ async function boot() {
     renderTree(allFiles);
     renderDirButtons(allFiles);
     setStatus(true);
+
+      // ← 加这里：检查 URL 参数，自动打开指定文件
+    const urlParams = new URLSearchParams(window.location.search);
+    const fileId = urlParams.get('file');
+    if (fileId) {
+      const f = allFiles.find(x => x.id === fileId);
+      if (f) {
+        const item = document.querySelector(`.file-item[data-id="${f.id}"]`);
+        openFile(f, item || document.createElement('div'));
+        // 展开对应目录
+        if (item) {
+          item.scrollIntoView({ block: 'nearest' });
+          const dirFiles = item.closest('.dir-files');
+          if (dirFiles?.classList.contains('hidden')) {
+            dirFiles.classList.remove('hidden');
+            dirFiles.previousElementSibling?.classList.remove('collapsed');
+          }
+        }
+      }
+    }
+
+    // ... 原有代码
+    updateTocPosition();
+    
+    // 2. 窗口大小变化时
+    window.addEventListener('resize', updateTocPosition);
   } catch (e) {
     document.getElementById('tree').innerHTML =
       `<div style="padding:20px 14px;color:var(--red);font-size:12px">❌ 无法连接服务<br><br><span style="color:var(--text-dim)">请确认 server.js 已启动</span></div>`;
@@ -1333,6 +1392,44 @@ function refreshFiles() {
 }
 
 // ═══════════════════ SETTINGS
+// 新增和修改的认证接口
+// 统一的验证函数，验证通过后执行回调
+async function requireAuth(callback) {
+  // 先用 sessionStorage 缓存，同一浏览器会话内不用重复输入
+  let pwd = sessionStorage.getItem('edit_pwd');
+
+  if (!pwd) {
+    pwd = prompt('请输入编辑密码:');
+
+    //console.log('pwd值:', pwd, '类型:', typeof pwd); 
+    if (pwd === null) return;        // 点了「取消」，静默退出
+    
+    if (pwd.trim() === '') {         // 点了「确定」但没输入
+      alert('密码不能为空');
+      return;
+    }
+  }
+
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+
+    if (res.ok) {
+      sessionStorage.setItem('edit_pwd', pwd); // 验证通过，缓存
+      callback(); // 执行跳转
+    } else {
+      sessionStorage.removeItem('edit_pwd'); // 清掉缓存的错误密码
+      alert('密码错误，请重试');
+    }
+  } catch(e) {
+    alert('验证失败，请检查网络');
+  }
+}
+
+// 初始化相关  注意新增时的认证
 function initSettings() {
   const settingsBtn = document.getElementById('settings-btn');
   const settingsPanel = document.getElementById('settings-panel');
@@ -1401,6 +1498,16 @@ function initSettings() {
     const isVisible = tocSidebar.classList.toggle('visible');
     toggleTocBtn.textContent = isVisible ? '关闭' : '开启';
     localStorage.setItem('tocVisible', isVisible);
+
+    // ← 加这里：同步更新 content 的右侧内边距
+    // const content = document.getElementById('content');
+    // content.style.paddingRight = isVisible ? '240px' : '0';
+    // content.style.transition = 'padding-right 0.25s ease';
+
+    const content = document.getElementById('content');
+    const tocWidth = window.innerWidth <= 800 ? '200px' : '240px';
+    content.style.paddingRight = isVisible ? tocWidth : '0';
+    content.style.transition = 'padding-right 0.25s ease';
   });
 
   // Toggle reading progress bar
@@ -1449,6 +1556,9 @@ function initSettings() {
   if (savedProgressVisible === 'true') {
     readingProgress.style.display = 'block';
     toggleProgressBtn.textContent = '关闭';
+
+    // ← 加这里
+    document.getElementById('content').style.paddingRight = '240px';
   }
 
   // Initialize reading progress tracking
@@ -1457,19 +1567,30 @@ function initSettings() {
   // Refresh button
   document.getElementById('refresh-btn').addEventListener('click', refreshFiles);
 
-  // New file button
+  // 修改编辑密码认证逻辑
+  // document.getElementById('new-file-btn').addEventListener('click', () => {
+  //   const confirmCode = prompt('请输入确认码以新建文件（默认: confirm）:', 'confirm');
+  //   if (confirmCode === 'confirm') {
+  //     let url = '/editor.html';
+  //     if (currentDirFilter && currentDirFilter !== 'all') {
+  //       url += '?dir=' + encodeURIComponent(currentDirFilter);
+  //     }
+  //     window.location.href = url;
+  //   } else if (confirmCode !== null) {
+  //     alert('确认码错误，操作已取消');
+  //   }
+  // });
+
   document.getElementById('new-file-btn').addEventListener('click', () => {
-    const confirmCode = prompt('请输入确认码以新建文件（默认: confirm）:', 'confirm');
-    if (confirmCode === 'confirm') {
+    requireAuth(() => {
       let url = '/editor.html';
       if (currentDirFilter && currentDirFilter !== 'all') {
         url += '?dir=' + encodeURIComponent(currentDirFilter);
       }
       window.location.href = url;
-    } else if (confirmCode !== null) {
-      alert('确认码错误，操作已取消');
-    }
+    });
   });
+  
 }
 
 function initReadingProgress() {
@@ -1595,14 +1716,22 @@ function renderTree(files) {
 
       // 编辑按钮事件
       const editBtn = item.querySelector('.file-edit-btn');
+      // editBtn.addEventListener('click', (e) => {
+      //   e.stopPropagation(); // 防止触发文件打开事件
+      //   const confirmCode = prompt('请输入确认码以编辑文件（默认: confirm）:', 'confirm');
+      //   if (confirmCode === 'confirm') {
+      //     window.location.href = `/editor.html?id=${encodeURIComponent(f.id)}`;
+      //   } else if (confirmCode !== null) {
+      //     alert('确认码错误，操作已取消');
+      //   }
+      // });
+
+      //通过requireAuth 走服务器认证
       editBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // 防止触发文件打开事件
-        const confirmCode = prompt('请输入确认码以编辑文件（默认: confirm）:', 'confirm');
-        if (confirmCode === 'confirm') {
+        e.stopPropagation();
+        requireAuth(() => {
           window.location.href = `/editor.html?id=${encodeURIComponent(f.id)}`;
-        } else if (confirmCode !== null) {
-          alert('确认码错误，操作已取消');
-        }
+        });
       });
 
       filesDiv.appendChild(item);

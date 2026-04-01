@@ -14,6 +14,7 @@ const crudApi = require('./crud-api');
 const NOTES_DIR = path.resolve(process.argv[2] || './notes');
 const PORT = parseInt(process.argv[3] || '3000', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const IMAGES_DIR = path.join(__dirname, 'images');
 
 // ── 工具函数 ──────────────────────────────────────
 
@@ -109,6 +110,25 @@ function searchFiles(files, query) {
   return results.slice(0, 50);
 }
 
+// 服务端认证接口
+function handleAuth(req, res) {
+  let body = '';
+  req.on('data', chunk => body += chunk);
+  req.on('end', () => {
+    try {
+      const { password } = JSON.parse(body);
+      const EDIT_PASSWORD = process.env.EDIT_PASSWORD || 'admin123';
+      
+      if (password === EDIT_PASSWORD) {
+        json(res, { ok: true });
+      } else {
+        json(res, { error: '密码错误' }, 401);  // ← 改这里
+      }
+    } catch(e) {
+      json(res, { error: '请求格式错误' }, 400);  // ← 改这里
+    }
+  });
+}
 // ── HTTP 路由 ─────────────────────────────────────
 
 const server = http.createServer((req, res) => {
@@ -160,6 +180,10 @@ const server = http.createServer((req, res) => {
     }
   }
 
+  // 在路由判断里加上
+  if (pathname === '/api/auth' && req.method === 'POST') {
+    return handleAuth(req, res);
+  }
   // API: 创建文件 (POST)
   if (pathname === '/api/files' && req.method === 'POST') {
     crudApi.handleCreateFile(req, res, NOTES_DIR);
@@ -191,14 +215,32 @@ const server = http.createServer((req, res) => {
       return notFound(res, 'Invalid path encoding');
     }
 
-    // 解析路径：如果是相对路径，相对于 NOTES_DIR 解析；否则使用绝对路径
     let absPath;
-    if (path.isAbsolute(imagePath) || /^[a-zA-Z]:[\\/]/.test(imagePath)) {
-      // Windows 绝对路径（如 D:\images\photo.png）或 Unix 绝对路径
-      absPath = path.resolve(imagePath);
+
+    // 检查路径是否以 images/ 开头，表示从 images 目录读取
+    if (imagePath.startsWith('images/')) {
+      // 从 images 目录读取
+      const relativePath = imagePath.substring('images/'.length);
+      absPath = path.resolve(path.join(IMAGES_DIR, relativePath));
+
+      // 安全检查：确保路径在 IMAGES_DIR 内
+      if (!absPath.startsWith(path.resolve(IMAGES_DIR) + path.sep)) {
+        return notFound(res, 'Access denied');
+      }
     } else {
-      // 相对路径，相对于 NOTES_DIR
-      absPath = path.resolve(path.join(NOTES_DIR, imagePath));
+      // 解析路径：如果是相对路径，相对于 NOTES_DIR 解析；否则使用绝对路径
+      if (path.isAbsolute(imagePath) || /^[a-zA-Z]:[\\/]/.test(imagePath)) {
+        // Windows 绝对路径（如 D:\images\photo.png）或 Unix 绝对路径
+        const tempPath = path.resolve(imagePath);
+        const resolvedNotesDir = path.resolve(NOTES_DIR);
+        if (!tempPath.startsWith(resolvedNotesDir + path.sep)) {
+          return notFound(res, 'Access denied');
+        }
+        absPath = tempPath;
+      } else {
+        // 相对路径，相对于 NOTES_DIR
+        absPath = path.resolve(path.join(NOTES_DIR, imagePath));
+      }
     }
 
     // 安全检查：扩展名必须是图片格式
@@ -227,6 +269,12 @@ const server = http.createServer((req, res) => {
     } catch {
       return notFound(res, 'Cannot read image');
     }
+    return;
+  }
+
+  // API: 图片上传
+  if (pathname === '/api/upload-image' && req.method === 'POST') {
+    crudApi.handleUploadImage(req, res, NOTES_DIR, IMAGES_DIR);
     return;
   }
 
@@ -264,6 +312,12 @@ server.listen(PORT, '127.0.0.1', () => {
     // 创建示例文件
     fs.mkdirSync(path.join(NOTES_DIR, '示例笔记'), { recursive: true });
     fs.writeFileSync(path.join(NOTES_DIR, '示例笔记', '快速开始.md'), DEMO_MD);
+  }
+
+  // 确保 images 目录存在
+  if (!fs.existsSync(IMAGES_DIR)) {
+    fs.mkdirSync(IMAGES_DIR, { recursive: true });
+    console.log(`  📷 图片目录：${IMAGES_DIR}`);
   }
 });
 

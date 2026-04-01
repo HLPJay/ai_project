@@ -6,12 +6,20 @@
 <title>编辑 - 知识库</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate icon" type="image/x-icon" href="/favicon.svg">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
 
+<!-- 删掉这三行 CDN 引用 -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script> -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
+<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"> -->
+
+<!-- 改为本地 -->
+<script src="/libs/marked.min.js"></script>
+<script src="/libs/highlight.min.js"></script>
+<link rel="stylesheet" href="/libs/github.min.css">
+<style>
+/* @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap'); */
+/* @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap'); */
+@import url('https://fonts.loli.net/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
 :root {
   --bg:         #f8f9fa;
   --bg2:        #ffffff;
@@ -986,9 +994,18 @@ async function saveFile() {
     hideLoading();
     showStatus('文件保存成功', 'success');
 
+    updatePreview(); 
     // 更新文件信息
     updateFileInfo();
 
+    // ← 加这里：延迟1秒后跳转回主页，并定位到当前文件
+    setTimeout(() => {
+      if (currentFileId) {
+        window.location.href = `/?file=${encodeURIComponent(currentFileId)}`;
+      } else {
+        window.location.href = '/';
+      }
+    }, 1000);
   } catch (error) {
     hideLoading();
     showStatus(`保存失败: ${error.message}`, 'error');
@@ -1336,7 +1353,68 @@ function hideImageDialog() {
   dialog.classList.remove('visible');
 }
 
-function insertImage() {
+/**
+ * 上传图片到服务器
+ * @param {File} file - 图片文件
+ * @param {string} altText - 图片描述
+ * @returns {Promise<{url: string, path: string, filename: string}>}
+ */
+async function uploadImage(file, altText) {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('alt', altText);
+
+  // 如果有当前编辑的文件，将其ID作为相对路径基准
+  if (currentFileId) {
+    formData.append('relativeTo', currentFileId);
+  }
+
+  const response = await fetch('/api/upload-image', {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || `上传失败: HTTP ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result;
+}
+
+/**
+ * base64url编码（浏览器兼容）
+ * @param {string} str - 要编码的字符串
+ * @returns {string} base64url编码的字符串
+ */
+function base64urlEncode(str) {
+  // 如果是Node.js环境，使用Buffer
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str).toString('base64url');
+  }
+  // 浏览器环境：使用btoa并转换为base64url
+  const base64 = btoa(unescape(encodeURIComponent(str)));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+/**
+ * 将相对图片路径转换为完整的API URL
+ * @param {string} relPath - 相对路径，如 "images/photo.jpg"
+ * @returns {string} API URL
+ */
+function convertRelativeImagePath(relPath) {
+  // 移除开头的 "./" 或 "/"
+  let cleanPath = relPath.replace(/^\.\//, '').replace(/^\//, '');
+  // 确保路径以 "images/" 开头
+  if (!cleanPath.startsWith('images/')) {
+    cleanPath = `images/${cleanPath}`;
+  }
+  const encoded = base64urlEncode(cleanPath);
+  return `/api/image?path=${encoded}`;
+}
+
+async function insertImage() {
   const imageAlt = document.getElementById('image-alt').value.trim();
   const imageUrl = document.getElementById('image-url').value.trim();
   const imageFile = document.getElementById('image-file').files[0];
@@ -1348,16 +1426,32 @@ function insertImage() {
 
   let finalUrl = imageUrl;
 
-  // 处理文件上传（暂未实现，先使用URL）
+  // 处理文件上传
   if (imageFile) {
-    showStatus('文件上传功能暂未实现，请使用图片URL', 'error');
-    // TODO: 实现文件上传
-    return;
+    try {
+      showLoading('上传图片中...');
+      const result = await uploadImage(imageFile, imageAlt);
+      finalUrl = result.url;
+      showStatus('图片上传成功', 'success');
+    } catch (error) {
+      showStatus(`上传失败: ${error.message}`, 'error');
+      hideLoading();
+      return;
+    }
+    hideLoading();
   }
 
   if (!finalUrl) {
     showStatus('请输入图片地址或选择文件', 'error');
     return;
+  }
+
+  // 如果是相对路径（不是 http/https/data: 开头），转换为 API URL
+  if (!finalUrl.startsWith('http://') && 
+  !finalUrl.startsWith('https://') && 
+  !finalUrl.startsWith('data:') && 
+  !finalUrl.startsWith('/api/')) {   // ← 加这一行
+    finalUrl = convertRelativeImagePath(finalUrl);
   }
 
   const editor = document.getElementById('editor-textarea');
