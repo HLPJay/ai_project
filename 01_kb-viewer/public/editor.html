@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>编辑 - 知识库</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate icon" type="image/x-icon" href="/favicon.svg">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+
+:root {
+  --bg:         #f8f9fa;
+  --bg2:        #ffffff;
+  --bg3:        #f1f3f5;
+  --bg4:        #e9ecef;
+  --border:     #dee2e6;
+  --border2:    #ced4da;
+  --text:       #495057;
+  --text-dim:   #868e96;
+  --text-mid:   #6c757d;
+  --text-hi:    #212529;
+  --accent:     #4263eb;
+  --accent-dim: #4263eb14;
+  --accent-glow:#4263eb33;
+  --green:      #37b24d;
+  --orange:     #f76707;
+  --red:        #e03131;
+  --yellow:     #f08c00;
+  --purple:     #7950f2;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 13.5px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════ TOPBAR */
+#topbar {
+  height: 44px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+#logo {
+  width: 268px;
+  min-width: 268px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-hi);
+  letter-spacing: 0.01em;
+  border-right: 1px solid var(--border);
+  height: 100%;
+}
+
+#logo .dot {
+  width: 8px; height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--green);
+}
+
+#file-info {
+  flex: 1;
+  padding: 0 20px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-left: 1px solid var(--border);
+  height: 100%;
+}
+
+.toolbar-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg4);
+  border-color: var(--border2);
+  color: var(--text-hi);
+}
+
+.toolbar-btn.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.toolbar-btn.primary:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.toolbar-btn.danger {
+  background: rgba(244, 112, 103, 0.1);
+  border-color: rgba(244, 112, 103, 0.3);
+  color: var(--red);
+}
+
+.toolbar-btn.danger:hover {
+  background: var(--red);
+  color: white;
+}
+
+/* ═══════════════════════════════ MAIN EDITOR */
+#editor-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg2);
+}
+
+/* 编辑器面板通用样式 */
+.editor-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--bg2);
+}
+
+.editor-panel:last-child {
+  border-right: none;
+}
+
+.panel-header {
+  height: 36px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+/* 编辑器工具栏 */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-group:not(:last-child)::after {
+  content: '';
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin-left: 8px;
+}
+
+.editor-toolbar .toolbar-btn {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+  min-width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-toolbar .toolbar-btn:hover {
+  background: var(--bg4);
+  border-color: var(--border2);
+  color: var(--text-hi);
+}
+
+.editor-toolbar .toolbar-btn:active {
+  background: var(--accent-dim);
+  border-color: var(--accent-glow);
+  color: var(--accent);
+}
+
+/* 编辑器区域 */
+#editor-textarea {
+  flex: 1;
+  background: var(--bg2);
+  color: var(--text-hi);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px;
+  line-height: 1.6;
+  border: none;
+  padding: 16px;
+  resize: none;
+  outline: none;
+  tab-size: 2;
+  overflow-y: auto;
+}
+
+#editor-textarea:focus {
+  background: var(--bg3);
+}
+
+/* 预览区域 */
+#preview {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--bg2);
+}
+
+/* Markdown 样式 (与主页面一致) */
+.md { line-height: 1.85; color: var(--text); }
+
+.md h1, .md h2, .md h3, .md h4, .md h5 {
+  font-family: 'Noto Serif SC', serif;
+  color: var(--text-hi);
+  font-weight: 600;
+}
+.md h1 { font-size: 2em; margin: 0 0 0.75em; padding-bottom: 0.4em; border-bottom: 1px solid var(--border); line-height: 1.25; }
+.md h2 { font-size: 1.45em; margin: 2em 0 0.6em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+.md h3 { font-size: 1.15em; margin: 1.6em 0 0.5em; }
+.md h4 { font-size: 1em; margin: 1.4em 0 0.4em; color: var(--text-mid); }
+
+.md p { margin-bottom: 1em; }
+
+.md a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-glow);
+  transition: border-color 0.12s;
+}
+.md a:hover { border-bottom-color: var(--accent); }
+
+.md strong { color: var(--text-hi); font-weight: 600; }
+.md em { color: var(--text-mid); }
+
+.md ul, .md ol { padding-left: 1.6em; margin-bottom: 1em; }
+.md li { margin-bottom: 0.3em; line-height: 1.7; }
+.md li::marker { color: var(--text-dim); }
+
+.md blockquote {
+  margin: 1.4em 0;
+  padding: 12px 20px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-dim);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-mid);
+  font-style: italic;
+}
+.md blockquote p { margin: 0; }
+
+.md code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.84em;
+  background: var(--bg3);
+  padding: 0.15em 0.45em;
+  border-radius: 4px;
+  color: var(--green);
+  border: 1px solid var(--border);
+}
+
+.md pre {
+  margin: 1.4em 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+}
+.md pre .copy-btn {
+  position: absolute;
+  top: 8px; right: 10px;
+  background: var(--bg4);
+  border: 1px solid var(--border2);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-family: 'DM Sans', sans-serif;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.md pre:hover .copy-btn { opacity: 1; }
+.md pre .copy-btn:hover { color: var(--text-hi); }
+.md pre .copy-btn.copied { color: var(--green); }
+
+.md pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.82em;
+  border: none;
+  color: inherit;
+}
+.md pre > code.hljs { padding: 1.1em 1.3em; display: block; }
+
+.md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.9em;
+}
+.md th {
+  background: var(--bg3);
+  color: var(--text-hi);
+  font-weight: 500;
+  text-align: left;
+}
+.md th, .md td {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+}
+.md tr:nth-child(even) td { background: var(--bg2); }
+
+.md img { max-width: 100%; border-radius: 8px; margin: 1em 0; }
+.md hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+
+/* Checkbox lists */
+.md input[type=checkbox] { margin-right: 6px; accent-color: var(--accent); }
+
+/* 分割线 */
+#resizer {
+  width: 8px;
+  background: var(--bg3);
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+}
+#resizer:hover {
+  background: var(--accent-glow);
+}
+#resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  height: 100%;
+  background: var(--border);
+}
+
+/* 新建文件表单 */
+#new-file-form {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+}
+
+#new-file-form.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.form-container {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90%;
+}
+
+.form-title {
+  font-size: 14px;
+  color: var(--text-hi);
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-glow);
+}
+
+.form-help {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.form-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+/* 状态消息 */
+#status-message {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  transition: transform 0.3s ease;
+}
+
+#status-message.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+#status-message.success {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+#status-message.error {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* 加载状态 */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  font-size: 13px;
+  gap: 10px;
+}
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* 模态对话框 */
+.modal-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+}
+
+.modal-dialog.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 代码块语言选择 */
+.codeblock-dialog .form-group select {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+}
+
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div id="logo">
+    <span class="dot"></span>
+    <span>知识库编辑器</span>
+  </div>
+  <div id="file-info">未选择文件</div>
+  <div id="toolbar">
+    <button id="save-btn" class="toolbar-btn primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+        <polyline points="7 3 7 8 15 8"></polyline>
+      </svg>
+      保存
+    </button>
+    <button id="delete-btn" class="toolbar-btn danger" style="display: none;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"></path>
+        <path d="M10 11v6"></path>
+        <path d="M14 11v6"></path>
+        <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+      </svg>
+      删除
+    </button>
+    <button id="cancel-btn" class="toolbar-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+      取消
+    </button>
+  </div>
+</div>
+
+<div id="editor-container">
+  <div class="editor-panel">
+    <div class="panel-header">编辑 Markdown</div>
+    <div class="editor-toolbar">
+      <div class="toolbar-group">
+        <button class="toolbar-btn" data-format="h1" title="一级标题">H1</button>
+        <button class="toolbar-btn" data-format="h2" title="二级标题">H2</button>
+        <button class="toolbar-btn" data-format="h3" title="三级标题">H3</button>
+      </div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn" data-format="bold" title="加粗"><b>B</b></button>
+        <button class="toolbar-btn" data-format="italic" title="斜体"><i>I</i></button>
+        <button class="toolbar-btn" data-format="code" title="行内代码"><code>#</code></button>
+        <button class="toolbar-btn" data-format="codeblock" title="代码块">```</button>
+      </div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn" data-format="link" title="链接">🔗</button>
+        <button class="toolbar-btn" data-format="image" title="图片">🖼️</button>
+        <button class="toolbar-btn" data-format="ul" title="无序列表">•</button>
+        <button class="toolbar-btn" data-format="ol" title="有序列表">1.</button>
+        <button class="toolbar-btn" data-format="quote" title="引用">❝</button>
+      </div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn" data-format="hr" title="分隔线">―</button>
+        <button class="toolbar-btn" data-format="table" title="表格">表</button>
+        <button class="toolbar-btn" data-format="check" title="任务列表">✓</button>
+      </div>
+    </div>
+    <textarea id="editor-textarea" placeholder="在此输入 Markdown 内容..."></textarea>
+  </div>
+
+  <div id="resizer"></div>
+
+  <div class="editor-panel">
+    <div class="panel-header">实时预览</div>
+    <div id="preview"></div>
+  </div>
+</div>
+
+<!-- 新建文件表单 -->
+<div id="new-file-form">
+  <div class="form-container">
+    <div class="form-title">新建文件</div>
+    <div class="form-group">
+      <label class="form-label">目录</label>
+      <div class="form-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <select id="new-file-directory" class="form-input" style="flex: 1;">
+          <option value="">选择目录...</option>
+          <option value="new">+ 新建目录</option>
+          <!-- 目录选项将通过JavaScript动态添加 -->
+        </select>
+      </div>
+      <div id="new-directory-input" class="form-group" style="display: none; margin-top: 8px;">
+        <label class="form-label">新建目录名称</label>
+        <input type="text" id="new-directory-name" class="form-input" placeholder="例如: 技术笔记">
+        <div class="form-help">将创建新的目录</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">文件名</label>
+      <input type="text" id="new-file-name" class="form-input" placeholder="例如: 新文章.md">
+      <div class="form-help">必须以 .md 结尾</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">初始内容 (可选)</label>
+      <textarea id="new-file-content" class="form-input" rows="4" placeholder="# 标题&#10;&#10;文章内容..."></textarea>
+    </div>
+    <div class="form-buttons">
+      <button id="cancel-new-btn" class="toolbar-btn">取消</button>
+      <button id="create-new-btn" class="toolbar-btn primary">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 链接输入对话框 -->
+<div id="link-dialog" class="modal-dialog">
+  <div class="form-container">
+    <div class="form-title">插入链接</div>
+    <div class="form-group">
+      <label class="form-label">链接文本</label>
+      <input type="text" id="link-text" class="form-input" placeholder="例如：点击这里">
+    </div>
+    <div class="form-group">
+      <label class="form-label">链接地址</label>
+      <input type="text" id="link-url" class="form-input" placeholder="例如：https://example.com">
+    </div>
+    <div class="form-buttons">
+      <button id="cancel-link-btn" class="toolbar-btn">取消</button>
+      <button id="insert-link-btn" class="toolbar-btn primary">插入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 图片输入对话框 -->
+<div id="image-dialog" class="modal-dialog">
+  <div class="form-container">
+    <div class="form-title">插入图片</div>
+    <div class="form-group">
+      <label class="form-label">图片描述</label>
+      <input type="text" id="image-alt" class="form-input" placeholder="例如：产品截图">
+    </div>
+    <div class="form-group">
+      <label class="form-label">图片地址</label>
+      <input type="text" id="image-url" class="form-input" placeholder="例如：https://example.com/image.png">
+      <div class="form-help">或选择文件上传</div>
+    </div>
+    <div class="form-group" id="image-upload-area">
+      <label class="form-label">上传图片</label>
+      <input type="file" id="image-file" class="form-input" accept="image/*" style="padding: 6px;">
+      <div class="form-help">支持 JPG, PNG, GIF 格式</div>
+    </div>
+    <div class="form-buttons">
+      <button id="cancel-image-btn" class="toolbar-btn">取消</button>
+      <button id="insert-image-btn" class="toolbar-btn primary">插入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 代码块对话框 -->
+<div id="codeblock-dialog" class="modal-dialog codeblock-dialog">
+  <div class="form-container">
+    <div class="form-title">插入代码块</div>
+    <div class="form-group">
+      <label class="form-label">编程语言</label>
+      <select id="code-language" class="form-input">
+        <option value="">自动检测</option>
+        <option value="javascript">JavaScript</option>
+        <option value="typescript">TypeScript</option>
+        <option value="python">Python</option>
+        <option value="java">Java</option>
+        <option value="cpp">C++</option>
+        <option value="c">C</option>
+        <option value="csharp">C#</option>
+        <option value="php">PHP</option>
+        <option value="ruby">Ruby</option>
+        <option value="go">Go</option>
+        <option value="rust">Rust</option>
+        <option value="swift">Swift</option>
+        <option value="kotlin">Kotlin</option>
+        <option value="sql">SQL</option>
+        <option value="html">HTML</option>
+        <option value="css">CSS</option>
+        <option value="bash">Bash/Shell</option>
+        <option value="json">JSON</option>
+        <option value="yaml">YAML</option>
+        <option value="markdown">Markdown</option>
+        <option value="text">纯文本</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">代码内容</label>
+      <textarea id="code-content" class="form-input" rows="6" placeholder="在此输入代码..."></textarea>
+    </div>
+    <div class="form-buttons">
+      <button id="cancel-code-btn" class="toolbar-btn">取消</button>
+      <button id="insert-code-btn" class="toolbar-btn primary">插入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 状态消息 -->
+<div id="status-message"></div>
+
+<script>
+// ═══════════════════ 状态变量
+let currentFileId = null;
+let currentFilePath = '';
+let originalContent = '';
+let isDirty = false;
+let editorWidth = 50; // 百分比
+
+// ═══════════════════ 初始化
+document.addEventListener('DOMContentLoaded', async () => {
+  // 配置 marked
+  marked.setOptions({ gfm: true, breaks: true, sanitize: true });
+
+  const renderer = new marked.Renderer();
+  renderer.code = (code, lang) => {
+    const highlighted = (lang && hljs.getLanguage(lang))
+      ? hljs.highlight(code, { language: lang }).value
+      : hljs.highlightAuto(code).value;
+    return `<pre><button class="copy-btn" onclick="copyCode(this)">复制</button><code class="hljs language-${lang || ''}">${highlighted}</code></pre>`;
+  };
+  marked.use({ renderer });
+
+  // 获取 URL 参数
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get('id');
+  const dir = urlParams.get('dir');
+
+  // 元素引用
+  const editor = document.getElementById('editor-textarea');
+  const preview = document.getElementById('preview');
+  const saveBtn = document.getElementById('save-btn');
+  const deleteBtn = document.getElementById('delete-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const fileInfo = document.getElementById('file-info');
+  const newFileForm = document.getElementById('new-file-form');
+  const statusMessage = document.getElementById('status-message');
+
+  // 如果没有文件ID，显示新建文件表单
+  if (!id) {
+    showNewFileForm();
+  } else {
+    // 加载现有文件
+    await loadFile(id);
+  }
+
+  // ═══════════════════ 事件监听
+
+  // 编辑器输入
+  editor.addEventListener('input', () => {
+    updatePreview();
+    checkDirty();
+  });
+
+  // 保存按钮
+  saveBtn.addEventListener('click', saveFile);
+
+  // 删除按钮
+  deleteBtn.addEventListener('click', deleteFile);
+
+  // 取消按钮
+  cancelBtn.addEventListener('click', () => {
+    if (confirm('放弃未保存的更改？')) {
+      window.location.href = '/';
+    }
+  });
+
+  // 新建文件表单按钮
+  document.getElementById('cancel-new-btn').addEventListener('click', () => {
+    window.location.href = '/';
+  });
+
+  document.getElementById('create-new-btn').addEventListener('click', createNewFile);
+
+  // 目录选择事件
+  const dirSelect = document.getElementById('new-file-directory');
+  const newDirInput = document.getElementById('new-directory-input');
+  if (dirSelect && newDirInput) {
+    dirSelect.addEventListener('change', () => {
+      if (dirSelect.value === 'new') {
+        newDirInput.style.display = 'block';
+      } else {
+        newDirInput.style.display = 'none';
+      }
+    });
+  }
+
+  // 加载目录选项
+  if (!id) {
+    loadDirectoryOptions(dir);
+  }
+
+  // 分割线拖动
+  initResizer();
+
+  // Markdown 工具栏按钮
+  document.querySelectorAll('.editor-toolbar .toolbar-btn[data-format]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const format = btn.dataset.format;
+      if (format === 'link') {
+        showLinkDialog();
+      } else if (format === 'image') {
+        showImageDialog();
+      } else if (format === 'codeblock') {
+        showCodeDialog();
+      } else {
+        insertMarkdown(format);
+      }
+    });
+  });
+
+  // 对话框事件监听
+  document.getElementById('cancel-link-btn').addEventListener('click', hideLinkDialog);
+  document.getElementById('insert-link-btn').addEventListener('click', insertLink);
+  document.getElementById('cancel-image-btn').addEventListener('click', hideImageDialog);
+  document.getElementById('insert-image-btn').addEventListener('click', insertImage);
+
+  // 链接输入框回车键支持
+  document.getElementById('link-url').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      insertLink();
+    }
+  });
+
+  // 图片地址输入框回车键支持
+  document.getElementById('image-url').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      insertImage();
+    }
+  });
+
+  // 键盘快捷键
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      saveFile();
+    }
+    if (e.key === 'Escape') {
+      if (newFileForm.classList.contains('visible')) {
+        window.location.href = '/';
+      } else if (confirm('放弃未保存的更改？')) {
+        window.location.href = '/';
+      }
+    }
+  });
+
+  // 离开页面确认
+  window.addEventListener('beforeunload', (e) => {
+    if (isDirty) {
+      e.preventDefault();
+      e.returnValue = '您有未保存的更改，确定要离开吗？';
+    }
+  });
+});
+
+// ═══════════════════ 文件操作
+async function loadFile(id) {
+  showLoading('加载文件中...');
+
+  try {
+    const response = await fetch(`/api/file?id=${encodeURIComponent(id)}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    currentFileId = id;
+    currentFilePath = data.path;
+    originalContent = data.content;
+
+    const editor = document.getElementById('editor-textarea');
+    editor.value = data.content;
+
+    updateFileInfo();
+    updatePreview();
+
+    // 显示删除按钮（仅对现有文件）
+    document.getElementById('delete-btn').style.display = 'flex';
+
+    hideLoading();
+    showStatus('文件加载成功', 'success');
+
+  } catch (error) {
+    hideLoading();
+    showStatus(`加载失败: ${error.message}`, 'error');
+    setTimeout(() => window.location.href = '/', 2000);
+  }
+}
+
+async function saveFile() {
+  const editor = document.getElementById('editor-textarea');
+  const content = editor.value;
+
+  showLoading('保存中...');
+
+  try {
+    let response;
+
+    if (currentFileId) {
+      // 更新现有文件
+      response = await fetch('/api/file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentFileId, content })
+      });
+    } else {
+      // 创建新文件（应该不会发生，因为新建文件通过表单处理）
+      showStatus('请使用新建文件表单创建文件', 'error');
+      hideLoading();
+      return;
+    }
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    originalContent = content;
+    isDirty = false;
+
+    hideLoading();
+    showStatus('文件保存成功', 'success');
+
+    // 更新文件信息
+    updateFileInfo();
+
+  } catch (error) {
+    hideLoading();
+    showStatus(`保存失败: ${error.message}`, 'error');
+  }
+}
+
+async function deleteFile() {
+  if (!currentFileId || !confirm('确定要删除这个文件吗？此操作不可恢复。')) {
+    return;
+  }
+
+  showLoading('删除中...');
+
+  try {
+    const response = await fetch(`/api/file?id=${encodeURIComponent(currentFileId)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    hideLoading();
+    showStatus('文件删除成功', 'success');
+
+    // 延迟跳转回主页
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 1000);
+
+  } catch (error) {
+    hideLoading();
+    showStatus(`删除失败: ${error.message}`, 'error');
+  }
+}
+
+async function createNewFile() {
+  const dirSelect = document.getElementById('new-file-directory');
+  const newDirInput = document.getElementById('new-directory-name');
+  const fileNameInput = document.getElementById('new-file-name');
+  const contentInput = document.getElementById('new-file-content');
+
+  const selectedDir = dirSelect.value;
+  const newDirName = newDirInput.value.trim();
+  const fileName = fileNameInput.value.trim();
+  const content = contentInput.value;
+
+  // 验证目录
+  if (!selectedDir) {
+    showStatus('请选择目录', 'error');
+    return;
+  }
+
+  let directory = '';
+  if (selectedDir === 'new') {
+    // 新建目录
+    if (!newDirName) {
+      showStatus('请输入新目录名称', 'error');
+      return;
+    }
+    directory = newDirName;
+  } else {
+    directory = selectedDir;
+  }
+
+  // 验证文件名
+  if (!fileName) {
+    showStatus('请输入文件名', 'error');
+    return;
+  }
+
+  if (!fileName.endsWith('.md')) {
+    showStatus('文件名必须以 .md 结尾', 'error');
+    return;
+  }
+
+  // 构建完整路径
+  const filePath = directory ? `${directory}/${fileName}` : fileName;
+
+  showLoading('创建文件中...');
+
+  try {
+    const response = await fetch('/api/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath, content })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    hideLoading();
+    showStatus('文件创建成功', 'success');
+
+    // 延迟跳转到编辑页面
+    setTimeout(() => {
+      window.location.href = `/editor.html?id=${encodeURIComponent(data.id)}`;
+    }, 1000);
+
+  } catch (error) {
+    hideLoading();
+    showStatus(`创建失败: ${error.message}`, 'error');
+  }
+}
+
+// ═══════════════════ 目录管理
+async function loadDirectoryOptions(selectedDir) {
+  const dirSelect = document.getElementById('new-file-directory');
+  if (!dirSelect) return;
+
+  try {
+    // 获取文件树
+    const response = await fetch('/api/tree');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const files = data.files || [];
+
+    // 提取唯一目录
+    const dirSet = new Set();
+    for (const f of files) {
+      if (f.dir && f.dir !== '/') {
+        dirSet.add(f.dir);
+      }
+    }
+
+    // 按字母排序
+    const dirs = Array.from(dirSet).sort();
+
+    // 清空现有选项（保留前两个选项："选择目录..." 和 "+ 新建目录"）
+    while (dirSelect.options.length > 2) {
+      dirSelect.remove(2);
+    }
+
+    // 添加目录选项
+    for (const dir of dirs) {
+      const option = document.createElement('option');
+      option.value = dir;
+      option.textContent = dir;
+      dirSelect.appendChild(option);
+    }
+
+    // 如果提供了目录参数，则设置选择框
+    if (selectedDir) {
+      // 检查选项是否存在
+      const optionExists = Array.from(dirSelect.options).some(opt => opt.value === selectedDir);
+      if (optionExists) {
+        dirSelect.value = selectedDir;
+      } else {
+        // 如果目录不在列表中，可以选择添加一个临时选项，但这里我们忽略
+        console.log(`目录 "${selectedDir}" 不在列表中，保持默认选择`);
+      }
+    }
+
+  } catch (error) {
+    console.error('加载目录失败:', error);
+    // 静默失败，不影响表单使用
+  }
+}
+
+// ═══════════════════ Markdown 格式化
+function insertMarkdown(format) {
+  const editor = document.getElementById('editor-textarea');
+  if (!editor) return;
+
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const selectedText = editor.value.substring(start, end);
+  const before = editor.value.substring(0, start);
+  const after = editor.value.substring(end);
+
+  let insertBefore = '';
+  let insertAfter = '';
+  let defaultText = '';
+
+  switch (format) {
+    case 'h1':
+      insertBefore = '# ';
+      break;
+    case 'h2':
+      insertBefore = '## ';
+      break;
+    case 'h3':
+      insertBefore = '### ';
+      break;
+    case 'bold':
+      insertBefore = '**';
+      insertAfter = '**';
+      defaultText = '加粗文本';
+      break;
+    case 'italic':
+      insertBefore = '*';
+      insertAfter = '*';
+      defaultText = '斜体文本';
+      break;
+    case 'code':
+      insertBefore = '`';
+      insertAfter = '`';
+      defaultText = '代码';
+      break;
+    case 'codeblock':
+      insertBefore = '\n```\n';
+      insertAfter = '\n```';
+      defaultText = '// 代码块';
+      break;
+    case 'link':
+      insertBefore = '[';
+      insertAfter = '](url)';
+      defaultText = '链接文本';
+      break;
+    case 'image':
+      insertBefore = '![';
+      insertAfter = '](图片地址)';
+      defaultText = '图片描述';
+      break;
+    case 'ul':
+      insertBefore = '- ';
+      break;
+    case 'ol':
+      insertBefore = '1. ';
+      break;
+    case 'quote':
+      insertBefore = '> ';
+      break;
+    case 'hr':
+      insertBefore = '\n---\n';
+      break;
+    case 'table':
+      insertBefore = '\n| 标题1 | 标题2 |\n|-------|-------|\n| 内容1 | 内容2 |\n';
+      break;
+    case 'check':
+      insertBefore = '- [ ] ';
+      defaultText = '任务项';
+      break;
+    default:
+      return;
+  }
+
+  const newText = selectedText || defaultText;
+  const newContent = before + insertBefore + newText + insertAfter + after;
+  editor.value = newContent;
+
+  // 更新预览
+  updatePreview();
+  checkDirty();
+
+  // 恢复光标位置
+  const newCursorPos = start + insertBefore.length + newText.length + insertAfter.length;
+  editor.setSelectionRange(newCursorPos, newCursorPos);
+  editor.focus();
+}
+
+// ═══════════════════ 对话框功能
+function showLinkDialog() {
+  const dialog = document.getElementById('link-dialog');
+  const linkTextInput = document.getElementById('link-text');
+  const linkUrlInput = document.getElementById('link-url');
+
+  // 获取当前选中的文本，作为默认链接文本
+  const editor = document.getElementById('editor-textarea');
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const selectedText = editor.value.substring(start, end);
+
+  if (selectedText) {
+    linkTextInput.value = selectedText;
+  } else {
+    linkTextInput.value = '';
+  }
+  linkUrlInput.value = '';
+
+  dialog.classList.add('visible');
+  linkTextInput.focus();
+}
+
+function hideLinkDialog() {
+  const dialog = document.getElementById('link-dialog');
+  dialog.classList.remove('visible');
+}
+
+function insertLink() {
+  const linkText = document.getElementById('link-text').value.trim();
+  const linkUrl = document.getElementById('link-url').value.trim();
+
+  if (!linkText || !linkUrl) {
+    showStatus('请填写链接文本和地址', 'error');
+    return;
+  }
+
+  const editor = document.getElementById('editor-textarea');
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const before = editor.value.substring(0, start);
+  const after = editor.value.substring(end);
+
+  const markdown = `[${linkText}](${linkUrl})`;
+  editor.value = before + markdown + after;
+
+  // 更新预览
+  updatePreview();
+  checkDirty();
+
+  // 恢复光标位置
+  const newCursorPos = start + markdown.length;
+  editor.setSelectionRange(newCursorPos, newCursorPos);
+  editor.focus();
+
+  hideLinkDialog();
+  showStatus('链接已插入', 'success');
+}
+
+function showImageDialog() {
+  const dialog = document.getElementById('image-dialog');
+  const imageAltInput = document.getElementById('image-alt');
+  const imageUrlInput = document.getElementById('image-url');
+  const imageFileInput = document.getElementById('image-file');
+
+  // 获取当前选中的文本，作为默认图片描述
+  const editor = document.getElementById('editor-textarea');
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const selectedText = editor.value.substring(start, end);
+
+  if (selectedText) {
+    imageAltInput.value = selectedText;
+  } else {
+    imageAltInput.value = '';
+  }
+  imageUrlInput.value = '';
+  imageFileInput.value = '';
+
+  dialog.classList.add('visible');
+  imageAltInput.focus();
+}
+
+function hideImageDialog() {
+  const dialog = document.getElementById('image-dialog');
+  dialog.classList.remove('visible');
+}
+
+function insertImage() {
+  const imageAlt = document.getElementById('image-alt').value.trim();
+  const imageUrl = document.getElementById('image-url').value.trim();
+  const imageFile = document.getElementById('image-file').files[0];
+
+  if (!imageAlt) {
+    showStatus('请填写图片描述', 'error');
+    return;
+  }
+
+  let finalUrl = imageUrl;
+
+  // 处理文件上传（暂未实现，先使用URL）
+  if (imageFile) {
+    showStatus('文件上传功能暂未实现，请使用图片URL', 'error');
+    // TODO: 实现文件上传
+    return;
+  }
+
+  if (!finalUrl) {
+    showStatus('请输入图片地址或选择文件', 'error');
+    return;
+  }
+
+  const editor = document.getElementById('editor-textarea');
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const before = editor.value.substring(0, start);
+  const after = editor.value.substring(end);
+
+  const markdown = `![${imageAlt}](${finalUrl})`;
+  editor.value = before + markdown + after;
+
+  // 更新预览
+  updatePreview();
+  checkDirty();
+
+  // 恢复光标位置
+  const newCursorPos = start + markdown.length;
+  editor.setSelectionRange(newCursorPos, newCursorPos);
+  editor.focus();
+
+  hideImageDialog();
+  showStatus('图片已插入', 'success');
+}
+
+// ═══════════════════ 预览更新
+function updatePreview() {
+  const editor = document.getElementById('editor-textarea');
+  const preview = document.getElementById('preview');
+
+  const content = editor.value;
+  const html = marked.parse(content);
+
+  preview.innerHTML = `<div class="md">${html}</div>`;
+
+  // 重新高亮代码块
+  document.querySelectorAll('pre code').forEach((block) => {
+    hljs.highlightElement(block);
+  });
+}
+
+// ═══════════════════ 状态管理
+function checkDirty() {
+  const editor = document.getElementById('editor-textarea');
+  isDirty = editor.value !== originalContent;
+
+  // 可以在这里添加脏状态指示器
+}
+
+function updateFileInfo() {
+  const fileInfo = document.getElementById('file-info');
+
+  if (currentFilePath) {
+    const size = document.getElementById('editor-textarea').value.length;
+    fileInfo.textContent = `${currentFilePath} • ${size.toLocaleString()} 字符 • ${isDirty ? '未保存' : '已保存'}`;
+  } else {
+    fileInfo.textContent = '新建文件';
+  }
+}
+
+// ═══════════════════ UI 控制
+function showNewFileForm() {
+  document.getElementById('new-file-form').classList.add('visible');
+}
+
+function hideNewFileForm() {
+  document.getElementById('new-file-form').classList.remove('visible');
+}
+
+function showLoading(message) {
+  const preview = document.getElementById('preview');
+  preview.innerHTML = `<div class="loading"><div class="spinner"></div> ${message}</div>`;
+}
+
+function hideLoading() {
+  // 加载状态会被 updatePreview 覆盖
+}
+
+function showStatus(message, type = 'info') {
+  const status = document.getElementById('status-message');
+  status.textContent = message;
+  status.className = '';
+  status.classList.add(type);
+  status.classList.add('visible');
+
+  setTimeout(() => {
+    status.classList.remove('visible');
+  }, 3000);
+}
+
+// ═══════════════════ 分割线拖动
+function initResizer() {
+  const resizer = document.getElementById('resizer');
+  const editorContainer = document.getElementById('editor-container');
+  const leftPanel = editorContainer.querySelector('.editor-panel:first-child');
+  const rightPanel = editorContainer.querySelector('.editor-panel:last-child');
+
+  let isResizing = false;
+
+  resizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMouseMove(e) {
+      if (!isResizing) return;
+
+      const containerRect = editorContainer.getBoundingClientRect();
+      const percentage = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+      // 限制在 20% 到 80% 之间
+      const clamped = Math.max(20, Math.min(80, percentage));
+
+      leftPanel.style.flex = `0 0 ${clamped}%`;
+      rightPanel.style.flex = `0 0 ${100 - clamped}%`;
+      editorWidth = clamped;
+    }
+
+    function onMouseUp() {
+      isResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+// ═══════════════════ 复制代码
+window.copyCode = function(btn) {
+  const code = btn.nextElementSibling.textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = '已复制';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '复制';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+};
+</script>
+</body>
+</html>
