@@ -1,0 +1,7 @@
+D:/claude_code/20260402长截图/build/debug/CMakeFiles/RUN_TESTS.dir
+D:/claude_code/20260402长截图/build/debug/CMakeFiles/ALL_BUILD.dir
+D:/claude_code/20260402长截图/build/debug/CMakeFiles/ZERO_CHECK.dir
+D:/claude_code/20260402长截图/build/debug/src/CMakeFiles/LongShot.dir
+D:/claude_code/20260402长截图/build/debug/src/CMakeFiles/RUN_TESTS.dir
+D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/test_stitcher.dir
+D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/RUN_TESTS.dir

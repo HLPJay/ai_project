@@ -1,0 +1,220 @@
+{
+	"BUILD_DIR" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen",
+	"CMAKE_BINARY_DIR" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug",
+	"CMAKE_CURRENT_BINARY_DIR" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests",
+	"CMAKE_CURRENT_SOURCE_DIR" : "D:/claude_code/20260402\u957f\u622a\u56fe/tests",
+	"CMAKE_EXECUTABLE" : "D:/tool/cmake-3.27.4-windows-x86_64/bin/cmake.exe",
+	"CMAKE_LIST_FILES" : 
+	[
+		"D:/claude_code/20260402\u957f\u622a\u56fe/tests/CMakeLists.txt",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/Qt6ConfigVersion.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/Qt6Config.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicCMakeEarlyPolicyHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicCMakeHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/Qt6ConfigExtras.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicCMakeVersionHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtInstallPaths.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/Qt6TargetsPrecheck.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtFeature.cmake",
+		"D:/tool/cmake-3.27.4-windows-x86_64/share/cmake-3.27/Modules/CheckCXXCompilerFlag.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtFeatureCommon.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicAndroidHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicAppleHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicCMakeHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicCMakeVersionHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicDependencyHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicExternalProjectHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicFinalizerHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicFindPackageHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicGitHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicPluginHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicPluginHelpers_v2.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomAttributionHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomCommonGenerationHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomCpeHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomCycloneDXHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomDocumentNamespaceHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomDepHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomFileHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomGenerationHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomGenerationCycloneDXHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomLicenseHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomOpsHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomPurlHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomPythonHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomQtEntityHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicSbomSystemDepHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicTargetHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicTestHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicToolHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicWalkLibsHelpers.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/QtPublicWindowsHelpers.cmake",
+		"D:/tool/cmake-3.27.4-windows-x86_64/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6/Qt6Dependencies.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestConfigVersion.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestConfigVersionImpl.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestConfig.cmake",
+		"D:/tool/cmake-3.27.4-windows-x86_64/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestDependencies.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestTargetsPrecheck.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestTargets.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestTargets-debug.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestTargets-relwithdebinfo.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestAdditionalTargetInfo.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/QtTestProperties.cmake",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/lib/cmake/Qt6Test/Qt6TestVersionlessAliasTargets.cmake"
+	],
+	"CMAKE_SOURCE_DIR" : "D:/claude_code/20260402\u957f\u622a\u56fe",
+	"DEP_FILE" : "",
+	"DEP_FILE_RULE_NAME" : "",
+	"HEADERS" : [],
+	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
+	"INCLUDE_DIR" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/include",
+	"INCLUDE_DIR_Debug" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/include_Debug",
+	"INCLUDE_DIR_MinSizeRel" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/include_MinSizeRel",
+	"INCLUDE_DIR_RelWithDebInfo" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/include_RelWithDebInfo",
+	"INCLUDE_DIR_Release" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/include_Release",
+	"MOC_COMPILATION_FILE" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/mocs_compilation.cpp",
+	"MOC_COMPILATION_FILE_Debug" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/mocs_compilation_Debug.cpp",
+	"MOC_COMPILATION_FILE_MinSizeRel" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/mocs_compilation_MinSizeRel.cpp",
+	"MOC_COMPILATION_FILE_RelWithDebInfo" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/mocs_compilation_RelWithDebInfo.cpp",
+	"MOC_COMPILATION_FILE_Release" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/test_stitcher_autogen/mocs_compilation_Release.cpp",
+	"MOC_DEFINITIONS" : [],
+	"MOC_DEFINITIONS_Debug" : 
+	[
+		"QT_CORE_LIB",
+		"QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests\"",
+		"QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/tests\"",
+		"QT_TESTLIB_LIB",
+		"UNICODE",
+		"WIN32",
+		"WIN64",
+		"_ENABLE_EXTENDED_ALIGNED_STORAGE",
+		"_UNICODE",
+		"_WIN64"
+	],
+	"MOC_DEFINITIONS_MinSizeRel" : 
+	[
+		"QT_CORE_LIB",
+		"QT_NO_DEBUG",
+		"QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests\"",
+		"QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/tests\"",
+		"QT_TESTLIB_LIB",
+		"UNICODE",
+		"WIN32",
+		"WIN64",
+		"_ENABLE_EXTENDED_ALIGNED_STORAGE",
+		"_UNICODE",
+		"_WIN64"
+	],
+	"MOC_DEFINITIONS_RelWithDebInfo" : 
+	[
+		"QT_CORE_LIB",
+		"QT_NO_DEBUG",
+		"QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests\"",
+		"QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/tests\"",
+		"QT_TESTLIB_LIB",
+		"UNICODE",
+		"WIN32",
+		"WIN64",
+		"_ENABLE_EXTENDED_ALIGNED_STORAGE",
+		"_UNICODE",
+		"_WIN64"
+	],
+	"MOC_DEFINITIONS_Release" : 
+	[
+		"QT_CORE_LIB",
+		"QT_NO_DEBUG",
+		"QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests\"",
+		"QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402\u957f\u622a\u56fe/tests\"",
+		"QT_TESTLIB_LIB",
+		"UNICODE",
+		"WIN32",
+		"WIN64",
+		"_ENABLE_EXTENDED_ALIGNED_STORAGE",
+		"_UNICODE",
+		"_WIN64"
+	],
+	"MOC_DEPEND_FILTERS" : 
+	[
+		[
+			"Q_PLUGIN_METADATA",
+			"[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\([^\\)]*FILE[ \t]*\"([^\"]+)\""
+		]
+	],
+	"MOC_INCLUDES" : [],
+	"MOC_INCLUDES_Debug" : 
+	[
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc",
+		"D:/tool/opencv/opencv/build/include"
+	],
+	"MOC_INCLUDES_MinSizeRel" : 
+	[
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc",
+		"D:/tool/opencv/opencv/build/include"
+	],
+	"MOC_INCLUDES_RelWithDebInfo" : 
+	[
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc",
+		"D:/tool/opencv/opencv/build/include"
+	],
+	"MOC_INCLUDES_Release" : 
+	[
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore",
+		"D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc",
+		"D:/tool/opencv/opencv/build/include"
+	],
+	"MOC_MACRO_NAMES" : 
+	[
+		"Q_OBJECT",
+		"Q_GADGET",
+		"Q_NAMESPACE",
+		"Q_NAMESPACE_EXPORT",
+		"Q_GADGET_EXPORT",
+		"Q_ENUM_NS"
+	],
+	"MOC_OPTIONS" : [],
+	"MOC_PATH_PREFIX" : false,
+	"MOC_PREDEFS_CMD" : [],
+	"MOC_PREDEFS_FILE" : "",
+	"MOC_RELAXED_MODE" : false,
+	"MOC_SKIP" : [],
+	"MULTI_CONFIG" : true,
+	"PARALLEL" : 24,
+	"PARSE_CACHE_FILE" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/ParseCache.txt",
+	"PARSE_CACHE_FILE_Debug" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/ParseCache_Debug.txt",
+	"PARSE_CACHE_FILE_MinSizeRel" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/ParseCache_MinSizeRel.txt",
+	"PARSE_CACHE_FILE_RelWithDebInfo" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/ParseCache_RelWithDebInfo.txt",
+	"PARSE_CACHE_FILE_Release" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/ParseCache_Release.txt",
+	"QT_MOC_EXECUTABLE" : "D:/software/qt6_install/6.11.0/msvc2022_64/bin/moc.exe",
+	"QT_UIC_EXECUTABLE" : "",
+	"QT_VERSION_MAJOR" : 6,
+	"QT_VERSION_MINOR" : 11,
+	"SETTINGS_FILE" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenUsed.txt",
+	"SETTINGS_FILE_Debug" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenUsed_Debug.txt",
+	"SETTINGS_FILE_MinSizeRel" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenUsed_MinSizeRel.txt",
+	"SETTINGS_FILE_RelWithDebInfo" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenUsed_RelWithDebInfo.txt",
+	"SETTINGS_FILE_Release" : "D:/claude_code/20260402\u957f\u622a\u56fe/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenUsed_Release.txt",
+	"SOURCES" : 
+	[
+		[
+			"D:/claude_code/20260402\u957f\u622a\u56fe/tests/test_stitcher.cpp",
+			"Mu",
+			null
+		]
+	],
+	"VERBOSITY" : 0
+}

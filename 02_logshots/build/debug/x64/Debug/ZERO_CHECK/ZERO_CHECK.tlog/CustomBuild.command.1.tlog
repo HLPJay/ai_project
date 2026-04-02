@@ -1,0 +1,10 @@
+^D:\CLAUDE_CODE\20260402长截图\BUILD\DEBUG\CMAKEFILES\3A05F9159BD5518FFACE51972C101CD9\GENERATE.STAMP.RULE
+setlocal
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -SD:/claude_code/20260402长截图 -BD:/claude_code/20260402长截图/build/debug --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/claude_code/20260402长截图/build/debug/LongShot.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

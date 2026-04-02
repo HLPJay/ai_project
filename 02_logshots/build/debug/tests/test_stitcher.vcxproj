@@ -1,0 +1,435 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{53E6ADEA-385B-3CB0-94F8-57E87C4FCB8A}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.22000.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>test_stitcher</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\claude_code\20260402长截图\build\debug\tests\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">test_stitcher.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">test_stitcher</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\claude_code\20260402长截图\build\debug\tests\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">test_stitcher.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">test_stitcher</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\claude_code\20260402长截图\build\debug\tests\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">test_stitcher.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">test_stitcher</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\claude_code\20260402长截图\build\debug\tests\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">test_stitcher.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">test_stitcher</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_Debug;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc" /external:I "D:/tool/opencv/opencv/build/include" -Zc:__cplusplus -utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <ConformanceMode>true</ConformanceMode>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR="D:/claude_code/20260402长截图/build/debug/tests";QT_TESTCASE_SOURCEDIR="D:/claude_code/20260402长截图/tests";QT_CORE_LIB;WIN32;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402长截图/build/debug/tests\";QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402长截图/tests\";QT_CORE_LIB;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_Debug;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_Debug;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PreBuildEvent>
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message>Automatic MOC for target test_stitcher</Message>
+      <Command>setlocal
+cd D:\claude_code\20260402长截图\build\debug\tests
+if %errorlevel% neq 0 goto :cmEnd
+D:
+if %errorlevel% neq 0 goto :cmEnd
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -E cmake_autogen D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenInfo.json Debug
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PreBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Testd.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120d.lib;D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Cored.lib;mpr.lib;userenv.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/claude_code/20260402长截图/build/debug/tests/Debug/test_stitcher.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/claude_code/20260402长截图/build/debug/tests/Debug/test_stitcher.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_Release;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc" /external:I "D:/tool/opencv/opencv/build/include" -Zc:__cplusplus -utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ConformanceMode>true</ConformanceMode>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);NDEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR="D:/claude_code/20260402长截图/build/debug/tests";QT_TESTCASE_SOURCEDIR="D:/claude_code/20260402长截图/tests";QT_CORE_LIB;QT_NO_DEBUG;WIN32;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;NDEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402长截图/build/debug/tests\";QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402长截图/tests\";QT_CORE_LIB;QT_NO_DEBUG;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_Release;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_Release;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PreBuildEvent>
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message>Automatic MOC for target test_stitcher</Message>
+      <Command>setlocal
+cd D:\claude_code\20260402长截图\build\debug\tests
+if %errorlevel% neq 0 goto :cmEnd
+D:
+if %errorlevel% neq 0 goto :cmEnd
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -E cmake_autogen D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenInfo.json Release
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PreBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Test.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Core.lib;mpr.lib;userenv.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/claude_code/20260402长截图/build/debug/tests/Release/test_stitcher.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/claude_code/20260402长截图/build/debug/tests/Release/test_stitcher.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_MinSizeRel;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc" /external:I "D:/tool/opencv/opencv/build/include" -Zc:__cplusplus -utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ConformanceMode>true</ConformanceMode>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MinSpace</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);NDEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR="D:/claude_code/20260402长截图/build/debug/tests";QT_TESTCASE_SOURCEDIR="D:/claude_code/20260402长截图/tests";QT_CORE_LIB;QT_NO_DEBUG;WIN32;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;NDEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402长截图/build/debug/tests\";QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402长截图/tests\";QT_CORE_LIB;QT_NO_DEBUG;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_MinSizeRel;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_MinSizeRel;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PreBuildEvent>
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message>Automatic MOC for target test_stitcher</Message>
+      <Command>setlocal
+cd D:\claude_code\20260402长截图\build\debug\tests
+if %errorlevel% neq 0 goto :cmEnd
+D:
+if %errorlevel% neq 0 goto :cmEnd
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -E cmake_autogen D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenInfo.json MinSizeRel
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PreBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Test.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Core.lib;mpr.lib;userenv.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/claude_code/20260402长截图/build/debug/tests/MinSizeRel/test_stitcher.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/claude_code/20260402长截图/build/debug/tests/MinSizeRel/test_stitcher.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_RelWithDebInfo;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtTest" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/include/QtCore" /external:I "D:/software/qt6_install/6.11.0/msvc2022_64/mkspecs/win32-msvc" /external:I "D:/tool/opencv/opencv/build/include" -Zc:__cplusplus -utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ConformanceMode>true</ConformanceMode>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);NDEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR="D:/claude_code/20260402长截图/build/debug/tests";QT_TESTCASE_SOURCEDIR="D:/claude_code/20260402长截图/tests";QT_CORE_LIB;QT_NO_DEBUG;WIN32;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;NDEBUG;QT_TESTLIB_LIB;QT_TESTCASE_BUILDDIR=\"D:/claude_code/20260402长截图/build/debug/tests\";QT_TESTCASE_SOURCEDIR=\"D:/claude_code/20260402长截图/tests\";QT_CORE_LIB;QT_NO_DEBUG;_ENABLE_EXTENDED_ALIGNED_STORAGE;WIN64;_WIN64;UNICODE;_UNICODE;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_RelWithDebInfo;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\include_RelWithDebInfo;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtTest;D:\software\qt6_install\6.11.0\msvc2022_64\include;D:\software\qt6_install\6.11.0\msvc2022_64\include\QtCore;D:\software\qt6_install\6.11.0\msvc2022_64\mkspecs\win32-msvc;D:\tool\opencv\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PreBuildEvent>
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message>Automatic MOC for target test_stitcher</Message>
+      <Command>setlocal
+cd D:\claude_code\20260402长截图\build\debug\tests
+if %errorlevel% neq 0 goto :cmEnd
+D:
+if %errorlevel% neq 0 goto :cmEnd
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -E cmake_autogen D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/test_stitcher_autogen.dir/AutogenInfo.json RelWithDebInfo
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PreBuildEvent>
+    <Link>
+      <AdditionalDependencies>D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Test.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\tool\opencv\opencv\build\x64\vc16\lib\opencv_world4120.lib;D:\software\qt6_install\6.11.0\msvc2022_64\lib\Qt6Core.lib;mpr.lib;userenv.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/claude_code/20260402长截图/build/debug/tests/RelWithDebInfo/test_stitcher.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/claude_code/20260402长截图/build/debug/tests/RelWithDebInfo/test_stitcher.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\claude_code\20260402长截图\tests\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule D:/claude_code/20260402长截图/tests/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -SD:/claude_code/20260402长截图 -BD:/claude_code/20260402长截图/build/debug --check-stamp-file D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigExtras.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Dependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6TargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeature.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeatureCommon.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtInstallPaths.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAndroidHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAppleHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeEarlyPolicyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeVersionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicDependencyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicExternalProjectHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFinalizerHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFindPackageHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicGitHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers_v2.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomAttributionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCommonGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCpeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDocumentNamespaceHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomFileHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomLicenseHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomOpsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPurlHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPythonHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomQtEntityHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomSystemDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTargetHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTestHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicToolHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWalkLibsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWindowsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestAdditionalTargetInfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfig.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestDependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-debug.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-relwithdebinfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestVersionlessAliasTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\QtTestProperties.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CMakeFindDependencyMacro.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CheckCXXCompilerFlag.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\claude_code\20260402长截图\build\debug\tests\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule D:/claude_code/20260402长截图/tests/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -SD:/claude_code/20260402长截图 -BD:/claude_code/20260402长截图/build/debug --check-stamp-file D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigExtras.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Dependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6TargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeature.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeatureCommon.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtInstallPaths.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAndroidHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAppleHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeEarlyPolicyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeVersionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicDependencyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicExternalProjectHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFinalizerHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFindPackageHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicGitHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers_v2.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomAttributionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCommonGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCpeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDocumentNamespaceHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomFileHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomLicenseHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomOpsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPurlHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPythonHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomQtEntityHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomSystemDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTargetHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTestHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicToolHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWalkLibsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWindowsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestAdditionalTargetInfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfig.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestDependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-debug.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-relwithdebinfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestVersionlessAliasTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\QtTestProperties.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CMakeFindDependencyMacro.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CheckCXXCompilerFlag.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\claude_code\20260402长截图\build\debug\tests\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule D:/claude_code/20260402长截图/tests/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -SD:/claude_code/20260402长截图 -BD:/claude_code/20260402长截图/build/debug --check-stamp-file D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigExtras.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Dependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6TargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeature.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeatureCommon.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtInstallPaths.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAndroidHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAppleHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeEarlyPolicyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeVersionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicDependencyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicExternalProjectHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFinalizerHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFindPackageHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicGitHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers_v2.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomAttributionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCommonGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCpeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDocumentNamespaceHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomFileHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomLicenseHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomOpsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPurlHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPythonHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomQtEntityHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomSystemDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTargetHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTestHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicToolHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWalkLibsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWindowsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestAdditionalTargetInfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfig.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestDependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-debug.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-relwithdebinfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestVersionlessAliasTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\QtTestProperties.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CMakeFindDependencyMacro.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CheckCXXCompilerFlag.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\claude_code\20260402长截图\build\debug\tests\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule D:/claude_code/20260402长截图/tests/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -SD:/claude_code/20260402长截图 -BD:/claude_code/20260402长截图/build/debug --check-stamp-file D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigExtras.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6ConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6Dependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\Qt6TargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeature.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtFeatureCommon.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtInstallPaths.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAndroidHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicAppleHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeEarlyPolicyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicCMakeVersionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicDependencyHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicExternalProjectHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFinalizerHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicFindPackageHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicGitHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicPluginHelpers_v2.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomAttributionHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCommonGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCpeHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomDocumentNamespaceHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomFileHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationCycloneDXHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomGenerationHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomLicenseHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomOpsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPurlHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomPythonHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomQtEntityHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicSbomSystemDepHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTargetHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicTestHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicToolHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWalkLibsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6\QtPublicWindowsHelpers.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestAdditionalTargetInfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfig.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersion.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestConfigVersionImpl.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestDependencies.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-debug.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets-relwithdebinfo.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestTargetsPrecheck.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\Qt6TestVersionlessAliasTargets.cmake;D:\software\qt6_install\6.11.0\msvc2022_64\lib\cmake\Qt6Test\QtTestProperties.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CMakeFindDependencyMacro.cmake;D:\tool\cmake-3.27.4-windows-x86_64\share\cmake-3.27\Modules\CheckCXXCompilerFlag.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\claude_code\20260402长截图\build\debug\tests\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\mocs_compilation_Debug.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="D:\claude_code\20260402长截图\tests\test_stitcher.cpp" />
+    <ClCompile Include="D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\mocs_compilation_Release.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\mocs_compilation_MinSizeRel.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="D:\claude_code\20260402长截图\build\debug\tests\test_stitcher_autogen\mocs_compilation_RelWithDebInfo.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="D:\claude_code\20260402长截图\build\debug\ZERO_CHECK.vcxproj">
+      <Project>{45699B71-AF65-334E-9E1F-B83A25CCC5B4}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

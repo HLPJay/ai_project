@@ -1,0 +1,10 @@
+^D:\CLAUDE_CODE\20260402长截图\TESTS\CMAKELISTS.TXT
+setlocal
+D:\tool\cmake-3.27.4-windows-x86_64\bin\cmake.exe -SD:/claude_code/20260402长截图 -BD:/claude_code/20260402长截图/build/debug --check-stamp-file D:/claude_code/20260402长截图/build/debug/tests/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

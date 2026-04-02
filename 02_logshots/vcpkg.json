@@ -1,0 +1,10 @@
+{
+  "name": "longshot",
+  "version": "1.0.0",
+  "description": "Desktop long screenshot tool with auto-scrolling capture and intelligent stitching",
+  "dependencies": [
+    "opencv4",
+    "qt6-base",
+    "qt6-webengine"
+  ]
+}
