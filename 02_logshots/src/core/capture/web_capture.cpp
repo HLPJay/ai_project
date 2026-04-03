@@ -11,6 +11,7 @@
 #include <QUrl>
 #include <QDebug>
 #include <QFileInfo>
+#include <QtMath>
 
 namespace longshot {
 namespace core {
@@ -19,14 +20,19 @@ WebCapture::WebCapture(const ScrollConfig& config, QObject* parent)
     : QObject(parent)
     , strategy_(std::make_unique<ScrollStrategy>(config))
     , scrollTimer_(this)
+    , safetyTimer_(this)
 {
     // Note: All Qt GUI objects (including QWebEngineView) MUST be created in the
     // thread they belong to. We assume WebCapture is created in main thread.
-    // scrollTimer_ stays in this thread - all WebView ops must happen in main thread.
 
-    // Timer for scroll cycle - use singleshot for precise control
+    // Timer for scroll cycle - single-shot, restarted each time
     scrollTimer_.setSingleShot(true);
     connect(&scrollTimer_, &QTimer::timeout, this, &WebCapture::scrollAndCapture, Qt::QueuedConnection);
+
+    // Safety timer: fires every 1s to detect if scroll is stuck
+    safetyTimer_.setSingleShot(false);
+    safetyTimer_.setInterval(1000);
+    connect(&safetyTimer_, &QTimer::timeout, this, &WebCapture::onSafetyTimer, Qt::QueuedConnection);
 }
 
 WebCapture::~WebCapture()
@@ -53,8 +59,14 @@ void WebCapture::startCapture(const CaptureRequest& request)
     pageScrollHeight_ = 0;
     pageViewportHeight_ = 0;
     initRetryCount_ = 0;
+    lastScrollHeight_ = 0;
+    stableScrollCount_ = 0;
+    safetyCheckFrameIndex_ = 0;
     stopRequested_ = false;
     isCapturing_ = true;
+    state_ = State::Loading;
+
+    qDebug() << "[WebCapture] === Starting capture ===";
 
     setupWebView();
 
@@ -65,20 +77,25 @@ void WebCapture::startCapture(const CaptureRequest& request)
     }
 
     qDebug() << "[WebCapture] Loading URL:" << url;
-    state_ = State::Loading;
     view_->setUrl(QUrl(url));
 }
 
 void WebCapture::stopCapture()
 {
+    if (stopRequested_) {
+        return;
+    }
+
     stopRequested_ = true;
     scrollTimer_.stop();
+    safetyTimer_.stop();
 
     if (isCapturing_) {
         isCapturing_ = false;
+        qDebug() << "[WebCapture] === Capture stopped ===";
 
         CaptureResult result;
-        result.framePaths.clear();  // FrameSaver manages the paths
+        result.framePaths.clear();
         result.error = QStringLiteral("用户停止");
         emit captureFinished(result);
     }
@@ -92,7 +109,6 @@ void WebCapture::setupWebView()
     if (!view_) {
         // Qt::Tool: 不在任务栏显示；FramelessWindowHint: 无边框
         view_ = new QWebEngineView(static_cast<QWidget*>(nullptr));
-        // Qt::Tool: 不显示在任务栏和 Alt+Tab 中
         view_->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
         // 透明度 0：窗口不可见但仍正常渲染，WebEngine GPU 进程可获取有效视口
         view_->setWindowOpacity(0.0);
@@ -110,9 +126,13 @@ void WebCapture::setupWebView()
 
 void WebCapture::onLoadFinished(bool ok)
 {
-    if (stopRequested_) return;
+    if (stopRequested_) {
+        qDebug() << "[WebCapture] Load finished but stop requested, ignoring";
+        return;
+    }
 
     if (!ok) {
+        qWarning() << "[WebCapture] Page load failed";
         emit captureError(QStringLiteral("页面加载失败"));
         isCapturing_ = false;
         state_ = State::Idle;
@@ -127,19 +147,25 @@ void WebCapture::onLoadFinished(bool ok)
 
 void WebCapture::initPageAndGetInfo()
 {
-    if (stopRequested_) return;
+    if (stopRequested_) {
+        return;
+    }
 
     QString script = strategy_->generateInitScript();
     // runJavaScript is async, result comes via callback in this thread (main thread)
     page_->runJavaScript(script, [this](const QVariant& result) {
-        if (stopRequested_) return;
+        if (stopRequested_) {
+            return;
+        }
         onJavaScriptResult(result);
     });
 }
 
 void WebCapture::onJavaScriptResult(const QVariant& result)
 {
-    if (stopRequested_) return;
+    if (stopRequested_) {
+        return;
+    }
 
     if (state_ == State::GettingPageInfo) {
         // Parse page info from JSON
@@ -147,6 +173,7 @@ void WebCapture::onJavaScriptResult(const QVariant& result)
         QJsonDocument doc = QJsonDocument::fromJson(result.toString().toUtf8(), &parseError);
 
         if (parseError.error != QJsonParseError::NoError) {
+            qWarning() << "[WebCapture] Failed to parse page info:" << parseError.errorString();
             emit captureError(QStringLiteral("页面信息解析失败: %1").arg(parseError.errorString()));
             isCapturing_ = false;
             state_ = State::Idle;
@@ -179,6 +206,7 @@ void WebCapture::onJavaScriptResult(const QVariant& result)
                 QTimer::singleShot(500, this, &WebCapture::initPageAndGetInfo);
                 return;
             }
+            qWarning() << "[WebCapture] Page height invalid, scrollHeight:" << pageScrollHeight_;
             emit captureError(QStringLiteral("页面高度无效"));
             isCapturing_ = false;
             state_ = State::Idle;
@@ -190,48 +218,31 @@ void WebCapture::onJavaScriptResult(const QVariant& result)
         currentFrameIndex_ = 0;
         captureCurrentFrame();
 
-    } else if (state_ == State::Scrolling) {
-        // Parse scroll result
-        QJsonParseError parseError;
-        QJsonDocument doc = QJsonDocument::fromJson(result.toString().toUtf8(), &parseError);
+        // Start safety timer to detect stalled scroll
+        safetyCheckFrameIndex_ = 0;
+        safetyTimer_.start();
+        qDebug() << "[WebCapture] Safety timer started";
 
-        if (parseError.error != QJsonParseError::NoError) {
-            qWarning() << "[WebCapture] Failed to parse scroll result";
-            return;
-        }
+        // Schedule first scroll after a short delay
+        state_ = State::Scrolling;
+        scrollTimer_.start(500);  // Small delay before first scroll
 
-        QJsonObject info = doc.object();
-        currentScrollTop_ = info["scrollTop"].toInt();
-        int scrollHeight = info["scrollHeight"].toInt();
-        int viewportHeight = info["viewportHeight"].toInt();
-
-        // 同步更新缓存值，供 captureCurrentFrame() 使用
-        pageScrollHeight_ = scrollHeight;
-        if (viewportHeight > 0) pageViewportHeight_ = viewportHeight;
-
-        // Check if reached bottom
-        if (strategy_->isAtBottom(currentScrollTop_, scrollHeight, viewportHeight)) {
-            // Finished scrolling
-            scrollTimer_.stop();
-            state_ = State::Finished;
-            isCapturing_ = false;
-
-            CaptureResult captureResult;
-            captureResult.framePaths.clear();
-            captureResult.error = QString();
-            emit captureFinished(captureResult);
-        }
     }
+    // Note: State::Scrolling is now handled entirely inside scrollAndCapture()
+    // to ensure precise scroll-to verification + retry logic
 }
 
 void WebCapture::captureCurrentFrame()
 {
-    if (stopRequested_) return;
+    if (stopRequested_) {
+        return;
+    }
 
-    // maxFrames 兜底：防止无限滚动页面永不停止
+    // maxFrames 兜底
     if (currentFrameIndex_ >= strategy_->config().maxFrames) {
         qWarning() << "[WebCapture] Reached maxFrames limit:" << strategy_->config().maxFrames;
         scrollTimer_.stop();
+        safetyTimer_.stop();
         state_ = State::Finished;
         isCapturing_ = false;
         CaptureResult captureResult;
@@ -244,55 +255,144 @@ void WebCapture::captureCurrentFrame()
     QImage image = view_->grab().toImage();
 
     if (image.isNull()) {
-        qWarning() << "[WebCapture] Failed to grab frame";
+        qWarning() << "[WebCapture] Failed to grab frame" << currentFrameIndex_
+                   << "- retrying in 200ms...";
+        // Retry after short delay
+        QTimer::singleShot(200, this, [this]() {
+            if (!stopRequested_) {
+                captureCurrentFrame();
+            }
+        });
         return;
     }
 
-    // Emit frame - FrameSaver (in CaptureRunner) will save it
+    qDebug() << "[WebCapture] === Capturing frame" << currentFrameIndex_
+             << "(scrollTop:" << currentScrollTop_
+             << "scrollHeight:" << pageScrollHeight_
+             << "viewport:" << pageViewportHeight_
+             << ") ===";
+
+    // Emit frame - FrameSaver (in CaptureRunner via QueuedConnection) will save it
     emit frameReady(currentFrameIndex_, image);
     emit captureProgress(currentFrameIndex_ + 1, estimatedTotalFrames_);
+}
 
-    // Check if should continue scrolling
-    if (strategy_->isAtBottom(currentScrollTop_, pageScrollHeight_, pageViewportHeight_)) {
-        // Reached bottom, finish
-        scrollTimer_.stop();
-        state_ = State::Finished;
-        isCapturing_ = false;
-
-        CaptureResult captureResult;
-        captureResult.framePaths.clear();
-        captureResult.error = QString();
-        emit captureFinished(captureResult);
+void WebCapture::onSafetyTimer()
+{
+    // Safety check: if frame index hasn't advanced, the scroll timer might be stalled
+    if (state_ != State::Scrolling || stopRequested_) {
         return;
     }
 
-    // Schedule next scroll
-    currentFrameIndex_++;
-    state_ = State::Scrolling;
-    scrollTimer_.start(request_.scrollDelayMs);
+    if (currentFrameIndex_ == safetyCheckFrameIndex_) {
+        qWarning() << "[WebCapture] SAFETY: No new frame captured -"
+                  << "frameIndex:" << currentFrameIndex_
+                  << "scrollTop:" << currentScrollTop_;
+        // Force restart scroll timer if it's not active
+        if (!scrollTimer_.isActive()) {
+            qWarning() << "[WebCapture] SAFETY: scrollTimer_ stalled, restarting...";
+            scrollTimer_.start(100);
+        }
+    }
+
+    safetyCheckFrameIndex_ = currentFrameIndex_;
 }
 
 void WebCapture::scrollAndCapture()
 {
-    if (stopRequested_ || !isCapturing_) return;
+    if (stopRequested_ || !isCapturing_) {
+        return;
+    }
 
-    // Generate scroll script
-    QString scrollScript = strategy_->generateScrollScript(currentScrollTop_);
+    if (state_ != State::Scrolling) {
+        return;
+    }
 
-    // Execute JavaScript - this MUST happen in main thread where page_ lives
-    page_->runJavaScript(scrollScript, [this](const QVariant& /*result*/) {
+    // Calculate target Y = currentScrollTop + frameOffset
+    int targetY = currentScrollTop_ + strategy_->frameOffset(pageViewportHeight_);
+    qDebug() << "[WebCapture] scrollAndCapture: targetY =" << targetY
+             << "(currentScrollTop:" << currentScrollTop_
+             << "frameOffset:" << strategy_->frameOffset(pageViewportHeight_) << ")";
+
+    QString scrollScript = strategy_->generateScrollToScript(targetY);
+
+    // Execute JavaScript - MUST happen in main thread where page_ lives
+    page_->runJavaScript(scrollScript, [this, targetY](const QVariant& result) {
         if (stopRequested_) return;
 
-        // Trigger lazy-load images after scrolling
+        // Parse scroll response
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(result.toString().toUtf8(), &parseError);
+        if (parseError.error != QJsonParseError::NoError) {
+            qWarning() << "[WebCapture] Failed to parse scrollTo response, retrying...";
+            scrollTimer_.start(200);
+            return;
+        }
+
+        QJsonObject info = doc.object();
+        int actualTop = info["scrollTop"].toInt();
+        int scrollHeight = info["scrollHeight"].toInt();
+        int viewportHeight = info["viewportHeight"].toInt();
+        bool reached = info["reached"].toBool();
+
+        qDebug() << "[WebCapture] Scroll result - targetY:" << targetY
+                 << "actualTop:" << actualTop
+                 << "reached:" << reached
+                 << "scrollHeight:" << scrollHeight;
+
+        // Update cached values
+        pageScrollHeight_ = scrollHeight;
+        if (viewportHeight > 0) pageViewportHeight_ = viewportHeight;
+
+        // Track actual scroll position
+        if (reached) {
+            currentScrollTop_ = actualTop;
+        } else if (actualTop != currentScrollTop_) {
+            currentScrollTop_ = actualTop;
+        } else {
+            currentScrollTop_ = targetY;
+            qWarning() << "[WebCapture] Scroll blocked, using expected position:" << currentScrollTop_;
+        }
+
+        // ---------- Termination check ----------
+        // We use TWO conditions:
+        // 1. isAtBottom with ACTUAL scroll position (trust DOM if scroll succeeded)
+        // 2. expected position >= page scrollable range (trust frame count if scroll failed)
+        bool atBottomByDom = strategy_->isAtBottom(actualTop, scrollHeight, viewportHeight);
+        bool atBottomByExpectation = (targetY >= scrollHeight - viewportHeight);
+        bool atBottom = atBottomByDom || atBottomByExpectation;
+        bool tooManyFrames = (currentFrameIndex_ >= strategy_->config().maxFrames);
+
+        qDebug() << "[WebCapture] Bottom check - byDom:" << atBottomByDom
+                 << "byExpectation:" << atBottomByExpectation
+                 << "targetY:" << targetY
+                 << "scrollHeight-viewport:" << (scrollHeight - viewportHeight);
+
+        if (atBottom || tooManyFrames) {
+            scrollTimer_.stop();
+            safetyTimer_.stop();
+            state_ = State::Finished;
+            isCapturing_ = false;
+
+            qDebug() << "[WebCapture] === Finished === atBottom:" << atBottom
+                     << "(dom:" << atBottomByDom << "expect:" << atBottomByExpectation << ")"
+                     << "totalFrames:" << (currentFrameIndex_ + 1);
+
+            CaptureResult captureResult;
+            captureResult.framePaths.clear();
+            captureResult.error = QString();
+            emit captureFinished(captureResult);
+            return;
+        }
+
+        // Trigger lazy-load after scrolling
         QString lazyLoadScript = strategy_->generateLazyLoadTriggerScript();
         if (!lazyLoadScript.isEmpty()) {
-            page_->runJavaScript(lazyLoadScript, [](const QVariant& result) {
-                // Log triggered lazy-load images
-                QJsonParseError parseError;
-                QJsonDocument doc = QJsonDocument::fromJson(result.toString().toUtf8(), &parseError);
-                if (parseError.error == QJsonParseError::NoError) {
-                    QJsonObject obj = doc.object();
-                    int triggered = obj["triggered"].toInt();
+            page_->runJavaScript(lazyLoadScript, [](const QVariant& res) {
+                QJsonParseError pe;
+                QJsonDocument d = QJsonDocument::fromJson(res.toString().toUtf8(), &pe);
+                if (pe.error == QJsonParseError::NoError) {
+                    int triggered = d.object().value("triggered").toInt();
                     if (triggered > 0) {
                         qDebug() << "[WebCapture] Triggered" << triggered << "lazy-load images";
                     }
@@ -300,21 +400,15 @@ void WebCapture::scrollAndCapture()
             });
         }
 
-        // Wait for lazy-load and rendering to complete
+        // Wait for rendering, then capture and schedule next scroll
         QTimer::singleShot(request_.scrollDelayMs, this, [this]() {
             if (stopRequested_) return;
 
-            // Get new scroll position and capture
-            QString getPosScript = strategy_->generateGetScrollTopScript();
-            page_->runJavaScript(getPosScript, [this](const QVariant& result) {
-                if (stopRequested_) return;
-                onJavaScriptResult(result);
+            currentFrameIndex_++;
+            captureCurrentFrame();
 
-                // If not finished, capture the frame
-                if (state_ == State::Scrolling) {
-                    captureCurrentFrame();
-                }
-            });
+            // Schedule next scroll
+            scrollTimer_.start(request_.scrollDelayMs);
         });
     });
 }

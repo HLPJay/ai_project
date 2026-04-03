@@ -47,11 +47,18 @@ public:
     QString generateInitScript() const;
 
     /**
-     * @brief 生成滚动到下一位置的 JS
+     * @brief 生成滚动到下一位置的 JS（相对滚动，旧方法）
      * @param currentScrollTop 当前滚动位置
      * @return JavaScript 代码
      */
     QString generateScrollScript(int currentScrollTop) const;
+
+    /**
+     * @brief 生成精确滚动到目标 Y 坐标的 JS（带验证）
+     * @param targetY 目标 Y 坐标
+     * @return JavaScript 代码，返回 JSON 包含 targetY/actualTop/scrollHeight/viewportHeight/reached/nextTarget
+     */
+    QString generateScrollToScript(int targetY) const;
 
     /**
      * @brief 生成获取当前滚动位置的 JS

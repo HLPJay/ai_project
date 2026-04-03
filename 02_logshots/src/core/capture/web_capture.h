@@ -75,6 +75,7 @@ private slots:
     void onJavaScriptResult(const QVariant& result);
     void captureCurrentFrame();
     void scrollAndCapture();
+    void onSafetyTimer();
 
 private:
     /**
@@ -93,6 +94,8 @@ private:
 
     std::unique_ptr<ScrollStrategy> strategy_;
     QTimer scrollTimer_;
+    QTimer safetyTimer_;                  ///< Safety net: fires every 1s to detect stalled scroll
+    int safetyCheckFrameIndex_ = 0;       ///< Frame index at last safety check
 
     CaptureRequest request_;
     int currentFrameIndex_ = 0;
@@ -101,6 +104,8 @@ private:
     int pageScrollHeight_ = 0;
     int pageViewportHeight_ = 0;
     int initRetryCount_ = 0;
+    int lastScrollHeight_ = 0;        // 上一次滚动后的页面高度
+    int stableScrollCount_ = 0;      // 连续稳定滚动次数（页面高度无显著变化）
     bool isCapturing_ = false;
     bool stopRequested_ = false;
     enum class State {

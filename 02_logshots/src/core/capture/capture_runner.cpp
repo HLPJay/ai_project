@@ -199,9 +199,14 @@ void CaptureRunner::onCaptureFinished(const CaptureResult& result)
 {
     isCapturing_ = false;
 
-    // 用已知的 tempDir 路径，而不是 savedPaths()：
-    // frameReady→saveFrame 是 QueuedConnection，此时磁盘写入可能还未全部完成。
-    // 路径是固定的，文件会在这之后写完。
+    // frameReady→saveFrame 是 QueuedConnection，信号已入队但处理可能延迟。
+    // 为确保所有帧保存完成，processEvents 强制处理所有待处理事件。
+    QCoreApplication::processEvents();
+
+    // 短暂等待，确保工作线程完成最后的磁盘写入
+    QThread::msleep(50);
+    QCoreApplication::processEvents();
+
     CaptureResult finalResult;
     finalResult.framePaths = QStringList() << frameSaver_->tempDir();
     finalResult.error = result.error;

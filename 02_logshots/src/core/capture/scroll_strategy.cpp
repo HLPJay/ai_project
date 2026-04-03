@@ -11,30 +11,46 @@ ScrollStrategy::ScrollStrategy(const ScrollConfig& config, QObject* parent)
 QString ScrollStrategy::generateInitScript() const {
     QStringList scripts;
 
-    // 禁用平滑滚动，确保滚动立即生效
+    // 禁用平滑滚动 / scroll-snap，确保滚动立即生效且无吸附
     if (config_.disableSmoothScroll) {
         scripts.append(R"(
             (function() {
                 var style = document.createElement('style');
-                style.textContent = 'html, body { scroll-behavior: auto !important; }';
+                style.id = 'longshot-scroll-style';
+                style.textContent = [
+                    'html, body {',
+                    '  scroll-behavior: auto !important;',
+                    '  overflow: visible !important;',
+                    '}',
+                    '* {',
+                    '  scroll-snap-type: none !important;',
+                    '  scroll-snap-align: none !important;',
+                    '}',
+                    '[style*="scroll-behavior"] {',
+                    '  scroll-behavior: auto !important;',
+                    '}'
+                ].join('\n');
                 document.head.appendChild(style);
             })();
         )");
     }
 
-    // 移除 overflow:hidden，确保页面可以正常滚动
+    // 强制移除 overflow:hidden，强制显示滚动条
     scripts.append(R"(
         (function() {
             var html = document.documentElement;
             var body = document.body;
-            var htmlStyle = window.getComputedStyle(html).overflow;
-            var bodyStyle = window.getComputedStyle(body).overflow;
-            if (htmlStyle === 'hidden') { html.style.overflow = 'visible'; }
-            if (bodyStyle === 'hidden') { body.style.overflow = 'visible'; }
+            if (html) { html.style.overflow = 'visible'; html.style.overflowX = 'hidden'; }
+            if (body) { body.style.overflow = 'visible'; body.style.overflowX = 'hidden'; }
+            // Also try setting scrollTop to verify scroll works
+            var oldTop = html ? (html.scrollTop || 0) : 0;
+            if (html) html.scrollTop = oldTop + 1;
+            var newTop = html ? (html.scrollTop || 0) : 0;
+            if (html) html.scrollTop = oldTop;
         })();
     )");
 
-    // 获取页面基本信息（带 fallback，防止 scrollHeight/innerHeight 为 0）
+    // 获取页面基本信息
     scripts.append(R"(
         (function() {
             var sh = Math.max(
@@ -62,6 +78,7 @@ QString ScrollStrategy::generateInitScript() const {
 QString ScrollStrategy::generateScrollScript(int currentScrollTop) const {
     Q_UNUSED(currentScrollTop);
 
+    // Legacy: relative scroll (kept for compatibility)
     return QString(R"(
         (function() {
             var viewportHeight = window.innerHeight;
@@ -70,6 +87,61 @@ QString ScrollStrategy::generateScrollScript(int currentScrollTop) const {
             return document.documentElement.scrollTop;
         })();
     )").arg(config_.overlapPixels);
+}
+
+QString ScrollStrategy::generateScrollToScript(int targetY) const {
+    // Direct scrollTop assignment with verification
+    // %1 = overlapPixels, %2 = targetY
+    return QString(R"(
+        (function() {
+            var viewportHeight = window.innerHeight
+                || document.documentElement.clientHeight
+                || document.body.clientHeight
+                || 0;
+            var scrollHeight = Math.max(
+                document.documentElement.scrollHeight || 0,
+                document.body ? (document.body.scrollHeight || 0) : 0
+            );
+
+            // Clamp target to valid range [0, scrollHeight - viewportHeight]
+            var maxScroll = Math.max(0, scrollHeight - viewportHeight);
+            var clampedTarget = Math.max(0, Math.min(%2, maxScroll));
+
+            // Directly set scrollTop - more reliable than scrollTo in some WebEngine versions
+            var doc = document.documentElement;
+            var body = document.body;
+            var prevTop = doc.scrollTop || 0;
+
+            // Try setting on documentElement first, then body
+            doc.scrollTop = clampedTarget;
+            var actualTop = doc.scrollTop || 0;
+
+            // If documentElement didn't work, try body
+            if (Math.abs(actualTop - clampedTarget) > 5 && body) {
+                body.scrollTop = clampedTarget;
+                actualTop = body.scrollTop || doc.scrollTop || 0;
+            }
+
+            // If still not reached, try scrollBy as fallback
+            if (Math.abs(actualTop - clampedTarget) > 5) {
+                var delta = clampedTarget - prevTop;
+                window.scrollBy(0, delta);
+                actualTop = doc.scrollTop || 0;
+            }
+
+            // Calculate next target
+            var nextTarget = clampedTarget + viewportHeight - %1;
+
+            return JSON.stringify({
+                targetY: clampedTarget,
+                scrollTop: actualTop,
+                scrollHeight: scrollHeight,
+                viewportHeight: viewportHeight,
+                reached: Math.abs(actualTop - clampedTarget) <= 5,
+                nextTarget: nextTarget
+            });
+        })();
+    )").arg(config_.overlapPixels).arg(targetY);
 }
 
 QString ScrollStrategy::generateGetScrollTopScript() const {

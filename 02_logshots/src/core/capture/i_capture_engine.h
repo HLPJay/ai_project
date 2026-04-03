@@ -9,11 +9,26 @@ namespace longshot {
 namespace core {
 
 /**
+ * @brief 截屏模式
+ */
+enum class CaptureMode { Web, Window, Region };
+
+/**
  * @brief 截屏请求参数
  */
 struct CaptureRequest {
-    /** 目标 URL（网页场景）或窗口句柄（窗口场景） */
+    /** 截屏模式 */
+    CaptureMode mode = CaptureMode::Web;
+    /** 目标 URL（网页场景）或窗口标题（窗口场景） */
     QString target;
+    /** 窗口句柄: Win32 HWND (int64_t) / macOS CGWindowID (uint64_t) */
+    int64_t windowHandle = 0;
+    /** 窗口类名（用于场景检测） */
+    QString windowClassName;
+    /** 区域坐标（Region 模式） */
+    QRect regionRect;
+    /** 帧文件保存目录 */
+    QString framesDir;
     /** 滚动时相邻帧重叠像素数 */
     int overlapPixels = 100;
     /** 滚动后等待渲染时间（毫秒） */
