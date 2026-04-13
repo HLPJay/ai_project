@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频雷达 · 内容汇总</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh}
+    .header{background:#fff;border-bottom:1px solid #e8e8e4;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+    .header-left{display:flex;flex-direction:column}
+    .header-title{font-size:16px;font-weight:600}
+    .header-sub{font-size:12px;color:#999;margin-top:1px}
+
+    /* ── 主布局：左右分栏 ── */
+    .layout{display:flex;gap:20px;max-width:1100px;margin:0 auto;padding:24px 20px;align-items:flex-start}
+    .col-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px}
+    .col-side{width:400px;flex-shrink:0;position:sticky;top:20px}
+
+    /* 输入区 */
+    .input-card{background:#fff;border-radius:12px;border:1px solid #e8e8e4;padding:20px}
+    .input-label{font-size:13px;color:#666;margin-bottom:8px}
+    .input-row{display:flex;gap:8px}
+    .url-input{flex:1;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border-color .15s}
+    .url-input:focus{border-color:#1a1a1a}
+    .submit-btn{padding:9px 20px;background:#1a1a1a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;transition:opacity .15s}
+    .submit-btn:hover{opacity:.85}
+    .submit-btn:disabled{opacity:.4;cursor:not-allowed}
+
+    /* 进度 */
+    .progress-wrap{margin-top:14px;display:none}
+    .progress-wrap.show{display:block}
+    .progress-steps{display:flex;gap:0;margin-bottom:8px}
+    .step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative}
+    .step:not(:last-child)::after{content:'';position:absolute;top:12px;left:60%;width:80%;height:1px;background:#e0e0e0;z-index:0}
+    .step.done::after{background:#1a1a1a}
+    .step-dot{width:24px;height:24px;border-radius:50%;background:#e0e0e0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#999;z-index:1;transition:all .3s}
+    .step.active .step-dot{background:#1a1a1a;color:#fff;animation:pulse .8s ease-in-out infinite}
+    .step.done .step-dot{background:#1a1a1a;color:#fff}
+    .step-label{font-size:10px;color:#aaa;margin-top:4px;text-align:center}
+    .step.active .step-label,.step.done .step-label{color:#555}
+    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+    .progress-msg{font-size:13px;color:#666;text-align:center;min-height:18px}
+    .progress-msg.error{color:#c0392b}
+
+    /* 报告区 */
+    .report-card{background:#fff;border-radius:12px;border:1px solid #e8e8e4;padding:24px;display:none}
+    .report-card.show{display:block;animation:fadein .3s ease}
+    @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .cache-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;background:#e8f4fd;color:#1a7abf;margin-left:6px;vertical-align:middle}
+    .video-meta{margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #f0f0ec;display:flex;gap:12px}
+    .thumb{width:100px;height:58px;border-radius:6px;object-fit:cover;flex-shrink:0;background:#f0f0ec}
+    .meta-text{flex:1;min-width:0}
+    .video-title{font-size:15px;font-weight:600;margin-bottom:3px;line-height:1.4}
+    .video-channel{font-size:12px;color:#888;margin-bottom:6px}
+    .video-tags{display:flex;gap:5px;flex-wrap:wrap}
+    .tag{font-size:10px;padding:2px 7px;border-radius:20px;background:#f0f0ec;color:#666}
+    .tag-src{background:#e8f4fd;color:#1a7abf}
+    .tag-yes{background:#e8f5e9;color:#2e7d32}
+    .tag-no{background:#fce4e4;color:#c62828}
+    .section{margin-bottom:18px}
+    .section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#999;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+    .section-count{font-size:10px;background:#f0f0ec;color:#888;padding:1px 6px;border-radius:10px;font-weight:400;letter-spacing:0}
+    .thesis{font-size:14px;line-height:1.65;color:#1a1a1a;padding:12px 14px;background:#fff8f2;border-radius:0 8px 8px 0;border-left:3px solid #e67e22}
+    .points{list-style:none}
+    .points li{font-size:13px;line-height:1.6;color:#333;padding:7px 0;border-bottom:1px solid #f5f5f0;display:flex;gap:8px}
+    .points li:last-child{border-bottom:none}
+    .point-num{font-size:10px;font-weight:700;color:#e67e22;flex-shrink:0;margin-top:3px;min-width:18px}
+    .detailed-notes{display:flex;flex-direction:column;gap:8px}
+    .note-item{font-size:13px;color:#444;line-height:1.7;padding:10px 14px;background:#f8f8f5;border-radius:8px}
+    .conclusions{display:flex;flex-direction:column;gap:6px}
+    .conclusion{font-size:13px;color:#333;line-height:1.6;padding:8px 12px;background:#f8f8f5;border-radius:8px}
+    .audience{font-size:13px;color:#333;padding:8px 12px;background:#f8f8f5;border-radius:8px}
+    .worthy-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:8px}
+    .worthy-box.yes{background:#e8f5e9}
+    .worthy-box.no{background:#fce4e4}
+    .worthy-icon{font-size:18px;flex-shrink:0}
+    .worthy-text{font-size:13px;line-height:1.6}
+    .worthy-text strong{display:block;margin-bottom:2px}
+    .action-row{display:flex;gap:6px;padding-top:14px;border-top:1px solid #f0f0ec;flex-wrap:wrap}
+    .action-btn{padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:#fff;cursor:pointer;color:#555;transition:all .1s;white-space:nowrap}
+    .action-btn:hover{border-color:#aaa;color:#1a1a1a}
+    .action-btn.danger:hover{border-color:#e57373;color:#c62828}
+
+    /* 历史 */
+    .history-card{background:#fff;border-radius:12px;border:1px solid #e8e8e4;padding:16px 20px}
+    .history-title{font-size:11px;font-weight:600;color:#999;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em}
+    .history-list{display:flex;flex-direction:column;gap:2px}
+    .history-item{padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .1s;display:flex;align-items:center;gap:10px}
+    .history-item:hover{background:#f5f5f0}
+    .h-thumb{width:48px;height:28px;border-radius:4px;object-fit:cover;background:#f0f0ec;flex-shrink:0}
+    .h-text{flex:1;min-width:0}
+    .h-title{font-size:12px;font-weight:500;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .h-meta{font-size:10px;color:#aaa;margin-top:1px}
+    .h-del{font-size:16px;color:#ccc;padding:0 4px;display:none;cursor:pointer}
+    .history-item:hover .h-del{display:block}
+    .h-del:hover{color:#c62828}
+    .empty{font-size:13px;color:#bbb;text-align:center;padding:16px 0}
+
+    /* ── 右侧分享卡片区 ── */
+    .side-panel{background:#fff;border-radius:12px;border:1px solid #e8e8e4;overflow:hidden}
+    .side-header{padding:14px 16px;border-bottom:1px solid #f0f0ec;display:flex;align-items:center;justify-content:space-between}
+    .side-header-title{font-size:13px;font-weight:600}
+    .side-header-sub{font-size:11px;color:#999}
+    .side-placeholder{padding:40px 20px;text-align:center;color:#bbb;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:8px}
+    .side-placeholder-icon{font-size:32px;opacity:.4}
+    .side-card-wrap{padding:16px;display:none;justify-content:center;max-height:70vh;overflow-y:auto}
+    .side-card-wrap.show{display:flex}
+    .side-actions{padding:12px 16px;border-top:1px solid #f0f0ec;display:none;gap:6px}
+    .side-actions.show{display:flex}
+    .side-btn{flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;text-align:center;border:1px solid #ddd;background:#fff;color:#555;transition:all .15s}
+    .side-btn:hover{border-color:#aaa;color:#1a1a1a}
+    .side-btn.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+    .side-btn.primary:hover{opacity:.85}
+    .side-btn:disabled{opacity:.4;cursor:not-allowed}
+
+    /* ── 分享卡片本体 ── */
+    #share-card{
+      width:340px;
+      background:#fff;
+      border-radius:14px;
+      overflow:hidden;
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif;
+      box-shadow:0 2px 16px rgba(0,0,0,.1);
+    }
+    .sc-header{position:relative;height:150px;overflow:hidden;background:#111}
+    .sc-thumb{width:100%;height:100%;object-fit:cover;opacity:.5;display:block}
+    .sc-overlay{position:absolute;inset:0;background:linear-gradient(160deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.8) 100%)}
+    .sc-header-text{position:absolute;bottom:0;left:0;right:0;padding:12px 14px}
+    .sc-source{font-size:9px;color:rgba(255,255,255,.55);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+    .sc-title{font-size:13px;font-weight:700;color:#fff;line-height:1.4;margin-bottom:2px}
+    .sc-channel{font-size:10px;color:rgba(255,255,255,.55)}
+    .sc-body{padding:14px 14px 12px}
+    .sc-thesis-label{font-size:9px;font-weight:700;color:#e67e22;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+    .sc-thesis{font-size:12px;font-weight:600;color:#111;line-height:1.6;padding:8px 10px;background:#fff8f2;border-left:3px solid #e67e22;border-radius:0 5px 5px 0;margin-bottom:12px}
+    .sc-points-label{font-size:9px;font-weight:700;color:#666;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
+    .sc-point{display:flex;gap:6px;margin-bottom:5px;align-items:flex-start}
+    .sc-num{font-size:9px;font-weight:700;color:#e67e22;min-width:16px;margin-top:2px;flex-shrink:0}
+    .sc-text{font-size:11px;color:#333;line-height:1.55}
+    .sc-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0ec}
+    .sc-verdict{font-size:10px;font-weight:600;padding:3px 10px;border-radius:20px}
+    .sc-verdict.yes{background:#e8f5e9;color:#2e7d32}
+    .sc-verdict.no{background:#fce4e4;color:#c62828}
+    .sc-brand{font-size:9px;color:#ccc;letter-spacing:.04em}
+
+    /* 响应式 */
+    @media(max-width:800px){
+      .layout{flex-direction:column}
+      .col-side{width:100%;position:static}
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">视频雷达</div>
+    <div class="header-sub">YouTube 内容快速汇总</div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- 左列：输入 + 报告 + 历史 -->
+  <div class="col-main">
+
+    <div class="input-card">
+      <div class="input-label">粘贴 YouTube 链接，生成内容报告</div>
+      <div class="input-row">
+        <input class="url-input" id="url-input" type="text" placeholder="https://www.youtube.com/watch?v=..."/>
+        <button class="submit-btn" id="submit-btn" onclick="submitUrl()">生成报告</button>
+      </div>
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-steps">
+          <div class="step" id="s1"><div class="step-dot">1</div><div class="step-label">解析</div></div>
+          <div class="step" id="s2"><div class="step-dot">2</div><div class="step-label">视频信息</div></div>
+          <div class="step" id="s3"><div class="step-dot">3</div><div class="step-label">提取内容</div></div>
+          <div class="step" id="s4"><div class="step-dot">4</div><div class="step-label">AI 分析</div></div>
+          <div class="step" id="s5"><div class="step-dot">5</div><div class="step-label">完成</div></div>
+        </div>
+        <div class="progress-msg" id="progress-msg"></div>
+      </div>
+    </div>
+
+    <div class="report-card" id="report-card">
+      <div class="video-meta">
+        <img class="thumb" id="r-thumb" src="" alt=""/>
+        <div class="meta-text">
+          <div class="video-title" id="r-title"></div>
+          <div class="video-channel" id="r-channel"></div>
+          <div class="video-tags" id="r-tags"></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">核心观点</div>
+        <div class="thesis" id="r-thesis"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">
+          关键要点
+          <span class="section-count" id="r-points-count"></span>
+        </div>
+        <ul class="points" id="r-points"></ul>
+      </div>
+      <div class="section">
+        <div class="section-title">详细笔记</div>
+        <div class="detailed-notes" id="r-notes"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">主要结论</div>
+        <div class="conclusions" id="r-conclusions"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">适合人群</div>
+        <div class="audience" id="r-audience"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">值得看吗</div>
+        <div class="worthy-box" id="r-worthy">
+          <div class="worthy-icon" id="r-worthy-icon"></div>
+          <div class="worthy-text">
+            <strong id="r-worthy-label"></strong>
+            <span id="r-worthy-reason"></span>
+          </div>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="action-btn" onclick="copyReport()">复制文本</button>
+        <button class="action-btn" onclick="openVideo()">查看原视频</button>
+        <button class="action-btn danger" onclick="deleteReport()">删除记录</button>
+      </div>
+    </div>
+
+    <div class="history-card">
+      <div class="history-title">最近报告</div>
+      <div class="history-list" id="history-list">
+        <div class="empty">暂无历史报告</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右列：分享卡片 -->
+  <div class="col-side">
+    <div class="side-panel">
+      <div class="side-header">
+        <div>
+          <div class="side-header-title">分享卡片</div>
+          <div class="side-header-sub">生成报告后自动更新</div>
+        </div>
+      </div>
+
+      <!-- 占位提示 -->
+      <div class="side-placeholder" id="side-placeholder">
+        <div class="side-placeholder-icon">🖼️</div>
+        <div>生成报告后，分享卡片将在这里预览</div>
+      </div>
+
+      <!-- 卡片预览 -->
+      <div class="side-card-wrap" id="side-card-wrap">
+        <div id="share-card">
+          <div class="sc-header">
+            <img class="sc-thumb" id="sc-thumb" src="" crossorigin="anonymous" alt=""/>
+            <div class="sc-overlay"></div>
+            <div class="sc-header-text">
+              <div class="sc-source" id="sc-source"></div>
+              <div class="sc-title" id="sc-title"></div>
+              <div class="sc-channel" id="sc-channel"></div>
+            </div>
+          </div>
+          <div class="sc-body">
+            <div class="sc-thesis-label">核心观点</div>
+            <div class="sc-thesis" id="sc-thesis"></div>
+            <div class="sc-points-label">关键要点</div>
+            <div id="sc-points"></div>
+            <div class="sc-footer">
+              <span class="sc-verdict" id="sc-verdict"></span>
+              <span class="sc-brand">视频雷达</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 下载按钮 -->
+      <div class="side-actions" id="side-actions">
+        <button class="side-btn primary" id="download-btn" onclick="downloadImage()">下载图片</button>
+        <button class="side-btn" onclick="copyReport()">复制文本</button>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+  let currentVideoId = '';
+  let currentUrl = '';
+  let currentReport = {};
+  let capturedCanvas = null;
+
+  function setStep(n, msg, isError) {
+    document.getElementById('progress-wrap').classList.add('show');
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById('s' + i);
+      el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+    }
+    const msgEl = document.getElementById('progress-msg');
+    msgEl.textContent = msg || '';
+    msgEl.className = 'progress-msg' + (isError ? ' error' : '');
+  }
+  function hideProgress() {
+    document.getElementById('progress-wrap').classList.remove('show');
+    for (let i = 1; i <= 5; i++) document.getElementById('s' + i).className = 'step';
+  }
+
+  async function submitUrl() {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return;
+    currentUrl = url;
+    document.getElementById('submit-btn').disabled = true;
+    document.getElementById('report-card').classList.remove('show');
+    resetSharePanel();
+    setStep(1, '正在处理...', false);
+
+    const es = new EventSource(`/api/process?url=${encodeURIComponent(url)}`);
+    es.addEventListener('progress', e => {
+      const d = JSON.parse(e.data);
+      setStep(d.step, d.msg, false);
+    });
+    es.addEventListener('done', e => {
+      es.close();
+      const d = JSON.parse(e.data);
+      setStep(5, d.cached ? '✅ 命中缓存，秒速返回' : '✅ 报告生成完成', false);
+      setTimeout(() => {
+        hideProgress();
+        renderReport(d, url);
+        updateShareCard(d);
+        loadHistory();
+      }, 600);
+      document.getElementById('submit-btn').disabled = false;
+    });
+    es.addEventListener('error', e => {
+      es.close();
+      try { const d = JSON.parse(e.data); setStep(0, '❌ ' + d.msg, true); }
+      catch { setStep(0, '❌ 处理失败，请检查链接或网络', true); }
+      document.getElementById('submit-btn').disabled = false;
+    });
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) return;
+      es.close(); setStep(0, '❌ 连接中断', true);
+      document.getElementById('submit-btn').disabled = false;
+    };
+  }
+
+  function renderReport(data, url) {
+    const r = data.report;
+    currentReport = data;
+    const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    currentVideoId = m ? m[1] : '';
+
+    if (currentVideoId)
+      document.getElementById('r-thumb').src =
+        `https://img.youtube.com/vi/${currentVideoId}/mqdefault.jpg`;
+
+    document.getElementById('r-title').innerHTML =
+      (data.title || '未知标题') +
+      (data.cached ? '<span class="cache-badge">缓存</span>' : '');
+    document.getElementById('r-channel').textContent = data.channel || '';
+
+    const worthy = r.watch_worthy;
+    const src = data.source === 'youtube_captions' ? '字幕' : '语音转录';
+    document.getElementById('r-tags').innerHTML =
+      `<span class="tag tag-src">${src}</span>` +
+      `<span class="tag">${data.word_count} 词</span>` +
+      `<span class="tag ${worthy ? 'tag-yes' : 'tag-no'}">${worthy ? '值得看' : '可跳过'}</span>`;
+
+    document.getElementById('r-thesis').textContent = r.core_thesis || '';
+
+    const pts = r.key_points || [];
+    document.getElementById('r-points-count').textContent = pts.length + ' 条';
+    document.getElementById('r-points').innerHTML = pts.map((p, i) =>
+      `<li><span class="point-num">${String(i+1).padStart(2,'0')}</span><span>${p}</span></li>`
+    ).join('');
+
+    document.getElementById('r-notes').innerHTML =
+      (r.detailed_notes || []).map(n =>
+        `<div class="note-item">${n}</div>`
+      ).join('');
+
+    document.getElementById('r-conclusions').innerHTML =
+      (r.conclusions || []).map(c =>
+        `<div class="conclusion">${c}</div>`
+      ).join('');
+
+    document.getElementById('r-audience').textContent = r.target_audience || '';
+
+    const box = document.getElementById('r-worthy');
+    box.className = 'worthy-box ' + (worthy ? 'yes' : 'no');
+    document.getElementById('r-worthy-icon').textContent = worthy ? '✅' : '⏭️';
+    document.getElementById('r-worthy-label').textContent = worthy ? '值得看' : '可跳过';
+    document.getElementById('r-worthy-reason').textContent = r.reason || '';
+
+    document.getElementById('report-card').classList.add('show');
+  }
+
+  // ── 更新右侧分享卡片 ──
+  function updateShareCard(data) {
+    const r = data.report;
+    const worthy = r.watch_worthy;
+    const m = currentUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    const vid = m ? m[1] : '';
+
+    document.getElementById('sc-thumb').src = vid
+      ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : '';
+    document.getElementById('sc-source').textContent = 'YouTube · ' + (data.channel || '');
+    document.getElementById('sc-title').textContent = data.title || '未知标题';
+    document.getElementById('sc-channel').textContent = data.channel || '';
+    document.getElementById('sc-thesis').textContent = r.core_thesis || '';
+
+    // 分享图显示全部要点
+    const pts = r.key_points || [];
+    document.getElementById('sc-points').innerHTML = pts.map((p, i) =>
+      `<div class="sc-point">
+        <span class="sc-num">${String(i+1).padStart(2,'0')}</span>
+        <span class="sc-text">${p}</span>
+      </div>`
+    ).join('');
+
+    const v = document.getElementById('sc-verdict');
+    v.textContent = worthy ? '✓ 值得看' : '✕ 可跳过';
+    v.className = 'sc-verdict ' + (worthy ? 'yes' : 'no');
+
+    // 显示卡片
+    document.getElementById('side-placeholder').style.display = 'none';
+    document.getElementById('side-card-wrap').classList.add('show');
+    document.getElementById('side-actions').classList.add('show');
+
+    // 异步生成截图
+    generateCanvas();
+  }
+
+  function resetSharePanel() {
+    document.getElementById('side-placeholder').style.display = '';
+    document.getElementById('side-card-wrap').classList.remove('show');
+    document.getElementById('side-actions').classList.remove('show');
+    capturedCanvas = null;
+  }
+
+  async function generateCanvas() {
+    const btn = document.getElementById('download-btn');
+    btn.textContent = '生成中...';
+    btn.disabled = true;
+    await new Promise(r => setTimeout(r, 700));
+    try {
+      capturedCanvas = await html2canvas(document.getElementById('share-card'), {
+        scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
+      });
+      btn.textContent = '下载图片';
+      btn.disabled = false;
+    } catch(e) {
+      btn.textContent = '生成失败';
+      console.error(e);
+    }
+  }
+
+  function downloadImage() {
+    if (!capturedCanvas) return;
+    const link = document.createElement('a');
+    const t = (currentReport.title || 'report').slice(0, 20).replace(/[/\\?%*:|"<>]/g, '');
+    link.download = `视频报告_${t}.png`;
+    link.href = capturedCanvas.toDataURL('image/png');
+    link.click();
+  }
+
+  function copyReport() {
+    const r = currentReport.report || {};
+    const text = [
+      `【${currentReport.title}】`,
+      `频道：${currentReport.channel}`,
+      '',
+      `核心观点：${r.core_thesis}`,
+      '',
+      '关键要点：',
+      ...(r.key_points || []).map((p, i) => `${i+1}. ${p}`),
+      '',
+      '详细笔记：',
+      ...(r.detailed_notes || []).map(n => `• ${n}`),
+      '',
+      '主要结论：',
+      ...(r.conclusions || []).map(c => `• ${c}`),
+      '',
+      `适合人群：${r.target_audience}`,
+      `是否值得看：${r.watch_worthy ? '值得看' : '可跳过'} — ${r.reason}`,
+    ].join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target;
+      btn.textContent = '已复制 ✓';
+      setTimeout(() => btn.textContent = '复制文本', 1500);
+    });
+  }
+  function openVideo() { window.open(currentUrl, '_blank'); }
+  async function deleteReport() {
+    if (!currentVideoId || !confirm('确认删除？')) return;
+    await fetch(`/api/reports/${currentVideoId}`, {method:'DELETE'});
+    document.getElementById('report-card').classList.remove('show');
+    resetSharePanel();
+    loadHistory();
+  }
+
+  async function loadHistory() {
+    try {
+      const list = await (await fetch('/api/reports')).json();
+      const el = document.getElementById('history-list');
+      if (!list.length) { el.innerHTML = '<div class="empty">暂无历史报告</div>'; return; }
+      el.innerHTML = list.map(r => `
+        <div class="history-item" onclick="fillAndLoad('${r.url}')">
+          <img class="h-thumb"
+            src="https://img.youtube.com/vi/${r.video_id}/mqdefault.jpg"
+            onerror="this.style.display='none'"/>
+          <div class="h-text">
+            <div class="h-title">${r.title}</div>
+            <div class="h-meta">${r.channel||''} · ${fmtTime(r.created_at)}</div>
+          </div>
+          <span class="h-del" onclick="delHistory(event,'${r.video_id}')">×</span>
+        </div>
+      `).join('');
+    } catch(e) {}
+  }
+  function fillAndLoad(url) { document.getElementById('url-input').value = url; submitUrl(); }
+  async function delHistory(e, vid) {
+    e.stopPropagation();
+    await fetch(`/api/reports/${vid}`, {method:'DELETE'});
+    loadHistory();
+  }
+  function fmtTime(ts) {
+    if (!ts||ts.length<12) return '';
+    return `${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)} ${ts.slice(9,11)}:${ts.slice(11,13)}`;
+  }
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitUrl();
+  });
+  loadHistory();
+</script>
+</body>
+</html>
