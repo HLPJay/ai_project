@@ -9,6 +9,7 @@
 | [01_kb-viewer](./01_kb-viewer)                   | 个人知识库阅读器，支持文档展示，修改。 | ✅ 初步完成                   |
 | [02_logshots](./02_logshots)                     | 想要实现长截屏的基本功能               | ❌ 失败的项目（调研规划不足） |
 | [03_youtube_checkvideo](./03_youtube_checkvideo) | 获取youtube有必要视频，进行文案提取    | ✅ 初步原型完成，待优化       |
+| [04_music-to-mv](./04_music-to-mv)               | openclaw中生成mv的skills               | ✅ 初步原型完成，待优化       |
 | 待规划                                           |                                        | 🚧 规划中                     |
 
 ### 
