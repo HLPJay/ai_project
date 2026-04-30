@@ -64,6 +64,7 @@ class ConfigManager:
     def _init(self, env_file: str = None):
         self._env_file = env_file
         self._config = Config()
+        self._file_values: Dict[str, str] = {}  # .env 解析结果，不写入 os.environ
         self._load_env_file()
         self._load_env_vars()
 
@@ -87,23 +88,19 @@ class ConfigManager:
                 return
 
     def _parse_env_file(self, path: Path):
-        """解析 .env 文件"""
+        """解析 .env 文件，结果存入 _file_values，不写 os.environ"""
         try:
             for line in path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, value = line.split("=", 1)
-                key = key.strip()
-                value = value.strip().strip("\"'")
-                # 只在环境变量未设置时使用 .env 的值
-                if key not in os.environ:
-                    os.environ[key] = value
+                self._file_values[key.strip()] = value.strip().strip("\"'")
         except Exception:
             pass
 
     def _load_env_vars(self):
-        """从环境变量加载"""
+        """从环境变量（优先）或 .env 文件加载配置"""
         mapping = {
             "MINIMAX_TOKEN": "minimax_token",
             "MINIMAX_API_HOST": "minimax_api_host",
@@ -125,7 +122,8 @@ class ConfigManager:
         }
 
         for env_key, config_key in mapping.items():
-            value = os.environ.get(env_key)
+            # os.environ 优先，其次 .env 文件，均无则保留 Config 默认值
+            value = os.environ.get(env_key) or self._file_values.get(env_key)
             if value:
                 setattr(self._config, config_key, value)
 

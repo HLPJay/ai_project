@@ -20,6 +20,14 @@ from pathlib import Path
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 
+# Jinja2 可用性在模块加载时检测一次，避免每次 render 都 import
+try:
+    from jinja2 import Environment as _JinjaEnvironment
+    _JINJA2_AVAILABLE = True
+except ImportError:
+    _JinjaEnvironment = None  # type: ignore
+    _JINJA2_AVAILABLE = False
+
 
 class PromptTemplate:
     """提示词模板（不可变）"""
@@ -42,14 +50,12 @@ class PromptTemplate:
         return result
 
     def _render_jinja2(self, variables: Dict[str, str]) -> str:
-        """使用 Jinja2 渲染"""
-        try:
-            from jinja2 import Environment
-            env = Environment(autoescape=False)
-            template = env.from_string(self.content)
-            return template.render(**variables)
-        except ImportError:
+        """使用 Jinja2 渲染（可用性在模块加载时已检测）"""
+        if not _JINJA2_AVAILABLE:
             return self.content
+        env = _JinjaEnvironment(autoescape=False)
+        template = env.from_string(self.content)
+        return template.render(**variables)
 
     def _render_internal(self, variables: Dict[str, str]) -> str:
         """内置渲染引擎（支持 {{ }} 和 {% if %}）"""

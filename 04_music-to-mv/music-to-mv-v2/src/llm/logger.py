@@ -218,7 +218,7 @@ class LLMLogger:
     # ── 内部方法 ─────────────────────────────────────────
 
     def _save_full_response(self, record: LLMCallRecord) -> str:
-        """保存完整响应到单独文件"""
+        """保存完整响应到单独文件，失败时静默返回空路径"""
         ts = record.timestamp.isoformat().replace(":", "-").replace(".", "-")
         filename = f"{ts}__{record.prompt_key}.json"
         filepath = self.responses_dir / filename
@@ -237,10 +237,12 @@ class LLMLogger:
             "cost_usd": record.cost_usd,
         }
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(full, f, ensure_ascii=False, indent=2)
-
-        return str(filepath.relative_to(self.log_dir))
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(full, f, ensure_ascii=False, indent=2)
+            return str(filepath.relative_to(self.log_dir))
+        except OSError:
+            return ""
 
     def _update_stats(self, record: LLMCallRecord):
         """更新聚合统计"""
@@ -301,9 +303,12 @@ class LLMLogger:
         self._save_json(str(self.versions_file), versions)
 
     def _append_jsonl(self, filepath: str, record: Dict):
-        """追加 JSONL 行"""
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        """追加 JSONL 行，写入失败时静默忽略"""
+        try:
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     def _load_json(self, filepath: str) -> Optional[Dict]:
         if not os.path.exists(filepath):
@@ -315,5 +320,9 @@ class LLMLogger:
             return None
 
     def _save_json(self, filepath: str, data: Dict):
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        """写入 JSON 文件，写入失败时静默忽略"""
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except OSError:
+            pass

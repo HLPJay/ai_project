@@ -17,127 +17,231 @@ import sys
 
 
 # ════════════════════════════════════════════════════════════
-# 画面风格 → 英文美术描述
+# 统一风格字典（art / render / character / api / negative）
+# 新增风格只需在此处添加一个条目
 # ════════════════════════════════════════════════════════════
 
-ART_STYLES = {
-    "国风": (
-        "traditional Chinese ink wash painting, xuan paper texture, elegant brush strokes, "
-        "Shan Shui landscape, misty ethereal atmosphere, low saturation, classical oriental aesthetic, "
-        "minimal blank space, cinematic soft lighting, single main character, clean composition"
-    ),
-    "动漫风": (
-        "high-quality Japanese anime, clean crisp line art, soft cel shading, "
-        "Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, "
-        "simple clean background, soft focus, perfect facial features, single character"
-    ),
-    "写实摄影风": (
-        "natural candid photography, golden hour soft light, shallow depth of field, "
-        "muted realistic color grading, clean environment, portrait priority, "
-        "cinematic white balance, low noise, gentle natural shadows, no clutter"
-    ),
-    "水彩插画风": (
-        "soft hand-painted watercolor, delicate paper texture, gentle color blending, "
-        "pastel low-saturation palette, dreamy hazy atmosphere, minimalist layout, "
-        "healing visual sense, clean edges, single main subject"
-    ),
-    "像素游戏风": (
-        "refined 16-bit pixel art, neat pixel grid, unified color palette, "
-        "retro game aesthetic, clean scene layering, soft ambient light, "
-        "clear character design, no messy pixels"
-    ),
-    "电影感写实风": (
-        "35mm cinematic film still, anamorphic lens, shallow depth of field, "
-        "desaturated film color grading, subtle film grain, soft dramatic lighting, "
-        "professional MV composition, clean background"
-    ),
-    "极简几何风": (
-        "minimalist geometric illustration, flat solid colors, clean sharp lines, "
-        "unified color system, blank space composition, modern Bauhaus style, "
-        "uncluttered, abstract elegant visual"
-    ),
-    "浮世绘和风": (
-        "refined ukiyo-e woodblock print, flat color layering, elegant outlines, "
-        "traditional Japanese tone, soft gradient, classic Edo aesthetic, "
-        "clean composition, single figure"
-    ),
-    "复古胶片风": (
-        "vintage 35mm film photography, Kodak Portra warm tone, natural film grain, "
-        "nostalgic analog atmosphere, muted contrast, soft light, "
-        "clean frame, no overexposure"
-    ),
-    "漫画美式涂鸦风": (
-        "American comic book art, bold black outlines, moderate halftone dots, "
-        "pop art color palette, clean graphic style, concise composition, "
-        "single character, no messy elements"
-    ),
-    "蒸汽朋克风": (
-        "retro steampunk aesthetic, delicate brass machinery, warm amber tones, "
-        "soft industrial light, intricate clockwork details, clean Victorian scene, "
-        "single protagonist, no extra clutter"
-    ),
-    "赛博朋克风": (
-        "high-quality cyberpunk scene, restrained neon glow, wet street reflections, "
-        "dark moody cityscape, cyan magenta tones, Blade Runner atmosphere, "
-        "clean composition, single main character"
-    ),
+STYLES = {
+    "国风": {
+        "art": (
+            "traditional Chinese ink wash painting, xuan paper texture, elegant brush strokes, "
+            "Shan Shui landscape, misty ethereal atmosphere, low saturation, classical oriental aesthetic, "
+            "minimal blank space, cinematic soft lighting, single main character, clean composition"
+        ),
+        "render": (
+            "ink wash painting aesthetic, xuan paper texture, misty Shan Shui background, "
+            "elegant classical atmosphere, stable low saturation, clean composition"
+        ),
+        "character": (
+            "A cute Chinese boy in traditional Hanfu clothing, 8 years old, "
+            "with classic bun hairstyle, gentle expression, elegant classical Chinese attire"
+        ),
+        "api": "traditional_chinese_art",
+        "negative": "text, watermark, signature, frame, border, overexposed, too bright, messy composition, multiple subjects",
+    },
+    "动漫风": {
+        "art": (
+            "high-quality Japanese anime, clean crisp line art, soft cel shading, "
+            "Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, "
+            "simple clean background, soft focus, perfect facial features, single character"
+        ),
+        "render": (
+            "Japanese anime cel shading, soft color transition, neat line art, "
+            "simple clean background, youthful gentle tone, perfect character proportions"
+        ),
+        "character": (
+            "A cute Chinese anime boy, 8 years old, with spiky black hair, "
+            "large expressive eyes, cheerful smile, wearing casual colorful t-shirt and shorts"
+        ),
+        "api": "anime",
+        "negative": "text, watermark, signature, frame, ugly, deformed, blurry, low quality, messy background, extra characters",
+    },
+    "写实摄影风": {
+        "art": (
+            "natural candid photography, golden hour soft light, shallow depth of field, "
+            "muted realistic color grading, clean environment, portrait priority, "
+            "cinematic white balance, low noise, gentle natural shadows, no clutter"
+        ),
+        "render": (
+            "natural photography, golden hour light, soft bokeh blur, "
+            "realistic skin texture, stable white balance, portrait focused"
+        ),
+        "character": (
+            "A real Chinese boy, 7-8 years old, natural portrait, "
+            "short black hair, genuine smile, casual comfortable daily wear"
+        ),
+        "api": "photography",
+        "negative": "text, watermark, signature, frame, cartoon, illustration, painting, deformed face, blurry",
+    },
+    "水彩插画风": {
+        "art": (
+            "soft hand-painted watercolor, delicate paper texture, gentle color blending, "
+            "pastel low-saturation palette, dreamy hazy atmosphere, minimalist layout, "
+            "healing visual sense, clean edges, single main subject"
+        ),
+        "render": (
+            "watercolor illustration, soft brush texture, pastel color palette, "
+            "dreamy ethereal tone, clean edges, minimalist scene"
+        ),
+        "character": (
+            "A cute little boy, 7-8 years old, watercolor illustration style, "
+            "soft features, gentle smile, wearing light colored casual clothes"
+        ),
+        "api": "watercolor",
+        "negative": "text, watermark, signature, frame, messy splashes, over wet, bleeding colors, messy composition",
+    },
+    "像素游戏风": {
+        "art": (
+            "refined 16-bit pixel art, neat pixel grid, unified color palette, "
+            "retro game aesthetic, clean scene layering, soft ambient light, "
+            "clear character design, no messy pixels"
+        ),
+        "render": (
+            "pixel art rendering, retro game palette, clean pixel edges, "
+            "consistent resolution, simple background elements"
+        ),
+        "character": None,
+        "api": "pixel_art",
+        "negative": None,
+    },
+    "电影感写实风": {
+        "art": (
+            "35mm cinematic film still, anamorphic lens, shallow depth of field, "
+            "desaturated film color grading, subtle film grain, soft dramatic lighting, "
+            "professional MV composition, clean background"
+        ),
+        "render": (
+            "cinematic film rendering, soft dramatic contrast, shallow depth of field, "
+            "35mm film texture, professional color grading"
+        ),
+        "character": None,
+        "api": "cinematic",
+        "negative": None,
+    },
+    "极简几何风": {
+        "art": (
+            "minimalist geometric illustration, flat solid colors, clean sharp lines, "
+            "unified color system, blank space composition, modern Bauhaus style, "
+            "uncluttered, abstract elegant visual"
+        ),
+        "render": (
+            "geometric flat illustration, solid color blocks, clean sharp geometry, "
+            "minimalist composition, modern aesthetic"
+        ),
+        "character": None,
+        "api": "minimalist",
+        "negative": None,
+    },
+    "浮世绘和风": {
+        "art": (
+            "refined ukiyo-e woodblock print, flat color layering, elegant outlines, "
+            "traditional Japanese tone, soft gradient, classic Edo aesthetic, "
+            "clean composition, single figure"
+        ),
+        "render": (
+            "ukiyo-e woodblock print style, flat colors, elegant line work, "
+            "traditional Japanese aesthetic, soft atmospheric tone"
+        ),
+        "character": None,
+        "api": "ukiyo_e",
+        "negative": None,
+    },
+    "复古胶片风": {
+        "art": (
+            "vintage 35mm film photography, Kodak Portra warm tone, natural film grain, "
+            "nostalgic analog atmosphere, muted contrast, soft light, "
+            "clean frame, no overexposure"
+        ),
+        "render": (
+            "vintage film photography, warm analog tones, soft grain, "
+            "Kodak Portra aesthetic, nostalgic atmosphere"
+        ),
+        "character": None,
+        "api": "retro_film",
+        "negative": None,
+    },
+    "漫画美式涂鸦风": {
+        "art": (
+            "American comic book art, bold black outlines, moderate halftone dots, "
+            "pop art color palette, clean graphic style, concise composition, "
+            "single character, no messy elements"
+        ),
+        "render": (
+            "American comic book style, bold outlines, halftone dots, "
+            "pop art colors, dynamic clean composition"
+        ),
+        "character": None,
+        "api": "comic_book",
+        "negative": None,
+    },
+    "蒸汽朋克风": {
+        "art": (
+            "retro steampunk aesthetic, delicate brass machinery, warm amber tones, "
+            "soft industrial light, intricate clockwork details, clean Victorian scene, "
+            "single protagonist, no extra clutter"
+        ),
+        "render": (
+            "steampunk aesthetic, brass and copper details, warm amber glow, "
+            "Victorian era atmosphere, mechanical elegance"
+        ),
+        "character": None,
+        "api": "steampunk",
+        "negative": None,
+    },
+    "赛博朋克风": {
+        "art": (
+            "high-quality cyberpunk scene, restrained neon glow, wet street reflections, "
+            "dark moody cityscape, cyan magenta tones, Blade Runner atmosphere, "
+            "clean composition, single main character"
+        ),
+        "render": (
+            "cyberpunk aesthetic, neon highlights, dark urban atmosphere, "
+            "rain reflections, futuristic cityscape"
+        ),
+        "character": (
+            "A cute boy in cyberpunk world, 8 years old, with glowing cybernetic accessories, "
+            "neon light reflections, futuristic streetwear, determined expression"
+        ),
+        "api": "cyberpunk",
+        "negative": None,
+    },
+    # 主题叠加风格（仅 character 字段，无完整画风参数）
+    "古风": {
+        "art": None,
+        "render": None,
+        "character": (
+            "A cute Chinese boy in ancient style, 8 years old, "
+            "wearing traditional robes, classical scholar appearance, gentle refined expression"
+        ),
+        "api": None,
+        "negative": None,
+    },
+    "童话": {
+        "art": None,
+        "render": None,
+        "character": (
+            "A cute little boy with fairy tale charm, 8 years old, "
+            "messy hair, curious expression, wearing storybook style adventure clothes"
+        ),
+        "api": None,
+        "negative": None,
+    },
 }
 
+_DEFAULT_STYLE = "动漫风"
+_DEFAULT_CHARACTER = (
+    "A cute Chinese boy, 7-8 years old, with short black slightly curly hair, "
+    "big bright eyes, warm smile, wearing simple white t-shirt and dark shorts"
+)
+_DEFAULT_NEGATIVE = (
+    "text, watermark, signature, frame, border, deformed, blurry, "
+    "low quality, ugly, multiple subjects, messy composition, "
+    "extra limbs, bad anatomy, disfigured, mutation"
+)
 
-# ════════════════════════════════════════════════════════════
-# 风格渲染模板（纯渲染，适配MV）
-# ════════════════════════════════════════════════════════════
-
-STYLE_RENDER_TEMPLATES = {
-    "国风": (
-        "ink wash painting aesthetic, xuan paper texture, misty Shan Shui background, "
-        "elegant classical atmosphere, stable low saturation, clean composition"
-    ),
-    "动漫风": (
-        "Japanese anime cel shading, soft color transition, neat line art, "
-        "simple clean background, youthful gentle tone, perfect character proportions"
-    ),
-    "写实摄影风": (
-        "natural photography, golden hour light, soft bokeh blur, "
-        "realistic skin texture, stable white balance, portrait focused"
-    ),
-    "水彩插画风": (
-        "watercolor illustration, soft brush texture, pastel color palette, "
-        "dreamy ethereal tone, clean edges, minimalist scene"
-    ),
-    "像素游戏风": (
-        "pixel art rendering, retro game palette, clean pixel edges, "
-        "consistent resolution, simple background elements"
-    ),
-    "电影感写实风": (
-        "cinematic film rendering, soft dramatic contrast, shallow depth of field, "
-        "35mm film texture, professional color grading"
-    ),
-    "极简几何风": (
-        "geometric flat illustration, solid color blocks, clean sharp geometry, "
-        "minimalist composition, modern aesthetic"
-    ),
-    "浮世绘和风": (
-        "ukiyo-e woodblock print style, flat colors, elegant line work, "
-        "traditional Japanese aesthetic, soft atmospheric tone"
-    ),
-    "复古胶片风": (
-        "vintage film photography, warm analog tones, soft grain, "
-        "Kodak Portra aesthetic, nostalgic atmosphere"
-    ),
-    "漫画美式涂鸦风": (
-        "American comic book style, bold outlines, halftone dots, "
-        "pop art colors, dynamic clean composition"
-    ),
-    "蒸汽朋克风": (
-        "steampunk aesthetic, brass and copper details, warm amber glow, "
-        "Victorian era atmosphere, mechanical elegance"
-    ),
-    "赛博朋克风": (
-        "cyberpunk aesthetic, neon highlights, dark urban atmosphere, "
-        "rain reflections, futuristic cityscape"
-    ),
-}
+# 向后兼容别名（供需要直接访问旧字典的代码使用）
+ART_STYLES = {k: v["art"] for k, v in STYLES.items() if v["art"]}
+STYLE_RENDER_TEMPLATES = {k: v["render"] for k, v in STYLES.items() if v["render"]}
 
 
 # ════════════════════════════════════════════════════════════
@@ -233,43 +337,10 @@ THEME_VISUALS = {
 }
 
 
-# ════════════════════════════════════════════════════════════
-# 角色描述模板（按风格分类）
-# ════════════════════════════════════════════════════════════
-
+# 向后兼容别名
 CHARACTER_DESCRIPTIONS = {
-    "default": (
-        "A cute Chinese boy, 7-8 years old, with short black slightly curly hair, "
-        "big bright eyes, warm smile, wearing simple white t-shirt and dark shorts"
-    ),
-    "动漫风": (
-        "A cute Chinese anime boy, 8 years old, with spiky black hair, "
-        "large expressive eyes, cheerful smile, wearing casual colorful t-shirt and shorts"
-    ),
-    "国风": (
-        "A cute Chinese boy in traditional Hanfu clothing, 8 years old, "
-        "with classic bun hairstyle, gentle expression, elegant classical Chinese attire"
-    ),
-    "古风": (
-        "A cute Chinese boy in ancient style, 8 years old, "
-        "wearing traditional robes, classical scholar appearance, gentle refined expression"
-    ),
-    "水彩插画风": (
-        "A cute little boy, 7-8 years old, watercolor illustration style, "
-        "soft features, gentle smile, wearing light colored casual clothes"
-    ),
-    "童话": (
-        "A cute little boy with fairy tale charm, 8 years old, "
-        "messy hair, curious expression, wearing storybook style adventure clothes"
-    ),
-    "写实摄影风": (
-        "A real Chinese boy, 7-8 years old, natural portrait, "
-        "short black hair, genuine smile, casual comfortable daily wear"
-    ),
-    "赛博朋克风": (
-        "A cute boy in cyberpunk world, 8 years old, with glowing cybernetic accessories, "
-        "neon light reflections, futuristic streetwear, determined expression"
-    ),
+    "default": _DEFAULT_CHARACTER,
+    **{k: v["character"] for k, v in STYLES.items() if v["character"]},
 }
 
 
@@ -295,35 +366,11 @@ MUSIC_PROMPT_DETAILS = {
 }
 
 
-# ════════════════════════════════════════════════════════════
-# API 参数映射 (MiniMax Image-01 样式参数)
-# ════════════════════════════════════════════════════════════
-
-API_STYLES = {
-    "国风": "traditional_chinese_art",
-    "动漫风": "anime",
-    "写实摄影风": "photography",
-    "水彩插画风": "watercolor",
-    "像素游戏风": "pixel_art",
-    "电影感写实风": "cinematic",
-    "极简几何风": "minimalist",
-    "浮世绘和风": "ukiyo_e",
-    "复古胶片风": "retro_film",
-    "漫画美式涂鸦风": "comic_book",
-    "蒸汽朋克风": "steampunk",
-    "赛博朋克风": "cyberpunk",
-}
-
+# 向后兼容别名
+API_STYLES = {k: v["api"] for k, v in STYLES.items() if v["api"]}
 NEGATIVE_PROMPTS = {
-    "国风": "text, watermark, signature, frame, border, overexposed, too bright, messy composition, multiple subjects",
-    "动漫风": "text, watermark, signature, frame, ugly, deformed, blurry, low quality, messy background, extra characters",
-    "写实摄影风": "text, watermark, signature, frame, cartoon, illustration, painting, deformed face, blurry",
-    "水彩插画风": "text, watermark, signature, frame, messy splashes, over wet, bleeding colors, messy composition",
-    "default": (
-        "text, watermark, signature, frame, border, deformed, blurry, "
-        "low quality, ugly, multiple subjects, messy composition, "
-        "extra limbs, bad anatomy, disfigured, mutation"
-    ),
+    "default": _DEFAULT_NEGATIVE,
+    **{k: v["negative"] for k, v in STYLES.items() if v["negative"]},
 }
 
 
@@ -333,12 +380,14 @@ NEGATIVE_PROMPTS = {
 
 def get_art_style(style_name: str) -> str:
     """获取指定风格的英文美术描述"""
-    return ART_STYLES.get(style_name, ART_STYLES.get("动漫风", ""))
+    s = STYLES.get(style_name) or STYLES[_DEFAULT_STYLE]
+    return s["art"] or STYLES[_DEFAULT_STYLE]["art"]
 
 
 def get_render_template(style_name: str) -> str:
     """获取指定风格的渲染模板"""
-    return STYLE_RENDER_TEMPLATES.get(style_name, STYLE_RENDER_TEMPLATES.get("动漫风", ""))
+    s = STYLES.get(style_name) or STYLES[_DEFAULT_STYLE]
+    return s["render"] or STYLES[_DEFAULT_STYLE]["render"]
 
 
 def get_mood_desc(mood_name: str) -> str:
@@ -353,7 +402,10 @@ def get_theme_visual(theme: str) -> str:
 
 def get_char_prompt(style_name: str) -> str:
     """获取指定风格的角色描述"""
-    return CHARACTER_DESCRIPTIONS.get(style_name, CHARACTER_DESCRIPTIONS.get("default", ""))
+    s = STYLES.get(style_name)
+    if s and s["character"]:
+        return s["character"]
+    return _DEFAULT_CHARACTER
 
 
 def get_music_style_desc(music_style: str) -> str:
@@ -407,12 +459,14 @@ def get_fallback_desc(name: str, char_prompt: str, theme: str,
 
 def get_api_style(style_name: str) -> str:
     """获取指定风格对应的 MiniMax API style 参数"""
-    return API_STYLES.get(style_name, "")
+    s = STYLES.get(style_name)
+    return (s["api"] if s else None) or ""
 
 
 def get_negative_prompt(style_name: str) -> str:
     """获取指定风格的 negative prompt"""
-    return NEGATIVE_PROMPTS.get(style_name, NEGATIVE_PROMPTS.get("default", ""))
+    s = STYLES.get(style_name)
+    return (s["negative"] if s else None) or _DEFAULT_NEGATIVE
 
 
 def build_char_prompt(style_name: str, theme: str, song_title: str = "",

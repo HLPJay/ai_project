@@ -34,12 +34,21 @@ from src.style_map import (
 )
 
 
-# ── 变体图阈值 ──────────────────────────────────────────
-VARIANT_THRESHOLD = 4        # 秒，超过此阈值的重复段生成变体
-MAX_RETRY = 3
-RETRY_DELAY = 2
-MIN_IMAGE_SIZE = 1000        # bytes，有效图片的最小阈值
-MIN_VALID_IMAGE_SIZE = 500000  # bytes, 500KB 阈值（生成验证用）
+# ── 图片生成常量（集中管理所有魔数）──────────────────────
+VARIANT_THRESHOLD = 4        # 秒：重复段超过此时长才生成变体图
+VARIANT_SECS_PER_STEP = 5    # 每增加 N 秒，变体数 +1
+VARIANT_MIN = 2              # 最少变体数
+VARIANT_MAX = 3              # 最多变体数
+
+MAX_RETRY = 3                # 单张图片最大重试次数
+RETRY_DELAY = 2              # 重试基础延迟（秒），实际延迟 = RETRY_DELAY * attempt
+
+MIN_IMAGE_SIZE = 1000        # bytes：有效图片的最小阈值
+MIN_VALID_IMAGE_SIZE = 500000  # bytes：500KB，生成验证用
+
+PROMPT_MAX_LEN = 1400        # MiniMax prompt 最大长度（留 100 字符余量）
+PROMPT_CHAR_MAX = 600        # 角色描述最大字符数
+PROMPT_DESC_MAX = 700        # 场景描述最大字符数
 
 
 class SceneImageError(Exception):
@@ -437,6 +446,12 @@ class SceneImageGenerator:
                 except Exception:
                     p.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 1000)
 
+    @staticmethod
+    def _calc_variant_count(dur: float) -> int:
+        """重复段落的变体数（VARIANT_MIN ~ VARIANT_MAX），时长越长变体越多"""
+        import math
+        return max(VARIANT_MIN, min(VARIANT_MAX, math.ceil(dur / VARIANT_SECS_PER_STEP)))
+
     def _analyze_variants(self, scenes: List[Dict]) -> Tuple[List, Dict]:
         """分析变体图需求，构建任务列表
 
@@ -461,7 +476,7 @@ class SceneImageGenerator:
                 n_variants = len(scene_variants) + 1
                 variants_map[sid] = n_variants
             elif is_rep and dur > VARIANT_THRESHOLD:
-                n_variants = max(2, min(3, -(-int(dur) // 5)))
+                n_variants = self._calc_variant_count(dur)
                 variants_map[sid] = n_variants
 
             # 主图和每个变体
@@ -582,33 +597,13 @@ class SceneImageGenerator:
         }
 
     def _build_scene_prompt(self, desc: str) -> str:
-        """构建场景图片 prompt
-
-        组合：角色描述 + 场景描述 + 艺术风格 + 情绪
-        注意：MiniMax 要求 prompt <= 1500 字符，各组件截断
-        """
-        MAX_LEN = 1400  # 留 100 字符余量给 API 端
-
-        # 1. 角色描述：最多 600 字符
-        char_part = self._char_prompt[:600] if self._char_prompt else ""
-
-        # 2. 场景描述：最多 700 字符
-        desc_part = desc[:700] if desc else ""
-
-        # 3. 情绪
-        mood_part = self._mood_desc if self._mood_desc else ""
-
-        # 4. 艺术风格（总是最后加，短）
-        style_part = self._art_style if self._art_style else ""
-
-        # 组装
-        parts = [p for p in [char_part, desc_part, mood_part, style_part] if p]
+        """构建场景图片 prompt（MiniMax 要求 <= 1500 字符）"""
+        char_part = self._char_prompt[:PROMPT_CHAR_MAX] if self._char_prompt else ""
+        desc_part = desc[:PROMPT_DESC_MAX] if desc else ""
+        parts = [p for p in [char_part, desc_part, self._mood_desc, self._art_style] if p]
         prompt = ", ".join(parts)
-
-        # 最终截断
-        if len(prompt) > MAX_LEN:
-            prompt = prompt[:MAX_LEN - 20] + ", anime style, 8k"
-
+        if len(prompt) > PROMPT_MAX_LEN:
+            prompt = prompt[:PROMPT_MAX_LEN - 20] + ", anime style, 8k"
         return prompt
 
     def _write_variants_json(self, variants_map: Dict[int, int]):

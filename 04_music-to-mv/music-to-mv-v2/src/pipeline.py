@@ -70,11 +70,13 @@ class MVPipeline:
         """运行流水线
 
         phases:
-          - None: 全流程
-          - "init": Step ①-②
-          - "align": Step ③
-          - "produce": Step ④-⑧
-          - "export": Step ⑨-⑪
+          - None 或 "all": 完整流程 ① → ② → ③ → ③.5 → ④-⑧ → ⑨-⑪
+          - "init": 只运行 Step ①-② (歌词+音乐生成)
+          - "align": 只运行 Step ③ (歌词对齐)
+          - "produce": 只运行 Step ④-⑧ (生图+Ken Burns)
+          - "export": 只运行 Step ⑨-⑪ (合成+导出)
+
+        注意：每个步骤内部管理自己的暂停点检查，不在此处全局处理
         """
         print(f"\n{'='*55}")
         print(f"  MV 流水线启动")
@@ -90,25 +92,26 @@ class MVPipeline:
 
         phases = phases or "all"
 
+        # 步骤 ①-②: 歌词 + 音乐（含内部暂停点检查）
         if phases in ("all", "init"):
             self._run_lyrics_and_music()
-
-        if phases in ("all", "init", "align"):
-            self._check_and_pause_step2()
             if self.pm.check_interrupt():
                 return
 
+        # 步骤 ③: 歌词对齐（含内部暂停点检查）
         if phases in ("all", "align"):
             self._run_alignment()
             if self.pm.check_interrupt():
                 return
 
+        # 步骤 ③.5 + ④-⑧: 场景分析 + 生图 + Ken Burns（含内部暂停点检查）
         if phases in ("all", "produce"):
             self._run_scene_analysis()
             self._run_produce()
             if self.pm.check_interrupt():
                 return
 
+        # 步骤 ⑨-⑪: 合成 + 导出
         if phases in ("all", "export"):
             self._run_merge_and_export()
 
@@ -122,12 +125,21 @@ class MVPipeline:
     # ══════════════════════════════════════════════════════
 
     def _run_lyrics_and_music(self):
-        """运行 Step ① 歌词 + Step ② 音乐"""
+        """运行 Step ① 歌词 + Step ② 音乐，含暂停点检查
+
+        流程：
+          1. 生成歌词 (Step ①)
+          2. 生成音乐 (Step ②)
+          3. 展示暂停点，让用户确认歌词和音乐效果（仅非自动模式）
+        """
         if not self.pm.is_step_completed("① lyrics"):
             self._step_lyrics()
 
         if not self.pm.is_step_completed("② music"):
             self._step_music()
+
+        # 在 Step②完成后显示暂停点（仅当不是自动模式时）
+        self._check_and_pause_step2()
 
     def _step_lyrics(self):
         """Step ①: 生成歌词 - 直接调用 MiniMax API"""

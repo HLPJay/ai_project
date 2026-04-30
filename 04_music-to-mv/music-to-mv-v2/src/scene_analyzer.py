@@ -274,25 +274,8 @@ class SceneAnalyzer:
         return re.sub(r"[^\w\u4e00-\u9fff]", "", text)
 
     @staticmethod
-    def analyze_structure(
-        segments: List[Tuple[int, float, float, str]]
-    ) -> List[Dict]:
-        """分析歌曲结构，返回段落列表
-
-        关键步骤：
-          1. 动态确定场景数（10-22, 目标每段 7-12 秒）
-          2. 检测重复歌词 → 标记 is_repeated
-          3. 等宽切分 + 重复锚点调整 + 合并/分裂
-        """
-        n = len(segments)
-        if n == 0:
-            return []
-
-        first_start = segments[0][1]
-        last_end = segments[-1][2]
-        total = max(0.1, last_end - first_start)
-
-        # 场景数按总时长分布
+    def _calc_target_count(n: int, total: float) -> int:
+        """根据总时长和段落数确定目标场景数（10-22）"""
         if total < 60:
             target = 10
         elif total < 100:
@@ -301,60 +284,66 @@ class SceneAnalyzer:
             target = 18
         else:
             target = 22
+        return min(target, n)
 
-        target = min(target, n)  # 不超过歌词行数
-
-        # 找重复歌词 → is_repeated
-        fp_idx = {}
+    @staticmethod
+    def _detect_repeated_segs(
+        segments: List[Tuple[int, float, float, str]]
+    ) -> tuple:
+        """检测重复歌词行，返回 (fp_idx, repeated_segs)"""
+        fp_idx: dict = {}
         for i, (_, _, _, text) in enumerate(segments):
             fp = SceneAnalyzer._clean(text)[:20]
-            if fp not in fp_idx:
-                fp_idx[fp] = []
-            fp_idx[fp].append(i)
+            fp_idx.setdefault(fp, []).append(i)
 
-        repeated_segs = set()
-        for fp, idxs in fp_idx.items():
+        repeated_segs: set = set()
+        for idxs in fp_idx.values():
             if len(idxs) >= 2:
                 repeated_segs.update(idxs)
 
-        # 等宽切分
-        boundaries = []
-        for k in range(target + 1):
-            pos = int(n * k / target)
-            boundaries.append(pos)
+        return fp_idx, repeated_segs
+
+    @staticmethod
+    def _build_boundaries(n: int, target: int, fp_idx: dict) -> List[int]:
+        """等宽切分 + 插入重复歌词锚点，返回排序后的边界点列表"""
+        boundaries = [int(n * k / target) for k in range(target + 1)]
         boundaries[0] = 0
         boundaries[-1] = n
 
-        # 重复锚点
         anchors = {0, n}
-        for fp, idxs in fp_idx.items():
+        for idxs in fp_idx.values():
             if len(idxs) >= 2:
                 anchors.add(idxs[0])
 
-        all_points = sorted(set(boundaries + list(anchors)))
+        return sorted(set(boundaries) | anchors)
 
-        # 合并太近的点
+    @staticmethod
+    def _adjust_boundaries(
+        all_points: List[int],
+        segments: List[Tuple[int, float, float, str]],
+        n: int,
+        total: float,
+        target: int,
+    ) -> List[int]:
+        """先合并过近点，再通过合并/分裂把边界数调整到 target+1"""
+        def seg_time(idx: int) -> float:
+            return segments[idx][1] if idx < n else total
+
+        # 合并间隔 < 3s 的相邻点
         merged = [all_points[0]]
         for pt in all_points[1:]:
-            prev_time = segments[merged[-1]][1] if merged[-1] < n else total
-            curr_time = segments[pt][1] if pt < n else total
-            if curr_time - prev_time < 3 and len(merged) > 1:
+            if seg_time(pt) - seg_time(merged[-1]) < 3 and len(merged) > 1:
                 merged[-1] = pt
             else:
                 merged.append(pt)
 
         # 超过目标数 → 合并最小间隔段
         while len(merged) - 1 > target:
-            gaps = []
-            for i in range(1, len(merged)):
-                s = segments[merged[i - 1]][1] if merged[i - 1] < n else 0
-                e = segments[merged[i]][1] if merged[i] < n else total
-                gaps.append((e - s, i))
-            gaps.sort()
-            _, idx = next(
-                (g for g in gaps if g[1] > 1),
-                (gaps[-1][0], len(merged) - 1),
+            gaps = sorted(
+                (seg_time(merged[i]) - seg_time(merged[i - 1]), i)
+                for i in range(1, len(merged))
             )
+            _, idx = next((g for g in gaps if g[1] > 1), (gaps[-1][0], len(merged) - 1))
             merged.pop(idx)
 
         # 不足目标数 → 分裂最大间隔段
@@ -365,19 +354,23 @@ class SceneAnalyzer:
             prev_len = len(merged)
             max_gap, max_i = 0, 1
             for i in range(1, len(merged)):
-                s = segments[merged[i - 1]][1] if merged[i - 1] < n else 0
-                e = segments[merged[i]][1] if merged[i] < n else total
-                if e - s > max_gap:
-                    max_gap, max_i = e - s, i
-            mid_raw = (
-                segments[merged[max_i - 1]][1]
-                + segments[merged[max_i]][1]
-            ) / 2
-            mid = int(round(mid_raw))
+                gap = seg_time(merged[i]) - seg_time(merged[i - 1])
+                if gap > max_gap:
+                    max_gap, max_i = gap, i
+            mid = int(round((seg_time(merged[max_i - 1]) + seg_time(merged[max_i])) / 2))
             merged.insert(max_i, mid)
             merged = sorted(set(merged))
 
-        # 构建段落
+        return merged
+
+    @staticmethod
+    def _build_paragraphs(
+        merged: List[int],
+        segments: List[Tuple[int, float, float, str]],
+        repeated_segs: set,
+        total: float,
+    ) -> List[Dict]:
+        """从边界点构建段落字典列表"""
         paragraphs = []
         for bi in range(len(merged) - 1):
             si, ei = merged[bi], merged[bi + 1]
@@ -386,22 +379,33 @@ class SceneAnalyzer:
                 continue
             start = segs[0][1]
             end = segs[-1][2]
-            dur = max(0.1, end - start)
-            text = " ".join(s[3] for s in segs)
-            is_rep = any(i in repeated_segs for i in range(si, ei))
-
             paragraphs.append({
                 "start_seg": si,
                 "end_seg": ei,
                 "start": start,
                 "end": end,
-                "duration": dur,
-                "text": text,
-                "is_repeated": is_rep,
+                "duration": max(0.1, end - start),
+                "text": " ".join(s[3] for s in segs),
+                "is_repeated": any(i in repeated_segs for i in range(si, ei)),
                 "segment_count": ei - si,
             })
-
         return paragraphs
+
+    @staticmethod
+    def analyze_structure(
+        segments: List[Tuple[int, float, float, str]]
+    ) -> List[Dict]:
+        """分析歌曲结构，返回段落列表"""
+        n = len(segments)
+        if n == 0:
+            return []
+
+        total = max(0.1, segments[-1][2] - segments[0][1])
+        target = SceneAnalyzer._calc_target_count(n, total)
+        fp_idx, repeated_segs = SceneAnalyzer._detect_repeated_segs(segments)
+        all_points = SceneAnalyzer._build_boundaries(n, target, fp_idx)
+        merged = SceneAnalyzer._adjust_boundaries(all_points, segments, n, total, target)
+        return SceneAnalyzer._build_paragraphs(merged, segments, repeated_segs, total)
 
     # ══════════════════════════════════════════════════════
     # 场景命名
@@ -409,33 +413,71 @@ class SceneAnalyzer:
 
     @staticmethod
     def name_scenes(paragraphs: List[Dict]) -> List[Dict]:
-        """为段落分配歌曲结构名称"""
+        """为段落分配歌曲结构名称（支持重复段落的后缀，如 chorus2, chorus3）
+
+        命名策略（优先级从高到低）：
+          1. 首段 (i==0) → "intro"（无条件）
+          2. 重复段落 (is_repeated=True) → "chorus" 或 "chorus2", "chorus3" 等（有计数）
+          3. 末段 (i==last, 且非重复) → "outro"
+          4. 长段落 (duration>28) → "chorus"（如果还未分配过）
+          5. 默认分配 → "verse1", "prechorus", "verse2", "bridge", "extraN"
+        """
         result = []
-        used = {}
+        used_counts = {}  # 计数而非布尔值：{"chorus": 2, "verse1": 1, ...}
 
         for i, p in enumerate(paragraphs):
-            if p["is_repeated"] and "chorus" not in used:
-                name = "chorus"
-            elif i == 0:
+            # 优先级 1: 首段 — 无条件命名为 intro
+            if i == 0:
                 name = "intro"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            # 优先级 2: 重复段落（副歌）— 即使是最后一段也优先
+            elif p["is_repeated"]:
+                base_name = "chorus"
+                count = used_counts.get(base_name, 0) + 1
+                if count == 1:
+                    name = "chorus"
+                else:
+                    name = f"chorus{count}"
+                used_counts[base_name] = count
+
+            # 优先级 3: 末段（非重复段落）
             elif i == len(paragraphs) - 1:
                 name = "outro"
-            elif p["duration"] > 28 and "chorus" not in used:
-                name = "chorus"
-            elif "verse1" not in used:
-                name = "verse1"
-            elif "prechorus" not in used and p["duration"] < 22:
-                name = "prechorus"
-            elif "chorus" not in used:
-                name = "chorus"
-            elif "verse2" not in used:
-                name = "verse2"
-            elif "bridge" not in used:
-                name = "bridge"
-            else:
-                name = f"extra{len(used) + 1}"
+                used_counts[name] = used_counts.get(name, 0) + 1
 
-            used[name] = True
+            # 优先级 4: 时长判断（长段落可能是副歌）
+            elif p["duration"] > 28 and "chorus" not in used_counts:
+                name = "chorus"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            # 优先级 4: 默认分配（按优先顺序）
+            elif "verse1" not in used_counts:
+                name = "verse1"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            elif "prechorus" not in used_counts and p["duration"] < 22:
+                name = "prechorus"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            elif "chorus" not in used_counts:
+                name = "chorus"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            elif "verse2" not in used_counts:
+                name = "verse2"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            elif "bridge" not in used_counts:
+                name = "bridge"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
+            else:
+                # 最后的兜底方案
+                extra_idx = len(used_counts) + 1
+                name = f"extra{extra_idx}"
+                used_counts[name] = used_counts.get(name, 0) + 1
+
             result.append({
                 "id": i + 1,
                 "name": name,
@@ -784,26 +826,31 @@ class SceneAnalyzer:
 
     @staticmethod
     def _is_valid_desc(desc: str, text_preview: str) -> bool:
-        """检测 desc 是否为有效的 AI 生成描述"""
+        """检测 desc 是否为有效的 AI 生成描述（启发式规则，不依赖特定模型输出）"""
         if not desc or len(desc) < 15:
             return False
-        if desc in OLD_TEMPLATES:
+
+        # JSON / 代码块残留
+        if desc.strip().startswith(("[", "{")):
             return False
 
-        desc_lower = desc.strip().lower()
-        for p in TRUNCATED_PREFIXES:
-            if desc_lower.startswith(p):
-                return False
-
+        # 词数合理（8-45 词）
         word_count = len(desc.split())
         if word_count < 8 or word_count > 45:
             return False
 
-        matches = sum(1 for kw in LYRIC_KEYWORDS if kw.lower() in desc.lower())
-        if matches >= 1 or word_count >= 8:
-            return True
+        # 元指令泄漏（模型思考过程误输出）
+        lower = desc.lower()
+        meta_signals = (
+            "user want", "let me", "i need to", "i will ",
+            "analyzing", "requirement", "output only",
+            "here is the", "create a description", "produce a",
+        )
+        if any(s in lower for s in meta_signals):
+            return False
 
-        return False
+        # 至少 3 个有意义词（长度 > 2）
+        return sum(1 for w in desc.split() if len(w) > 2) >= 3
 
     # ══════════════════════════════════════════════════════
     # 辅助方法
@@ -826,92 +873,45 @@ class SceneAnalyzer:
     def _parse_json_response(raw_text: str) -> Optional[List[Dict]]:
         """鲁棒解析 LLM 返回的 JSON 响应
 
-        处理常见的 LLM 输出问题：
-        - 思考标签 <think>...</think>
-        - markdown 代码块 ```json ... ```
-        - 前缀/后缀噪音文本
-        - 非标准空白字符
-        - 字段名/值中的转义问题
-
-        Returns:
-            解析成功返回 list[dict]，失败返回 None
+        步骤 1：移除 <think> 标签，提取 markdown 代码块内容
+        步骤 2：定位 JSON 数组边界，尝试解析（含换行修复）
         """
         if not raw_text or not raw_text.strip():
             return None
 
-        text = raw_text.strip()
+        # 步骤 1: 清理包装
+        text = re.sub(r"<think>[\s\S]*?</think>", "", raw_text, flags=re.DOTALL).strip()
+        m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.DOTALL)
+        if m:
+            text = m.group(1).strip()
 
-        # 1. 移除思考标签
-        text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.DOTALL).strip()
+        # 步骤 2: 定位 JSON 边界
+        start, end = text.find("["), text.rfind("]")
+        if start == -1 or end == -1 or end < start:
+            # 单个对象兜底
+            start, end = text.find("{"), text.rfind("}")
+            if start == -1 or end < start:
+                return None
+            text = text[start:end + 1]
+            try:
+                return [json.loads(text)]
+            except json.JSONDecodeError:
+                return None
 
-        # 2. 尝试多种提取策略
-        strategies = [
-            # 策略 A: 提取 markdown 代码块中的 JSON
-            lambda t: re.search(r"```(?:json)?\s*([\s\S]*?)```", t, re.DOTALL),
-            # 策略 B: 提取 JSON 数组
-            lambda t: re.search(r"\[\s*\{[\s\S]*?\}\s*\]", t, re.DOTALL),
-            # 策略 C: 提取 JSON 对象数组（松散匹配）
-            lambda t: re.search(r"\[\s*[\s\S]*?\]", t, re.DOTALL),
-        ]
+        json_str = text[start:end + 1]
 
-        json_str = None
-        for strategy in strategies:
-            m = strategy(text)
-            if m:
-                candidate = m.group(1) if m.lastindex else m.group()
-                candidate = candidate.strip()
-                # 移除可能的包装 ``` 标记
-                candidate = re.sub(r"^```(?:json)?\s*", "", candidate)
-                candidate = re.sub(r"\s*```$", "", candidate)
-                json_str = candidate
-                break
-
-        if not json_str:
-            return None
-
-        # 3. 清理常见噪音
-        # 移除非 JSON 前缀（直到第一个 [ 或 {）
-        first_brace = min(
-            (json_str.find(c) for c in ("[", "{") if c in json_str),
-            default=-1
-        )
-        if first_brace > 0:
-            json_str = json_str[first_brace:]
-
-        # 移除尾随非 JSON 字符
-        last_brace = max(
-            (json_str.rfind(c) for c in ("]", "}") if c in json_str),
-            default=-1
-        )
-        if last_brace > 0 and last_brace < len(json_str) - 1:
-            json_str = json_str[:last_brace + 1]
-
-        # 4. 尝试 JSON 解析，带修复
-        if not json_str:
-            return None
-
-        # 尝试标准解析
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
-
-        # 尝试修复：引号内的换行符
-        try:
-            # 压缩字符串值中的换行
-            fixed = re.sub(r'"(?:[^"\\]|\\.)*"',
-                           lambda m: m.group(0).replace("\n", " ").replace("\r", ""),
-                           json_str)
-            return json.loads(fixed)
-        except json.JSONDecodeError:
-            pass
-
-        # 尝试修复：对象数组如果最外层是 {}
-        try:
-            if json_str.strip().startswith("{"):
-                return [json.loads(json_str)]
-        except json.JSONDecodeError:
-            pass
+        # 尝试解析（原始 → 修复换行 → 兜底单对象）
+        for candidate in [
+            json_str,
+            re.sub(r'"(?:[^"\\]|\\.)*"',
+                   lambda m: m.group(0).replace("\n", " ").replace("\r", ""),
+                   json_str),
+        ]:
+            try:
+                result = json.loads(candidate)
+                return result if isinstance(result, list) else [result]
+            except json.JSONDecodeError:
+                continue
 
         return None
 

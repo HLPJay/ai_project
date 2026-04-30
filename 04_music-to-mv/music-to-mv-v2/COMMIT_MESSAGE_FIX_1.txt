@@ -1,0 +1,36 @@
+fix: 修复 pipeline.py phases 逻辑混乱 (Fix #1)
+
+问题
+----
+当用户指定 `--phase align` 时（跳过歌词和音乐，只做对齐），暂停点检查仍会执行。
+这导致用户看到"确认歌词和音乐"的提示，尽管他们并未生成这些内容。
+
+修复方案
+--------
+1. 简化 run() 方法的 phases 逻辑，删除全局暂停点检查
+   - 删除 `if phases in ("all", "init", "align")` 的条件
+   - 改为每个步骤内部管理自己的暂停点
+
+2. 将 _check_and_pause_step2() 移到 _run_lyrics_and_music() 内部
+   - 确保只有当执行歌词和音乐步骤时，才显示相关的暂停点
+
+验证
+----
+✅ 测试 1: --phase init 包含暂停点检查
+✅ 测试 2: --phase align 跳过歌词/音乐的暂停点
+✅ 测试 3: --phase all 执行完整流程
+✅ 测试 4: 暂停点检查在 _run_lyrics_and_music 内部
+
+改动统计
+--------
+- 修改文件: 1 (src/pipeline.py)
+- 修改行数: 22 行（主要是注释完善）
+- 代码复杂度: 无增加，逻辑更清晰
+
+相关文档
+--------
+- FIX_1_SUMMARY.md (修复详细说明)
+- OPTIMIZATION_ROADMAP.md (全部 20 个优化问题分析)
+- QUICK_FIXES.md (快速修复清单)
+
+Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>

@@ -350,37 +350,42 @@ class LLMClient:
 
     # ── 下载辅助 ─────────────────────────────────────────
 
-    def _download_file(self, url: str, output_path: str, max_retries: int = 3):
+    def _download_file(self, url: str, output_path: str,
+                       retry_config: RetryConfig = None):
         """下载文件到本地"""
-        delays = [5, 10, 20]
-        for attempt in range(max_retries):
+        cfg = retry_config or RetryConfig()
+        for attempt in range(1, cfg.max_retries + 1):
             try:
                 req = urllib_request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib_request.urlopen(req, timeout=60) as resp:
+                with urllib_request.urlopen(req, timeout=cfg.request_timeout) as resp:
                     with open(output_path, "wb") as f:
                         f.write(resp.read())
                 return
             except Exception as e:
-                if attempt == max_retries - 1:
+                if attempt == cfg.max_retries:
                     raise
-                print(f"   Download failed ({e}), retry {attempt+1}/{max_retries}")
-                time.sleep(delays[attempt])
+                delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
+                print(f"   Download failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                time.sleep(delay)
 
-    def _urlopen_with_retry(self, req, max_retries: int = 3):
+    def _urlopen_with_retry(self, req, retry_config: RetryConfig = None):
         """以指数退避重试打开 URL"""
-        delays = [5, 10, 20]
-        for attempt in range(max_retries):
+        cfg = retry_config or RetryConfig()
+        for attempt in range(1, cfg.max_retries + 1):
             try:
-                return urllib_request.urlopen(req, timeout=60)
+                return urllib_request.urlopen(req, timeout=cfg.request_timeout)
             except HTTPError as e:
-                if e.code < 500 or attempt == max_retries - 1:
+                if e.code not in cfg.retryable_status or attempt == cfg.max_retries:
                     raise
-                print(f"   HTTP {e.code}, retry {attempt+1}/{max_retries} in {delays[attempt]}s...")
-                time.sleep(delays[attempt])
+                delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
+                print(f"   HTTP {e.code}, retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                time.sleep(delay)
             except Exception as e:
-                if attempt == max_retries - 1:
+                if attempt == cfg.max_retries:
                     raise
-                print(f"   Request failed ({e}), retry {attempt+1}/{max_retries} in {delays[attempt]}s...")
+                delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
+                print(f"   Request failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                time.sleep(delay)
                 time.sleep(delays[attempt])
 
     # ── 通用 API 调用 ────────────────────────────────────
