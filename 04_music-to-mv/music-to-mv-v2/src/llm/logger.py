@@ -15,7 +15,7 @@ llm_logger.py — 统一 LLM 调用日志系统
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, List, Any
 from dataclasses import dataclass, asdict, field
@@ -24,7 +24,7 @@ from dataclasses import dataclass, asdict, field
 @dataclass
 class LLMCallRecord:
     """一次 LLM 调用的完整记录"""
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     prompt_key: str = ""           # e.g., "lyrics_generation"
     prompt_version: str = ""       # e.g., "v2.0"
     rendered_prompt: str = ""      # 填充变量后的完整提示词
@@ -49,7 +49,11 @@ class LLMLogger:
     """LLM 调用日志系统（非单例模式，线程安全）"""
 
     def __init__(self, project_dir: str = None):
-        self.project_dir = str(Path(project_dir).expanduser()) if project_dir else ""
+        # project_dir 为空时使用用户目录下的默认日志位置
+        if project_dir:
+            self.project_dir = str(Path(project_dir).expanduser())
+        else:
+            self.project_dir = str(Path.home() / ".music_to_mv_logs")
         self.log_dir = Path(self.project_dir) / "metadata" / "llm_calls"
         self.responses_dir = self.log_dir / "responses"
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -125,7 +129,7 @@ class LLMLogger:
                      extra: Dict = None) -> LLMCallRecord:
         """简便记录 API 调用"""
         record = LLMCallRecord(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             prompt_key=prompt_key,
             model=model,
             rendered_prompt=prompt,
@@ -158,8 +162,8 @@ class LLMLogger:
                 "total_tokens": 0,
                 "total_cost_usd": 0.0,
                 "by_prompt_key": {},
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
         return stats
 
@@ -248,7 +252,7 @@ class LLMLogger:
         stats["total_calls"] += 1
         stats["total_tokens"] += record.tokens.get("total_tokens", 0)
         stats["total_cost_usd"] += record.cost_usd
-        stats["updated_at"] = datetime.utcnow().isoformat()
+        stats["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         key = record.prompt_key
         if key not in stats["by_prompt_key"]:

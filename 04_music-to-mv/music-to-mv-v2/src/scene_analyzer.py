@@ -118,7 +118,7 @@ class SceneAnalyzer:
         self.audio_dir = self.project_dir / "audio"
 
         self.cfg = ConfigManager()
-        self.client = LLMClient()
+        self.client = LLMClient(project_dir=str(self.project_dir))
 
         # 项目配置
         self._theme = ""

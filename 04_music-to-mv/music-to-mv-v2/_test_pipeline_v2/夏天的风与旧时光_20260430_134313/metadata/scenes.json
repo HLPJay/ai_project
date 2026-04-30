@@ -1,0 +1,260 @@
+[
+  {
+    "id": 1,
+    "name": "intro",
+    "display_name": "intro",
+    "start": 0.0,
+    "end": 5.78,
+    "duration": 5.78,
+    "text_preview": "老街巷口槐花香",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, scenic establishing wide shot, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 2,
+    "name": "verse1",
+    "display_name": "verse1",
+    "start": 5.78,
+    "end": 11.55,
+    "duration": 5.78,
+    "text_preview": "单车铃铛响叮当",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, character in daily life scene, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 3,
+    "name": "prechorus",
+    "display_name": "prechorus",
+    "start": 11.55,
+    "end": 17.33,
+    "duration": 5.78,
+    "text_preview": "泥巴捏的小人儿",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, close up facial expression emotional build up, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 4,
+    "name": "chorus",
+    "display_name": "chorus",
+    "start": 17.33,
+    "end": 23.11,
+    "duration": 5.78,
+    "text_preview": "藏在口袋里发光",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, wide shot grand landscape with character, epic feeling, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 5,
+    "name": "verse2",
+    "display_name": "verse2",
+    "start": 23.11,
+    "end": 28.89,
+    "duration": 5.78,
+    "text_preview": "啊 童年像风筝飞高高",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, character in another daily life scene, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, character in another daily life scene, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 6,
+    "name": "bridge",
+    "display_name": "bridge",
+    "start": 28.89,
+    "end": 34.67,
+    "duration": 5.78,
+    "text_preview": "线握在手中不怕跌倒",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, character deep in thought, solitary moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, character deep in thought, solitary moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 7,
+    "name": "extra7",
+    "display_name": "extra7",
+    "start": 34.67,
+    "end": 40.44,
+    "duration": 5.78,
+    "text_preview": "啊 童年像彩虹雨后微笑",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves rainbow across the sky, fresh after rain, colorful gradient, bright blue sky, white clouds childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves rainbow across the sky, fresh after rain, colorful gradient, bright blue sky, white clouds childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 8,
+    "name": "extra8",
+    "display_name": "extra8",
+    "start": 40.44,
+    "end": 46.22,
+    "duration": 5.78,
+    "text_preview": "闪耀着最纯真的美好",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 9,
+    "name": "extra9",
+    "display_name": "extra9",
+    "start": 46.22,
+    "end": 52.0,
+    "duration": 5.78,
+    "text_preview": "夏天的风吹过脸庞",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 10,
+    "name": "extra10",
+    "display_name": "extra10",
+    "start": 52.0,
+    "end": 57.78,
+    "duration": 5.78,
+    "text_preview": "蝉鸣声声在歌唱",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 11,
+    "name": "extra11",
+    "display_name": "extra11",
+    "start": 57.78,
+    "end": 63.55,
+    "duration": 5.78,
+    "text_preview": "追逐蝴蝶的步伐",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 12,
+    "name": "extra12",
+    "display_name": "extra12",
+    "start": 63.55,
+    "end": 69.33,
+    "duration": 5.78,
+    "text_preview": "不知疲倦的奔放",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 13,
+    "name": "extra13",
+    "display_name": "extra13",
+    "start": 69.33,
+    "end": 75.11,
+    "duration": 5.78,
+    "text_preview": "啊 童年像风筝飞高高",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 14,
+    "name": "extra14",
+    "display_name": "extra14",
+    "start": 75.11,
+    "end": 80.89,
+    "duration": 5.78,
+    "text_preview": "线握在手中不怕跌倒",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 15,
+    "name": "extra15",
+    "display_name": "extra15",
+    "start": 80.89,
+    "end": 86.67,
+    "duration": 5.78,
+    "text_preview": "啊 童年像彩虹雨后微笑",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves rainbow across the sky, fresh after rain, colorful gradient, bright blue sky, white clouds childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves rainbow across the sky, fresh after rain, colorful gradient, bright blue sky, white clouds childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 16,
+    "name": "extra16",
+    "display_name": "extra16",
+    "start": 86.67,
+    "end": 92.44,
+    "duration": 5.78,
+    "text_preview": "闪耀着最纯真的美好",
+    "is_repeated": true,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter",
+    "variants": [
+      "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter, different gentle pose or activity"
+    ]
+  },
+  {
+    "id": 17,
+    "name": "extra17",
+    "display_name": "extra17",
+    "start": 92.44,
+    "end": 98.22,
+    "duration": 5.78,
+    "text_preview": "啊 童年的歌谣",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, experiencing a beautiful moment, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  },
+  {
+    "id": 18,
+    "name": "outro",
+    "display_name": "outro",
+    "start": 98.22,
+    "end": 104.0,
+    "duration": 5.78,
+    "text_preview": "永远回响在心头",
+    "is_repeated": false,
+    "segment_count": 1,
+    "label": "夏天时光-怀旧",
+    "desc": "single main character, beautiful wide shot, character walking away, golden light, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character, clean cinematic frame, fixed character appearance, unified color tone, 8k, ultra detailed, soft cinematic lighting, delicate color grading, clean MV frame style, high resolution, fine texture, film soft focus, minimal composition, no extra characters, no text, no logo, no clutter"
+  }
+]

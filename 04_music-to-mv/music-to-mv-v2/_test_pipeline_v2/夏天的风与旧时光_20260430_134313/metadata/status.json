@@ -1,0 +1,51 @@
+{
+  "project": "夏天的风与旧时光",
+  "pipeline": {
+    "① lyrics": {
+      "status": "completed",
+      "detail": "",
+      "updated_at": "2026-04-30T13:43:13.594181"
+    },
+    "② music": {
+      "status": "completed",
+      "detail": "",
+      "updated_at": "2026-04-30T13:43:13.610667"
+    },
+    "③ align": {
+      "status": "completed",
+      "detail": "basic SRT",
+      "updated_at": "2026-04-30T13:43:13.620708"
+    },
+    "④ base": {
+      "status": "completed",
+      "detail": "",
+      "updated_at": "2026-04-30T13:45:05.861027"
+    },
+    "⑤-⑦ images": {
+      "status": "completed",
+      "detail": "26 images/png",
+      "updated_at": "2026-04-30T13:45:06.354669"
+    },
+    "⑧ kb": {
+      "status": "completed",
+      "detail": "18 clips",
+      "updated_at": "2026-04-30T13:45:35.076495"
+    },
+    "⑨ concat": {
+      "status": "completed",
+      "detail": "18 clips, 12.3MB",
+      "updated_at": "2026-04-30T13:46:12.642226"
+    },
+    "⑩ merge": {
+      "status": "completed",
+      "detail": "13.8MB, 113s",
+      "updated_at": "2026-04-30T13:46:12.660878"
+    },
+    "⑪ export": {
+      "status": "completed",
+      "detail": "tiktok=4.6MB, vertical=4.3MB",
+      "updated_at": "2026-04-30T13:46:12.675365"
+    }
+  },
+  "last_updated": "2026-04-30T13:46:12.675389"
+}

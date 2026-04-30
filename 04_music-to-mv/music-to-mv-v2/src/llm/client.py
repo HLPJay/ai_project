@@ -22,7 +22,8 @@ import os
 import time
 import threading
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Dict, Any, Callable
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
@@ -33,22 +34,58 @@ from src.llm.logger import LLMLogger, LLMCallRecord
 class RetryConfig:
     """重试配置"""
     def __init__(self, max_retries: int = 3, base_delay: float = 2.0,
-                 max_delay: float = 30.0, retryable_status: set = None):
+                 max_delay: float = 30.0, request_timeout: float = 60.0,
+                 retryable_status: set = None):
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
+        self.request_timeout = request_timeout
         self.retryable_status = retryable_status or {429, 500, 502, 503, 504}
 
 
 class LLMClient:
-    """统一 LLM API 客户端（线程安全）"""
+    """统一 LLM API 客户端（线程安全）
 
-    def __init__(self, logger: LLMLogger = None):
-        self.logger = logger
+    支持三种 logger 获取方式（按优先级）：
+      1. 显式传入: LLMClient(logger=my_logger)
+      2. project_dir 自动创建: LLMClient(project_dir="/path/to/project")
+      3. 全局单例（懒加载，共享 LLMLogger 实例）
+    """
+
+    _global_lock = threading.Lock()
+    _global_logger_instance = None
+
+    def __init__(self, logger: LLMLogger = None, project_dir: str = None):
         self._lock = threading.Lock()
-        # 禁用代理
-        os.environ["no_proxy"] = "*"
-        os.environ["NO_PROXY"] = "*"
+        # 禁用代理（仅第一次设置）
+        if "no_proxy" not in os.environ:
+            os.environ["no_proxy"] = "*"
+        if "NO_PROXY" not in os.environ:
+            os.environ["NO_PROXY"] = "*"
+        # 解析 logger
+        self.logger = self._resolve_logger(logger, project_dir)
+
+    def _resolve_logger(self, logger: Optional[LLMLogger],
+                        project_dir: Optional[str]) -> Optional[LLMLogger]:
+        """按优先级解析 logger"""
+        # 优先级 1: 显式传入的 logger 实例
+        if logger is not None:
+            return logger
+        # 优先级 2: project_dir 自动创建
+        if project_dir:
+            return LLMLogger(project_dir)
+        # 优先级 3: 全局单例（懒加载）
+        with self._global_lock:
+            if self._global_logger_instance is None:
+                try:
+                    from src.config_manager import ConfigManager
+                    cfg = ConfigManager()
+                    root = cfg.get("WORKSPACE_ROOT", "")
+                    if root:
+                        self._global_logger_instance = LLMLogger(root)
+                except Exception:
+                    pass
+        return self._global_logger_instance
 
     # ── MiniMax LLM ──────────────────────────────────────
 
@@ -358,9 +395,15 @@ class LLMClient:
 
     def _call_raw_api(self, url: str, data: bytes, headers: Dict,
                       prompt_key: str, model: str, prompt_text: str,
-                      retry_config: RetryConfig = None) -> Dict:
-        """原始 API 调用（带重试，带日志）"""
+                      retry_config: RetryConfig = None,
+                      request_timeout: float = None) -> Dict:
+        """原始 API 调用（带重试，带日志）
+
+        Args:
+            request_timeout: 单次请求超时秒数，None 则从 retry_config 获取
+        """
         cfg = retry_config or RetryConfig()
+        timeout = request_timeout if request_timeout is not None else cfg.request_timeout
         last_error = None
         start_time = time.time()
 
@@ -371,7 +414,7 @@ class LLMClient:
                     headers={**headers, "Content-Type": "application/json"},
                     method="POST"
                 )
-                with urllib_request.urlopen(req, timeout=120) as resp:
+                with urllib_request.urlopen(req, timeout=timeout) as resp:
                     response_data = json.loads(resp.read().decode("utf-8"))
 
                 latency = (time.time() - start_time) * 1000
@@ -419,7 +462,7 @@ class LLMClient:
             return
 
         record = LLMCallRecord(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             prompt_key=prompt_key,
             model=model,
             rendered_prompt=prompt_text[:1000],

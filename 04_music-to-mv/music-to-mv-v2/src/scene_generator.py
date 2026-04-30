@@ -72,7 +72,7 @@ class SceneImageGenerator:
         self.clips_dir.mkdir(exist_ok=True)
 
         self.cfg = ConfigManager()
-        self.client = LLMClient()
+        self.client = LLMClient(project_dir=str(self.project_dir))
 
         # 从 info.json 读取固定 seed（角色一致性）
         self._image_seed = 0
