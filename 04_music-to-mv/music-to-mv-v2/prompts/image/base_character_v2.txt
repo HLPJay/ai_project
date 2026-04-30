@@ -1,0 +1,3 @@
+{{ char_description }}
+representing the song "{{ song_title }}" with a {{ theme }} theme
+{{ art_style }}

@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-04-29T19:26:18.410495",
+  "prompt_key": "image_generation",
+  "prompt_version": "",
+  "model": "MiniMax-image-01",
+  "rendered_prompt": "A cute Chinese anime boy, 8 years old, with spiky black hair, large expressive eyes, cheerful smile, wearing casual colorful t-shirt and shorts, in a scene representing the song '童年记忆', childhood memories, old toys, crayon drawings, treehouse, backyard adventures, innocence, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character",
+  "request_params": {},
+  "response": "{\"id\": \"06418e44bf476d550e1a492952cac46c\", \"data\": {\"image_urls\": [\"https://hailuo-image-algeng-data.oss-cn-wulanchabu.aliyuncs.com/image_inference_output%2Ftalkie%2Fprod%2Fimg%2F2026-04-30%2F91bfb1c9-1643-4b36-ab30-67c76dcfebb0_aigc.jpeg?Expires=1777577179&OSSAccessKeyId=LTAI5tB2SwrRwAtD23etQUbC&Signature=QUsFIiEjk%2Fw7bz8s%2BTgbOzOs%2Fts%3D\"]}, \"metadata\": {\"failed_count\": \"0\", \"success_count\": \"1\"}, \"base_resp\": {\"status_code\": 0, \"status_msg\": \"success\"}}",
+  "raw_response": "",
+  "tokens": {
+    "prompt_tokens": 452,
+    "completion_tokens": 356,
+    "total_tokens": 808
+  },
+  "latency_ms": 23409.504175186157,
+  "cost_usd": 0.0
+}

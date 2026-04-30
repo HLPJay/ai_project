@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-04-29T16:28:51.809940",
+  "prompt_key": "image_generation",
+  "prompt_version": "",
+  "model": "MiniMax-image-01",
+  "rendered_prompt": "A cute Chinese anime boy, 8 years old, with spiky black hair, large expressive eyes, cheerful smile, wearing casual colorful t-shirt and shorts, in a scene representing the song '夏天的风与旧时光', nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, high-quality Japanese anime, clean crisp line art, soft cel shading, Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, simple clean background, soft focus, perfect facial features, single character. Scene: A cute Chinese anime boy, 8 years old, with spiky black hair, large expressive e, close up facial expression emotional build up, nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour, summer beach, sparkling ocean, golden sunset, palm trees, ice cream, vibrant green leaves time passing, old clock gears, fading memories, photo album, sunset time lapse, anime style, 8k, ultra detailed, soft cinematic lighting",
+  "request_params": {},
+  "response": "{\"output\": \"D:\\\\claude_code\\\\我的github项目落地\\\\ai_project\\\\04_music-to-mv\\\\music-to-mv-v2\\\\tests\\\\..\\\\_test_pipeline_output\\\\夏天的风与旧时光_20260430_002739\\\\images\\\\scene_03.png\", \"size\": 223255}",
+  "raw_response": "{\"output\": \"D:\\\\claude_code\\\\我的github项目落地\\\\ai_project\\\\04_music-to-mv\\\\music-to-mv-v2\\\\tests\\\\..\\\\_test_pipeline_output\\\\夏天的风与旧时光_20260430_002739\\\\images\\\\scene_03.png\", \"size\": 223255}",
+  "tokens": {
+    "prompt_tokens": 950,
+    "completion_tokens": 0,
+    "total_tokens": 950
+  },
+  "latency_ms": 0.0,
+  "cost_usd": 0.0
+}

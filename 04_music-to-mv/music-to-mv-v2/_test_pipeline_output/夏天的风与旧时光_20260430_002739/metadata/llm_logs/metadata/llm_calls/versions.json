@@ -1,0 +1,10 @@
+{
+  "image_generation:": {
+    "prompt_key": "image_generation",
+    "version": "",
+    "model": "MiniMax-image-01",
+    "usage_count": 6,
+    "first_used_at": "2026-04-29T16:27:59.663293",
+    "last_used_at": "2026-04-29T16:28:51.809940"
+  }
+}

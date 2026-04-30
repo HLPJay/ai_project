@@ -1,0 +1,96 @@
+{
+  "project": "夏天的风与旧时光",
+  "pipeline": {
+    "① lyrics": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "② music": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "③ align": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "④ base": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "⑤-⑦ images": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "⑧ kb": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "⑨ concat": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "⑩ merge": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "⑪ export": {
+      "status": "pending",
+      "detail": "",
+      "updated_at": null
+    },
+    "01 lyrics": {
+      "status": "completed",
+      "detail": "",
+      "updated_at": "2026-04-30T00:27:39.060867"
+    },
+    "02 music": {
+      "status": "completed",
+      "detail": "",
+      "updated_at": "2026-04-30T00:27:39.072981"
+    },
+    "03 align": {
+      "status": "completed",
+      "detail": "basic SRT",
+      "updated_at": "2026-04-30T00:27:39.101486"
+    },
+    "04 base": {
+      "status": "completed",
+      "detail": "char prompt",
+      "updated_at": "2026-04-30T00:27:39.125129"
+    },
+    "05-07 images": {
+      "status": "completed",
+      "detail": "3 images",
+      "updated_at": "2026-04-30T00:28:53.812535"
+    },
+    "08 kb": {
+      "status": "completed",
+      "detail": "6 KB clips",
+      "updated_at": "2026-04-30T00:28:58.530417"
+    },
+    "09 concat": {
+      "status": "completed",
+      "detail": "ok",
+      "updated_at": "2026-04-30T00:28:58.665719"
+    },
+    "10 merge": {
+      "status": "completed",
+      "detail": "ok",
+      "updated_at": "2026-04-30T00:28:59.187342"
+    },
+    "11 export": {
+      "status": "completed",
+      "detail": "ok",
+      "updated_at": "2026-04-30T00:28:59.216098"
+    }
+  },
+  "last_updated": "2026-04-30T00:28:59.216108"
+}

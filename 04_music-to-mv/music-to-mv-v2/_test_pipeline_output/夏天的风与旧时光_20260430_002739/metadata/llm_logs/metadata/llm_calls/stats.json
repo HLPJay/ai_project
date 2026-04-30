@@ -1,0 +1,17 @@
+{
+  "total_calls": 6,
+  "total_tokens": 6041,
+  "total_cost_usd": 0.0,
+  "by_prompt_key": {
+    "image_generation": {
+      "call_count": 6,
+      "total_tokens": 6041,
+      "total_cost_usd": 0.0,
+      "avg_latency_ms": 11268.583536148071,
+      "success_count": 6,
+      "error_count": 0,
+      "versions_used": []
+    }
+  },
+  "updated_at": "2026-04-29T16:28:51.810829"
+}

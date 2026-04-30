@@ -1,0 +1,35 @@
+{
+  "total_calls": 9,
+  "total_tokens": 15439995,
+  "total_cost_usd": 0.0,
+  "by_prompt_key": {
+    "lyrics_generation": {
+      "call_count": 4,
+      "total_tokens": 2676,
+      "total_cost_usd": 0.0,
+      "avg_latency_ms": 7931.914687156677,
+      "success_count": 4,
+      "error_count": 0,
+      "versions_used": []
+    },
+    "music_generation": {
+      "call_count": 3,
+      "total_tokens": 15435923,
+      "total_cost_usd": 0.0,
+      "avg_latency_ms": 62923.64772160848,
+      "success_count": 3,
+      "error_count": 0,
+      "versions_used": []
+    },
+    "image_generation": {
+      "call_count": 2,
+      "total_tokens": 1396,
+      "total_cost_usd": 0.0,
+      "avg_latency_ms": 11704.752087593079,
+      "success_count": 2,
+      "error_count": 0,
+      "versions_used": []
+    }
+  },
+  "updated_at": "2026-04-29T19:26:18.785444"
+}

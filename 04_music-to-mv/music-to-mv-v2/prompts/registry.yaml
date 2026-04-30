@@ -1,0 +1,75 @@
+# Music-to-MV Prompt Registry
+# 管理所有 LLM 提示词的版本和配置
+
+version: "2.0"
+last_updated: "2026-04-25"
+
+prompts:
+
+  # ── 歌词生成 ──────────────────────────────────────
+  lyrics.generation:
+    description: "歌词生成 prompt"
+    default_version: "v2.0"
+    versions:
+      v1.0:
+        file: "lyrics/v1.0.txt"
+        description: "基础版歌词生成"
+        model: "MiniMax-M2.7"
+        status: "deprecated"
+        avg_quality: 7.2
+
+      v2.0:
+        file: "lyrics/v2.0.txt"
+        description: "增强版歌词生成（结构化+韵律约束）"
+        model: "MiniMax-M2.7"
+        status: "active"
+        avg_quality: 8.5
+
+  # ── 音乐生成 ──────────────────────────────────────
+  music.generation:
+    description: "音乐生成 prompt"
+    default_version: "v1.1"
+    versions:
+      v1.0:
+        file: "music/v1.0.txt"
+        description: "基础版音乐生成"
+        model: "music-2.6"
+        status: "deprecated"
+
+      v1.1:
+        file: "music/v1.1.txt"
+        description: "增强版（结构+编曲细节）"
+        model: "music-2.6"
+        status: "active"
+
+  # ── 基础角色图 ──────────────────────────────────────
+  image.base_character:
+    description: "基础角色参考图 prompt"
+    default_version: "v2.0"
+    versions:
+      v1.0:
+        file: "image/base_character_v1.txt"
+        description: "基础版角色描述"
+        status: "deprecated"
+
+      v2.0:
+        file: "image/base_character_v2.txt"
+        description: "增强版角色描述（song_title 融入）"
+        status: "active"
+
+  # ── 场景描述生成 ──────────────────────────────────
+  scene.description:
+    description: "根据歌词段落生成场景描述"
+    default_version: "v2.0"
+    versions:
+      v1.0:
+        file: "scene_analysis/v1.0.txt"
+        description: "基础版场景描述"
+        model: "MiniMax-M2.7"
+        status: "deprecated"
+
+      v2.0:
+        file: "scene_analysis/v2.0.txt"
+        description: "增强版（label + 动效提示）"
+        model: "MiniMax-M2.7"
+        status: "active"
