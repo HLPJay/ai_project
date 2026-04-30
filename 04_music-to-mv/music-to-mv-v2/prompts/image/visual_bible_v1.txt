@@ -1,0 +1,26 @@
+You are defining a global visual bible for a lyric-driven music video.
+Return one compact JSON object only.
+
+Theme: {{ theme }}
+Mood: {{ mood }}
+Style: {{ style }}
+Music Style: {{ music_style }}
+Character continuity reference: {{ char_prompt }}
+
+Scene samples:
+{{ scene_samples }}
+
+Output keys:
+- world_style: a concise phrase describing the unified world aesthetic
+- palette: array of 3 color families (e.g., ["warm gold", "faded teal", "soft cream"])
+- lighting: a sentence describing the consistent lighting grammar
+- texture: a sentence describing visual surface quality (e.g., "soft film grain, airy atmosphere")
+- camera_language: a sentence describing framing and movement patterns
+- continuity_subject: how the recurring subject appears (e.g., "young protagonist appears intermittently, not every shot")
+- do_not_break: array of 3-4 rules the system must never violate (e.g., "do not switch era", "do not introduce harsh neon")
+
+Rules:
+- palette and do_not_break must be arrays.
+- world_style must be a single concise phrase (under 20 words).
+- lighting and camera_language must be actionable, not abstract.
+- This JSON will be read by an automated system; do not include explanatory text outside the JSON.

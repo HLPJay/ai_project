@@ -6,10 +6,9 @@ config_manager.py — 统一配置管理器
 """
 
 import os
-import json
 from pathlib import Path
 from typing import Dict, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -51,14 +50,25 @@ class Config:
 
 
 class ConfigManager:
-    """配置管理器（单例）"""
+    """配置管理器（单例，线程安全）"""
 
     _instance: Optional["ConfigManager"] = None
+    _lock = __import__("threading").Lock()
+    _legacy_key_map = {
+        "WORKSPACE_ROOT": "workspace_root",
+        "MINIMAX_TOKEN": "minimax_token",
+        "ALIBABA_TOKEN": "alibaba_token",
+        "OPENAI_TOKEN": "openai_token",
+        "IMAGE_API_PROVIDER": "image_api_provider",
+        "LLM_MODEL": "llm_model",
+    }
 
     def __new__(cls, env_file: str = None):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._init(env_file)
+            with cls._lock:
+                if cls._instance is None:  # double-checked locking
+                    cls._instance = super().__new__(cls)
+                    cls._instance._init(env_file)
         return cls._instance
 
     def _init(self, env_file: str = None):
@@ -135,7 +145,8 @@ class ConfigManager:
 
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置值"""
-        return getattr(self._config, key, default)
+        normalized = self._legacy_key_map.get(key, key)
+        return getattr(self._config, normalized, default)
 
     def get_image_api_url(self) -> str:
         """获取当前 provider 的图片 API URL"""

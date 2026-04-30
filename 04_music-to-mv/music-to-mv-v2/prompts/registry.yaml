@@ -1,8 +1,8 @@
 # Music-to-MV Prompt Registry
 # 管理所有 LLM 提示词的版本和配置
 
-version: "2.0"
-last_updated: "2026-04-25"
+version: "2.3"
+last_updated: "2026-05-01"
 
 prompts:
 
@@ -73,3 +73,81 @@ prompts:
         description: "增强版（label + 动效提示）"
         model: "MiniMax-M2.7"
         status: "active"
+
+  # ── 视觉总纲 (Visual Bible) ────────────────────────
+  image.visual_bible:
+    description: "全局视觉总纲生成，定义 world_style / palette / lighting / texture / camera_language"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "image/visual_bible_v1.txt"
+        description: "基础版视觉总纲，输出结构化 JSON"
+        model: "MiniMax-M2.7"
+        status: "active"
+
+  # ── 单镜 Prompt 组装 (Shot Prompt) ────────────────
+  image.shot_prompt:
+    description: "将 visual bible + 场景语义组装为最终图片 prompt"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "image/shot_prompt_v1.txt"
+        description: "基础版场景 prompt 组装，融合 bible + 场景描述"
+        model: "MiniMax-M2.7"
+        status: "active"
+
+  # ── 变体描述生成 (Shot Variants) ──────────────────
+  image.shot_variants:
+    description: "为重复段生成 distinct 变体 prompt"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "image/shot_variants_v1.txt"
+        description: "基础版变体 prompt 生成，轴限定 + 禁止规则"
+        model: "MiniMax-M2.7"
+        status: "active"
+
+  # ── 场景英文描述生成 (Scene Desc) ─────────────────
+  image.scene_desc:
+    description: "批量生成英文场景描述，附带 visual_focus / shot_type / character_needed / symbolic_objects / motion_hint 等结构化字段"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "image/scene_desc_v1.txt"
+        description: "基础版英文场景描述，28-40 词，JSON 数组输出"
+        model: "MiniMax-M2.7"
+        status: "active"
+
+  # ── 创意简报 (Creative Brief) ─────────────────────
+  brief.creative:
+    description: "将用户输入的原始主题/风格/情绪扩展为结构化创意简报，包含 narrative_mode / visual_mode / character_policy / chorus_energy"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "brief/creative_brief_v1.txt"
+        description: "基础版创意简报，输出结构化 JSON"
+        model: "MiniMax-M2.7"
+        status: "active"
+
+  # ── 环境锚定图 (Environment Anchor) ───────────────
+  image.environment_anchor:
+    description: "生成纯环境锚定图 prompt，无主角，建立核心世界氛围"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "image/environment_anchor_v1.txt"
+        description: "基础版环境锚定图"
+        model: "MiniMax-M2.7"
+        status: "active"
+
+  # ── 象征物锚定图 (Symbolic Anchor) ────────────────
+  image.symbolic_anchor:
+    description: "生成核心象征物锚定图 prompt，传递歌曲情感/主题核心"
+    default_version: "v1.0"
+    versions:
+      v1.0:
+        file: "image/symbolic_anchor_v1.txt"
+        description: "基础版象征物锚定图"
+        model: "MiniMax-M2.7"
+        status: "active"
+

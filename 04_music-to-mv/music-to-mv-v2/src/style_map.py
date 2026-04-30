@@ -26,7 +26,7 @@ STYLES = {
         "art": (
             "traditional Chinese ink wash painting, xuan paper texture, elegant brush strokes, "
             "Shan Shui landscape, misty ethereal atmosphere, low saturation, classical oriental aesthetic, "
-            "minimal blank space, cinematic soft lighting, single main character, clean composition"
+            "minimal blank space, cinematic soft lighting, poetic subject focus, clean composition"
         ),
         "render": (
             "ink wash painting aesthetic, xuan paper texture, misty Shan Shui background, "
@@ -43,7 +43,7 @@ STYLES = {
         "art": (
             "high-quality Japanese anime, clean crisp line art, soft cel shading, "
             "Studio Ghibli gentle atmosphere, balanced vibrant colors, cinematic composition, "
-            "simple clean background, soft focus, perfect facial features, single character"
+            "simple clean background, soft focus, perfect facial features, varied scene composition"
         ),
         "render": (
             "Japanese anime cel shading, soft color transition, neat line art, "
@@ -164,7 +164,7 @@ STYLES = {
         "art": (
             "American comic book art, bold black outlines, moderate halftone dots, "
             "pop art color palette, clean graphic style, concise composition, "
-            "single character, no messy elements"
+            "clear focal subject, no messy elements"
         ),
         "render": (
             "American comic book style, bold outlines, halftone dots, "
@@ -178,7 +178,7 @@ STYLES = {
         "art": (
             "retro steampunk aesthetic, delicate brass machinery, warm amber tones, "
             "soft industrial light, intricate clockwork details, clean Victorian scene, "
-            "single protagonist, no extra clutter"
+            "clear focal subject, no extra clutter"
         ),
         "render": (
             "steampunk aesthetic, brass and copper details, warm amber glow, "
@@ -192,7 +192,7 @@ STYLES = {
         "art": (
             "high-quality cyberpunk scene, restrained neon glow, wet street reflections, "
             "dark moody cityscape, cyan magenta tones, Blade Runner atmosphere, "
-            "clean composition, single main character"
+            "clean composition, strong visual focal point"
         ),
         "render": (
             "cyberpunk aesthetic, neon highlights, dark urban atmosphere, "
@@ -439,18 +439,24 @@ def get_fallback_desc(name: str, char_prompt: str, theme: str,
                       art_style: str) -> str:
     """生成场景描述（fallback 模式，无需 LLM）"""
     FALLBACK_DESC_TEMPLATES = {
-        "intro": "scenic establishing wide shot",
-        "verse1": "character in daily life scene",
-        "verse2": "character in another daily life scene",
-        "prechorus": "close up facial expression emotional build up",
-        "chorus": "wide shot grand landscape with character, epic feeling",
-        "bridge": "character deep in thought, solitary moment",
-        "outro": "beautiful wide shot, character walking away, golden light",
+        "intro": "scenic establishing wide shot with symbolic atmosphere",
+        "verse1": "observational slice of life or environmental storytelling moment",
+        "verse2": "detail-rich lyrical scene with objects, traces, or spatial memory",
+        "prechorus": "compressed emotional close detail, tension building in the frame",
+        "chorus": "grand cinematic release, landscape or symbolic centerpiece, epic feeling",
+        "bridge": "quiet reflective image, solitude, distance, or metaphorical transition",
+        "outro": "afterglow wide shot, lingering absence or soft departure in golden light",
     }
     template = FALLBACK_DESC_TEMPLATES.get(name, "experiencing a beautiful moment")
     visuals = get_theme_visuals(theme, text_preview)
-    char_short = char_prompt[:80] if char_prompt else "single main character"
-    desc = f"{char_short}, {template}, {mood_desc}"
+    human_hint_terms = (
+        "I ", "you ", "we ", "he ", "she ", "they ", "love", "kiss", "hand",
+        "face", "eyes", "walk", "wait", "hold", "embrace", "alone", "smile",
+    )
+    preview_lower = f" {text_preview.lower()} "
+    needs_human_presence = any(term.lower() in preview_lower for term in human_hint_terms)
+    focal_subject = char_prompt[:80] if (char_prompt and needs_human_presence) else "poetic visual focal point"
+    desc = f"{focal_subject}, {template}, {mood_desc}"
     if visuals:
         desc += f", {visuals}"
     desc += f", {art_style}"

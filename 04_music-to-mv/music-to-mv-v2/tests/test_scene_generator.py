@@ -79,6 +79,17 @@ class TestSceneGeneratorInit(unittest.TestCase):
             json.dumps(bc), encoding="utf-8"
         )
 
+        visual_bible = {
+            "world_style": "nostalgic anime summer memory world",
+            "palette": ["warm gold", "faded teal", "soft cream"],
+            "lighting": "soft backlight haze",
+            "texture": "airy film softness",
+            "camera_language": "wide drifting frames with occasional close inserts",
+        }
+        (self.test_dir / "metadata" / "visual_bible.json").write_text(
+            json.dumps(visual_bible), encoding="utf-8"
+        )
+
     def test_init_basic(self):
         gen = SceneImageGenerator(str(self.test_dir))
         self.assertEqual(gen.project_dir, self.test_dir)
@@ -87,6 +98,7 @@ class TestSceneGeneratorInit(unittest.TestCase):
         self.assertEqual(gen._mood, "欢快")
         self.assertTrue(gen._art_style)
         self.assertTrue(gen._mood_desc)
+        self.assertIn("nostalgic anime summer memory world", gen._visual_bible_prompt)
 
     def test_init_no_base_char(self):
         """没有 base_char.json 时应从 info.json + style_map 加载"""
@@ -107,6 +119,20 @@ class TestSceneGeneratorInit(unittest.TestCase):
         gen = SceneImageGenerator(str(self.test_dir))
         self.assertEqual(gen._style, "动漫风")
         self.assertEqual(gen._mood, "欢快")
+
+    def test_visual_bible_loaded(self):
+        """visual_bible.json 应被正确加载并生成 visual_bible_prompt"""
+        gen = SceneImageGenerator(str(self.test_dir))
+        self.assertIn("nostalgic anime summer memory world", gen._visual_bible_prompt)
+        self.assertIn("warm gold", gen._visual_bible_prompt)
+        self.assertIn("soft backlight haze", gen._visual_bible_prompt)
+
+    def test_visual_bible_missing(self):
+        """缺少 visual_bible.json 时不应报错"""
+        (self.test_dir / "metadata" / "visual_bible.json").unlink()
+        gen = SceneImageGenerator(str(self.test_dir))
+        self.assertEqual(gen._visual_bible, {})
+        self.assertEqual(gen._visual_bible_prompt, "")
 
 
 class TestSceneGeneratorVariantAnalysis(unittest.TestCase):
@@ -202,30 +228,61 @@ class TestSceneGeneratorPromptBuilding(unittest.TestCase):
         (self.test_dir / "metadata" / "scenes.json").write_text(
             json.dumps([{"id": 1, "desc": "test scene", "duration": 5}]), encoding="utf-8"
         )
+        (self.test_dir / "metadata" / "visual_bible.json").write_text(
+            json.dumps({
+                "world_style": "nostalgic anime summer memory world",
+                "palette": ["warm gold", "faded teal", "soft cream"],
+                "lighting": "soft backlight haze",
+                "texture": "airy film softness",
+                "camera_language": "wide drifting frames with occasional close inserts",
+            }),
+            encoding="utf-8",
+        )
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
     def test_build_scene_prompt(self):
         gen = SceneImageGenerator(str(self.test_dir))
-        prompt = gen._build_scene_prompt("a beautiful sunset")
+        prompt = gen._build_scene_prompt("a beautiful sunset with a boy by the river")
 
-        self.assertIn("a beautiful sunset", prompt)
+        self.assertIn("a beautiful sunset with a boy by the river", prompt)
         self.assertIn("cute boy", prompt)
         self.assertIn("gentle", prompt)  # 温柔 mood description
         self.assertIn("anime", prompt.lower())  # 动漫风 art style
+        self.assertIn("nostalgic anime summer memory world", prompt)
+        # 验证 visual bible 的各字段已注入
+        self.assertIn("warm gold", prompt)
+        self.assertIn("soft backlight haze", prompt)
+        self.assertIn("wide drifting frames", prompt)
 
     def test_build_scene_prompt_empty_desc(self):
         gen = SceneImageGenerator(str(self.test_dir))
         prompt = gen._build_scene_prompt("")
-        self.assertIn("cute boy", prompt)
-        self.assertTrue(len(prompt) > 20)
+        self.assertNotIn("cute boy", prompt)
+        self.assertTrue(len(prompt) > 10)
+        self.assertIn("warm gold", prompt)
 
     def test_build_scene_prompt_no_char(self):
         gen = SceneImageGenerator(str(self.test_dir))
         gen._char_prompt = ""  # 模拟无角色描述
         prompt = gen._build_scene_prompt("sunset")
         self.assertIn("sunset", prompt)
+
+
+    def test_augment_scene_desc(self):
+        desc = SceneImageGenerator._augment_scene_desc(
+            "empty station platform at dusk",
+            {
+                "visual_focus": "environment",
+                "shot_type": "wide",
+                "character_needed": False,
+                "symbolic_objects": ["wind", "station"],
+                "motion_hint": "slow drift",
+            },
+        )
+        self.assertIn("environment focused shot", desc)
+        self.assertIn("no centered human subject", desc)
 
 
 class TestSceneGeneratorVariantsJson(unittest.TestCase):
@@ -294,7 +351,7 @@ class TestSceneGeneratorGenerateBaseCharacter(unittest.TestCase):
         """没有 info.json 也能调用，返回 bool 不崩溃"""
         gen = SceneImageGenerator(str(self.test_dir))
         try:
-            result = gen.generate_base_character()
+            result = gen.generate_base_character(theme="童年", song_title="测试")
             self.assertIsInstance(result, bool)
         except Exception as e:
             self.fail(f"generate_base_character 抛出了异常: {e}")

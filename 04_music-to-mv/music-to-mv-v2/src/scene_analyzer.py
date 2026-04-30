@@ -40,7 +40,7 @@ from src.style_map import (
 QUALITY_SUFFIX = (
     ", 8k, ultra detailed, soft cinematic lighting, delicate color grading, "
     "clean MV frame style, high resolution, fine texture, film soft focus, "
-    "minimal composition, no extra characters, no text, no logo, no clutter"
+    "minimal composition, no text, no logo, no clutter"
 )
 
 
@@ -53,6 +53,8 @@ VARIANT_TYPES = [
     ("action", "action focus: different gentle activity or pose"),
     ("camera", "camera focus: different angle or composition"),
     ("motion", "motion focus: different slow movement or stillness"),
+    ("environment", "environment focus: different foreground object, weather detail, or spatial layer"),
+    ("lighting", "lighting focus: different light direction, time fragment, or atmosphere density"),
 ]
 
 
@@ -92,6 +94,32 @@ LYRIC_KEYWORDS = frozenset([
     "light", "sky", "wind", "song", "love", "star", "night",
 ])
 
+FOCUS_KEYWORDS = {
+    "character": (
+        "i ", "you ", "we ", "he ", "she ", "they ", "face", "eyes",
+        "hand", "smile", "kiss", "walk", "run", "dance", "embrace",
+    ),
+    "environment": (
+        "sky", "sea", "river", "rain", "wind", "street", "station",
+        "city", "room", "window", "night", "sunset", "mountain", "road",
+    ),
+    "object": (
+        "letter", "chair", "bench", "lamp", "phone", "cup", "coffee",
+        "train", "bicycle", "guitar", "door", "mirror", "flower",
+    ),
+    "symbolic": (
+        "memory", "dream", "shadow", "echo", "silence", "absence",
+        "goodbye", "waiting", "time", "summer", "winter", "lonely",
+    ),
+}
+
+SHOT_TYPE_KEYWORDS = {
+    "empty_space": ("empty", "silent", "absence", "alone"),
+    "close_detail": ("eyes", "hand", "letter", "coffee", "tears", "whisper"),
+    "establishing": ("city", "street", "station", "sky", "sea", "mountain"),
+    "symbolic_insert": ("memory", "dream", "shadow", "echo", "time"),
+}
+
 
 # ════════════════════════════════════════════════════════════
 # 场景分析器
@@ -127,6 +155,10 @@ class SceneAnalyzer:
         self._music_style = "流行"
         self._char_prompt = ""
         self._song_title = ""
+        self._narrative_mode = "mixed"
+        self._visual_mode = "mixed"
+        self._character_policy = "optional protagonist"
+        self._chorus_energy = "lifted"
         self._load_project_config()
 
     def _load_project_config(self):
@@ -139,6 +171,10 @@ class SceneAnalyzer:
             self._mood = info.get("mood", "欢快")
             self._music_style = info.get("music_style", "流行")
             self._song_title = info.get("song_title", "")
+            self._narrative_mode = info.get("narrative_mode", "mixed")
+            self._visual_mode = info.get("visual_mode", "mixed")
+            self._character_policy = info.get("character_policy", "optional protagonist")
+            self._chorus_energy = info.get("chorus_energy", "lifted")
 
         base_char_path = self.metadata_dir / "base_char.json"
         if base_char_path.exists():
@@ -186,15 +222,22 @@ class SceneAnalyzer:
             s["label"] = self.generate_label(
                 s["name"], self._theme, self._mood, s["text_preview"]
             )
+            self._populate_scene_semantics(s)
 
         # 5. 生成 desc（策略：LLM batch → local fallback）
         desc_source = self._generate_scene_descs(scenes)
+
+        for s in scenes:
+            self._populate_scene_semantics(s)
+
+        visual_bible = self._generate_visual_bible(scenes)
 
         # 6. 生成变体 desc
         self._generate_variant_descs(scenes)
 
         # 写入 scenes.json
         self._write_scenes(scenes)
+        self._write_visual_bible(visual_bible)
 
         total_duration = sum(s.get("duration", 0) for s in scenes)
 
@@ -205,6 +248,7 @@ class SceneAnalyzer:
             "scene_count": len(scenes),
             "total_duration": total_duration,
             "desc_source": desc_source,
+            "visual_bible": visual_bible,
         }
 
     # ══════════════════════════════════════════════════════
@@ -563,6 +607,12 @@ class SceneAnalyzer:
                     desc = llm_descs[sid]["desc"]
                     if self._is_valid_desc(desc, s.get("text_preview", "")):
                         s["desc"] = desc + QUALITY_SUFFIX
+                        for key in (
+                            "visual_focus", "shot_type", "character_needed",
+                            "symbolic_objects", "motion_hint",
+                        ):
+                            if llm_descs[sid].get(key) is not None:
+                                s[key] = llm_descs[sid][key]
                         llm_count += 1
                         continue
                 # LLM 没生成或无效 → local fallback
@@ -600,28 +650,60 @@ class SceneAnalyzer:
 
             lyric_section = "\n".join(lyric_lines)
 
-            prompt = (
-                f"You are a senior MV storyboard & cinematic visual artist.\n"
-                f"Generate unified coherent English image prompts for lyric-driven music video scenes.\n"
-                f"\n"
-                f"Character reference: {self._char_prompt}\n"
-                f"Overall Theme: {self._theme}\n"
-                f"Core Emotion Mood: {self._mood}\n"
-                f"Art Style: {self._style}\n"
-                f"Music Style: {self._music_style}\n"
-                f"Visual Style Details: {art_style}\n"
-                f"Music Visual Atmosphere: {music_visual}\n"
-                f"\n"
-                f"Lyric segments with timestamp:\n"
-                f"{lyric_section}\n"
-                f"\n"
-                f"Requirements:\n"
-                f"- Each prompt 20-25 concise English words.\n"
-                f"- Fit lyric artistic conception and emotional atmosphere.\n"
-                f"- Ensure full video style coherence, no style jumping.\n"
-                f"- Output pure valid JSON array only.\n"
-                f'Format: [{{"id": 1, "desc": "scene visual description"}}, ...]'
-            )
+            # 使用 PromptRegistry 渲染 scene_desc prompt
+            try:
+                from src.llm.registry import PromptRegistry
+                registry = PromptRegistry()
+                do_not_do = self._load_do_not_do()
+                prompt = registry.render("image.scene_desc", {
+                    "char_prompt": self._char_prompt,
+                    "theme": self._theme,
+                    "mood": self._mood,
+                    "style": self._style,
+                    "music_style": self._music_style,
+                    "art_style": art_style,
+                    "music_visual": music_visual,
+                    "lyric_section": lyric_section,
+                    "character_policy": self._character_policy,
+                    "visual_mode": self._visual_mode,
+                    "narrative_mode": self._narrative_mode,
+                    "chorus_energy": self._chorus_energy,
+                    "do_not_do": do_not_do,
+                })
+            except (ImportError, KeyError) as e:
+                print(f"  [scene_desc] registry 渲染失败: {e}，使用硬编码 fallback")
+                do_not_do_str = self._load_do_not_do()
+                prompt = (
+                    f"You are a senior MV storyboard & cinematic visual artist.\n"
+                    f"Generate unified, poetic, cinematic English image prompts for lyric-driven music video scenes.\n"
+                    f"\n"
+                    f"Character continuity reference (only use when a human subject is genuinely needed): {self._char_prompt}\n"
+                    f"Overall Theme: {self._theme}\n"
+                    f"Core Emotion Mood: {self._mood}\n"
+                    f"Art Style: {self._style}\n"
+                    f"Music Style: {self._music_style}\n"
+                    f"Visual Style Details: {art_style}\n"
+                    f"Music Visual Atmosphere: {music_visual}\n"
+                    f"Character Policy: {self._character_policy}\n"
+                    f"Visual Mode: {self._visual_mode}\n"
+                    f"Narrative Mode: {self._narrative_mode}\n"
+                    f"Chorus Energy: {self._chorus_energy}\n"
+                    + (f"Do Not Do: {do_not_do_str}\n" if do_not_do_str else "")
+                    + f"\n"
+                    f"Lyric segments with timestamp:\n"
+                    f"{lyric_section}\n"
+                    f"\n"
+                    f"Requirements:\n"
+                    f"- Each prompt 28-40 concise but evocative English words.\n"
+                    f"- Interpret the lyric meaning, subtext, memory, metaphor, and emotional atmosphere instead of illustrating words literally.\n"
+                    f"- Do not make every scene character-centered. Mix wide environment shots, symbolic still life, empty space, detail shots, over-the-shoulder shots, and only some human-centered frames.\n"
+                    f"- At least 40 percent of scenes should avoid a centered human face or full-body protagonist.\n"
+                    f"- If a recurring protagonist appears, keep continuity, but let the environment, objects, distance, framing, and emotional symbolism carry the scene.\n"
+                    f"- Ensure full video style coherence without repetitive composition.\n"
+                    f"- Output pure valid JSON array only.\n"
+                    f'- For each scene also provide: visual_focus (character/environment/object/symbolic/mixed), shot_type, character_needed, symbolic_objects, motion_hint.\n'
+                    f'Format: [{{"id": 1, "desc": "scene visual description", "visual_focus": "environment", "shot_type": "wide", "character_needed": false, "symbolic_objects": ["wind", "station"], "motion_hint": "slow drift"}}, ...]'
+                )
 
             api_url = "https://api.minimaxi.com/v1/chat/completions"
             payload = json.dumps({
@@ -653,7 +735,14 @@ class SceneAnalyzer:
                 sid = item.get("id")
                 desc = self._strip_think(item.get("desc", ""))
                 if sid and desc:
-                    ret[sid] = {"desc": desc}
+                    ret[sid] = {
+                        "desc": desc,
+                        "visual_focus": item.get("visual_focus"),
+                        "shot_type": item.get("shot_type"),
+                        "character_needed": item.get("character_needed"),
+                        "symbolic_objects": item.get("symbolic_objects"),
+                        "motion_hint": item.get("motion_hint"),
+                    }
 
             return ret
 
@@ -699,25 +788,41 @@ class SceneAnalyzer:
                 for r in var_requests
             )
 
-            prompt = (
-                f"Generate unified subtle variant prompts for repeated chorus MV scenes.\n"
-                f"\n"
-                f"Character reference: {self._char_prompt}\n"
-                f"Global Fixed Style: {self._style}\n"
-                f"Core Mood Tone: {self._mood}\n"
-                f"Unified Art Design: {art_style}\n"
-                f"Music: {self._music_style}\n"
-                f"\n"
-                f"Only allow tiny adjustment: emotion / gentle action / camera angle.\n"
-                f"No weather change, no background replacement, no style mutation.\n"
-                f"\n"
-                f"Variant production tasks:\n"
-                f"{var_section}\n"
-                f"\n"
-                f"Standard: 20-25 English words per description.\n"
-                f"Output pure JSON array only: "
-                f'[{{"scene_id": 1, "desc": "..."}}, ...]'
-            )
+            # 使用 PromptRegistry 渲染 shot_variants prompt
+            try:
+                from src.llm.registry import PromptRegistry
+                registry = PromptRegistry()
+                prompt = registry.render("image.shot_variants", {
+                    "visual_bible": self._get_visual_bible_summary(),
+                    "char_prompt": self._char_prompt,
+                    "style": self._style,
+                    "mood": self._mood,
+                    "music_style": self._music_style,
+                    "variant_tasks": var_section,
+                })
+            except (ImportError, KeyError) as e:
+                print(f"  [variants] registry 渲染失败: {e}，使用硬编码 fallback")
+                prompt = (
+                    f"Generate coherent but materially distinct variant prompts for repeated chorus MV scenes.\n"
+                    f"\n"
+                    f"Character continuity reference (only when a person appears): {self._char_prompt}\n"
+                    f"Global Fixed Style: {self._style}\n"
+                    f"Core Mood Tone: {self._mood}\n"
+                    f"Unified Art Design: {art_style}\n"
+                    f"Music: {self._music_style}\n"
+                    f"\n"
+                    f"Each variant must feel like a different usable shot, not a duplicate with swapped adjectives.\n"
+                    f"Allow meaningful change in shot distance, composition, foreground objects, environmental detail, lighting direction, emotional beat, or symbolic focus.\n"
+                    f"Keep the same lyrical core, world, and style. Do not mutate into a different story.\n"
+                    f"Do not output nearly identical prompts.\n"
+                    f"\n"
+                    f"Variant production tasks:\n"
+                    f"{var_section}\n"
+                    f"\n"
+                    f"Standard: 26-40 English words per description.\n"
+                    f"Output pure JSON array only: "
+                    f'[{{"scene_id": 1, "desc": "..."}}, ...]'
+                )
 
             api_url = "https://api.minimaxi.com/v1/chat/completions"
             payload = json.dumps({
@@ -767,7 +872,10 @@ class SceneAnalyzer:
             scene["name"], self._char_prompt, self._theme,
             scene["text_preview"], mood_desc, art_style,
         )
-        full_desc += ", clean cinematic frame, fixed character appearance, unified color tone"
+        full_desc += (
+            ", cinematic storytelling frame, lyrical visual metaphor, "
+            "cohesive palette, varied subject focus"
+        )
         return full_desc + QUALITY_SUFFIX
 
     def _generate_variant_descs(self, scenes: List[Dict]):
@@ -812,12 +920,14 @@ class SceneAnalyzer:
         base = scene.get("desc", "")
         vtype, _ = VARIANT_TYPES[variant_idx % len(VARIANT_TYPES)]
         suffix_map = {
-            "emotion": ", different emotional expression, subtle facial change",
-            "action": ", different gentle pose or activity",
-            "camera": ", different camera angle and composition",
-            "motion": ", different subtle movement state",
+            "emotion": ", different emotional beat, changed reaction or body language",
+            "action": ", different action focus, alternate gesture or activity",
+            "camera": ", different shot distance, framing, and camera angle",
+            "motion": ", different motion rhythm, pause, or transitional stillness",
+            "environment": ", different environmental layer, foreground element, or weather cue",
+            "lighting": ", different light direction, atmosphere density, or time-of-day nuance",
         }
-        suffix = suffix_map.get(vtype, ", subtle variation")
+        suffix = suffix_map.get(vtype, ", distinct alternate visual treatment")
         return base + suffix
 
     # ══════════════════════════════════════════════════════
@@ -914,6 +1024,315 @@ class SceneAnalyzer:
                 continue
 
         return None
+
+    @staticmethod
+    def _pick_visual_focus(text: str) -> str:
+        lower = f" {text.lower()} "
+        scores = {}
+        for focus, keywords in FOCUS_KEYWORDS.items():
+            scores[focus] = sum(1 for kw in keywords if kw in lower)
+
+        best_focus = max(scores, key=scores.get)
+        if scores[best_focus] <= 0:
+            return "mixed"
+        return best_focus
+
+    @staticmethod
+    def _pick_shot_type(text: str, visual_focus: str) -> str:
+        lower = f" {text.lower()} "
+        for shot_type, keywords in SHOT_TYPE_KEYWORDS.items():
+            if any(kw in lower for kw in keywords):
+                return shot_type
+
+        if visual_focus == "environment":
+            return "wide"
+        if visual_focus == "object":
+            return "close_detail"
+        if visual_focus == "character":
+            return "medium"
+        if visual_focus == "symbolic":
+            return "symbolic_insert"
+        return "wide"
+
+    @staticmethod
+    def _extract_symbolic_objects(text: str) -> List[str]:
+        lower = f" {text.lower()} "
+        found = []
+        object_pool = (
+            "rain", "wind", "window", "station", "street", "bench", "lamp",
+            "coffee", "train", "guitar", "river", "sunset", "shadow", "letter",
+            "bicycle", "door", "mirror", "flower", "sky", "night", "light",
+        )
+        for token in object_pool:
+            if token in lower and token not in found:
+                found.append(token)
+            if len(found) >= 3:
+                break
+        return found
+
+    def _populate_scene_semantics(self, scene: Dict):
+        text = " ".join(
+            part for part in [
+                scene.get("text_preview", ""),
+                scene.get("desc", ""),
+                self._theme,
+                scene.get("name", ""),
+            ] if part
+        )
+
+        visual_focus = self._pick_visual_focus(text)
+        shot_type = self._pick_shot_type(text, visual_focus)
+        symbolic_objects = self._extract_symbolic_objects(text)
+        character_needed = visual_focus in {"character", "mixed"}
+
+        # 根据 Creative Brief 策略调整
+        if self._character_policy == "no fixed protagonist":
+            character_needed = False
+            if visual_focus == "character":
+                visual_focus = "environment"
+        elif self._character_policy == "fixed protagonist":
+            visual_focus = "character"
+            character_needed = True
+        # "optional protagonist": 保持 LLM 决定，不做调整
+
+        if self._visual_mode == "environment-led":
+            if visual_focus == "mixed":
+                visual_focus = "environment"
+                character_needed = False
+        elif self._visual_mode == "symbolic":
+            if visual_focus in ("character", "mixed"):
+                visual_focus = "symbolic"
+                character_needed = False
+        # "mixed" 或 "character-led": 保持 LLM 决定
+
+        if shot_type in {"empty_space", "symbolic_insert"}:
+            character_needed = False
+
+        if scene.get("is_repeated"):
+            continuity = "strong"
+        elif character_needed:
+            continuity = "medium"
+        else:
+            continuity = "soft"
+
+        motion_hint = "slow drift"
+        lower = text.lower()
+        if any(token in lower for token in ("run", "dance", "train", "drive")):
+            motion_hint = "gentle travel motion"
+        elif any(token in lower for token in ("wind", "rain", "shadow", "light")):
+            motion_hint = "atmospheric movement"
+
+        raw_character_needed = scene.get("character_needed", character_needed)
+        if isinstance(raw_character_needed, str):
+            raw_character_needed = raw_character_needed.strip().lower() in {"1", "true", "yes"}
+
+        scene["visual_focus"] = scene.get("visual_focus") or visual_focus
+        scene["shot_type"] = scene.get("shot_type") or shot_type
+        scene["character_needed"] = bool(raw_character_needed)
+        scene["continuity"] = scene.get("continuity") or continuity
+        scene["symbolic_objects"] = scene.get("symbolic_objects") or symbolic_objects
+        scene["motion_hint"] = scene.get("motion_hint") or motion_hint
+
+    def _load_do_not_do(self) -> str:
+        """从 info.json 加载 do_not_do 数组，返回逗号分隔字符串"""
+        info_path = self.metadata_dir / "info.json"
+        if info_path.exists():
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+                dnd = info.get("do_not_do", [])
+                if isinstance(dnd, list) and dnd:
+                    return " | ".join(dnd)
+            except Exception:
+                pass
+        return ""
+
+    def _get_visual_bible_summary(self) -> str:
+        """返回 visual bible 的摘要字符串（供变体 prompt 使用）"""
+        bible_path = self.metadata_dir / "visual_bible.json"
+        if bible_path.exists():
+            try:
+                bible = json.loads(bible_path.read_text(encoding="utf-8"))
+                parts = []
+                if bible.get("world_style"):
+                    parts.append(f"World: {bible['world_style']}")
+                palette = bible.get("palette") or []
+                if palette:
+                    parts.append("Palette: " + ", ".join(palette[:3]))
+                if bible.get("lighting"):
+                    parts.append(f"Lighting: {bible['lighting']}")
+                if bible.get("texture"):
+                    parts.append(f"Texture: {bible['texture']}")
+                if bible.get("camera_language"):
+                    parts.append(f"Camera: {bible['camera_language']}")
+                if bible.get("do_not_break"):
+                    parts.append("Rules: " + "; ".join(bible["do_not_break"][:3]))
+                return " | ".join(parts)
+            except Exception:
+                pass
+        return f"Style: {self._style}, Mood: {self._mood}, Theme: {self._theme}"
+
+    def _generate_visual_bible(self, scenes: List[Dict]) -> Dict[str, Any]:
+        llm_bible = self._call_llm_visual_bible(scenes)
+        if llm_bible:
+            return llm_bible
+        return self._build_local_visual_bible(scenes)
+
+    def _call_llm_visual_bible(self, scenes: List[Dict]) -> Optional[Dict[str, Any]]:
+        try:
+            token = self.cfg.get("minimax_token", "")
+            if not token:
+                return None
+
+            scene_lines = []
+            for scene in scenes[:8]:
+                scene_lines.append(
+                    f'- scene {scene["id"]}: focus={scene.get("visual_focus", "mixed")}, '
+                    f'shot={scene.get("shot_type", "wide")}, '
+                    f'lyrics="{scene.get("text_preview", "")[:60]}", '
+                    f'desc="{scene.get("desc", "")[:80]}"'
+                )
+
+            # 使用 PromptRegistry 渲染 visual_bible prompt
+            try:
+                from src.llm.registry import PromptRegistry
+                registry = PromptRegistry()
+                prompt = registry.render("image.visual_bible", {
+                    "theme": self._theme,
+                    "mood": self._mood,
+                    "style": self._style,
+                    "music_style": self._music_style,
+                    "char_prompt": self._char_prompt,
+                    "scene_samples": "\n".join(scene_lines),
+                })
+            except (ImportError, KeyError) as e:
+                print(f"  [visual_bible] registry 渲染失败: {e}，使用硬编码 fallback")
+                prompt = (
+                    "You are defining a global visual bible for a lyric-driven music video.\n"
+                    "Return one compact JSON object only.\n"
+                    f"Theme: {self._theme}\n"
+                    f"Mood: {self._mood}\n"
+                    f"Style: {self._style}\n"
+                    f"Music Style: {self._music_style}\n"
+                    f"Character continuity reference: {self._char_prompt}\n"
+                    "Scene samples:\n"
+                    + "\n".join(scene_lines)
+                    + "\n"
+                    "Output keys: world_style, palette, lighting, texture, camera_language, "
+                    "continuity_subject, do_not_break.\n"
+                    "palette and do_not_break must be arrays.\n"
+                )
+
+            api_url = "https://api.minimaxi.com/v1/chat/completions"
+            payload = json.dumps({
+                "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1024,
+            }).encode("utf-8")
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+
+            resp_data = self.client._call_raw_api(
+                api_url, payload, headers,
+                prompt_key="visual_bible",
+                model=self.cfg.get("llm_model", "MiniMax-M2.7"),
+                prompt_text=prompt,
+            )
+            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = self._parse_json_response(raw)
+            if parsed and isinstance(parsed, list) and parsed:
+                candidate = parsed[0]
+                if isinstance(candidate, dict):
+                    candidate["source"] = "llm"
+                    return candidate
+            try:
+                candidate = json.loads(self._extract_json_array(raw))
+                if isinstance(candidate, list):
+                    candidate = candidate[0] if candidate else None
+                if isinstance(candidate, dict):
+                    candidate["source"] = "llm"
+                    return candidate
+            except Exception:
+                return None
+            return None
+        except Exception:
+            return None
+
+    def _build_local_visual_bible(self, scenes: List[Dict]) -> Dict[str, Any]:
+        focus_counts = {}
+        for scene in scenes:
+            focus = scene.get("visual_focus", "mixed")
+            focus_counts[focus] = focus_counts.get(focus, 0) + 1
+
+        dominant_focus = max(focus_counts, key=focus_counts.get) if focus_counts else "mixed"
+        repeated_count = sum(1 for scene in scenes if scene.get("is_repeated"))
+        character_scenes = sum(1 for scene in scenes if scene.get("character_needed"))
+
+        palette = self._infer_palette()
+        lighting = self._infer_lighting()
+        camera_language = self._infer_camera_language(dominant_focus, repeated_count)
+        continuity_subject = (
+            "recurring protagonist appears selectively across emotionally important shots"
+            if character_scenes
+            else "continuity comes from environment, palette, and symbolic objects rather than a fixed person"
+        )
+
+        return {
+            "source": "local",
+            "world_style": f"{self._style} MV world shaped by {self._theme or self._song_title or 'the song'}",
+            "palette": palette,
+            "lighting": lighting,
+            "texture": "soft cinematic detail, airy atmosphere, clean frame discipline",
+            "camera_language": camera_language,
+            "continuity_subject": continuity_subject,
+            "do_not_break": [
+                "do not turn every shot into a centered portrait",
+                "do not break the palette family abruptly",
+                "do not abandon lyrical symbolism for generic poses",
+            ],
+        }
+
+    def _infer_palette(self) -> List[str]:
+        mood = self._mood.lower()
+        theme = self._theme.lower()
+        if any(token in mood for token in ("sad", "nostalg", "伤", "旧", "回忆")):
+            return ["warm gold", "faded teal", "dusky blue"]
+        if any(token in mood for token in ("happy", "bright", "快", "甜")):
+            return ["sunlit yellow", "soft sky blue", "fresh green"]
+        if any(token in theme for token in ("night", "city", "夜", "城")):
+            return ["deep navy", "muted cyan", "street amber"]
+        return ["soft cream", "warm gray", "muted blue"]
+
+    def _infer_lighting(self) -> str:
+        mood = self._mood.lower()
+        if any(token in mood for token in ("sad", "nostalg", "柔", "静")):
+            return "soft backlight haze with restrained contrast"
+        if any(token in mood for token in ("happy", "bright", "快")):
+            return "clear natural light with gentle glow"
+        return "cinematic soft light with controlled atmosphere"
+
+    @staticmethod
+    def _infer_camera_language(dominant_focus: str, repeated_count: int) -> str:
+        if dominant_focus == "environment":
+            base = "wide drifting frames with occasional close inserts"
+        elif dominant_focus == "object":
+            base = "detail-driven compositions with measured cut-ins"
+        elif dominant_focus == "character":
+            base = "intimate medium shots balanced by breathing room"
+        else:
+            base = "mixed cinematic framing, alternating environment and intimate details"
+
+        if repeated_count:
+            base += ", repeated chorus sections should vary by shot distance, lighting, and foreground"
+        return base
+
+    def _write_visual_bible(self, visual_bible: Dict[str, Any]):
+        output_path = self.metadata_dir / "visual_bible.json"
+        output_path.write_text(
+            json.dumps(visual_bible, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _write_scenes(self, scenes: List[Dict]):
         """写入 scenes.json"""

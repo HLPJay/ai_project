@@ -58,10 +58,6 @@ class LLMClient:
     def __init__(self, logger: LLMLogger = None, project_dir: str = None):
         self._lock = threading.Lock()
         # 禁用代理（仅第一次设置）
-        if "no_proxy" not in os.environ:
-            os.environ["no_proxy"] = "*"
-        if "NO_PROXY" not in os.environ:
-            os.environ["NO_PROXY"] = "*"
         # 解析 logger
         self.logger = self._resolve_logger(logger, project_dir)
 
@@ -80,7 +76,7 @@ class LLMClient:
                 try:
                     from src.config_manager import ConfigManager
                     cfg = ConfigManager()
-                    root = cfg.get("WORKSPACE_ROOT", "")
+                    root = cfg.get("workspace_root", "")
                     if root:
                         self._global_logger_instance = LLMLogger(root)
                 except Exception:
@@ -386,7 +382,6 @@ class LLMClient:
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
                 print(f"   Request failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
                 time.sleep(delay)
-                time.sleep(delays[attempt])
 
     # ── 通用 API 调用 ────────────────────────────────────
 

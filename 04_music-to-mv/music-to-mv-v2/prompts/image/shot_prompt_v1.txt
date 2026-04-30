@@ -1,0 +1,35 @@
+You are generating a final image-generation prompt for one shot of a music video.
+
+## Global Visual Bible
+{{ visual_bible }}
+
+{% if char_prompt %}## Character Anchor
+Only use when the scene genuinely requires a human subject.
+{{ char_prompt }}
+{% endif %}
+
+## Scene Specification
+- Scene ID: {{ scene_id }}
+- Section: {{ section_name }}
+- Lyric text: "{{ lyric_text }}"
+- Duration: {{ duration }}s
+- Visual focus: {{ visual_focus }}
+- Shot type: {{ shot_type }}
+- Character needed: {{ character_needed }}
+{% if symbolic_objects %}  - Symbolic objects: {{ symbolic_objects }}{% endif %}
+- Motion hint: {{ motion_hint }}
+- Scene description base: {{ scene_desc }}
+
+## Requirements
+1. Compose a single coherent prompt (28-40 words) that merges the scene description with the visual bible.
+2. Inject character continuity ONLY if character_needed is true. Otherwise, describe environment, objects, space, or atmosphere.
+3. The scene description is the primary content carrier; the visual bible provides global consistency; do not let bible overwhelm the scene's unique moment.
+4. Use cinematic and visual-art language (shot distance, light quality, color mood, composition).
+5. Output pure JSON only:
+
+```json
+{
+  "scene_id": {{ scene_id }},
+  "final_prompt": "the concise image prompt here"
+}
+```

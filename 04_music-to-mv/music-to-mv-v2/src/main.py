@@ -134,7 +134,7 @@ def main():
 def _list_projects():
     """列出所有已有项目"""
     cfg = ConfigManager()
-    root = Path(cfg.get("WORKSPACE_ROOT", "~/.openclaw/workspace/mv")).expanduser()
+    root = Path(cfg.get("workspace_root", "~/.openclaw/workspace/mv")).expanduser()
 
     if not root.exists():
         print("📂 暂无项目（目录不存在）")
@@ -149,7 +149,8 @@ def _list_projects():
                 theme = info.get("theme", "")
                 song = info.get("song_title", "未生成")
                 completed = info.get("steps_completed", [])
-                status = "✅ 完成" if "all" in completed else f"⏳ {len(completed)}/11步"
+                total_steps = len(info.get("pipeline", {})) or 10
+                status = "✅ 完成" if len(completed) >= total_steps else f"⏳ {len(completed)}/{total_steps}步"
                 projects.append((d, name, theme, song, status))
             except Exception:
                 projects.append((d, d.name, "", "", "⚠️ 损坏"))

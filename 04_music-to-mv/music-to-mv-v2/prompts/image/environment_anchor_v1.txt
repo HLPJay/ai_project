@@ -1,0 +1,30 @@
+Design one consistent environment anchor image for a music video.
+
+This image defines the core world setting. It should not contain a protagonist. It defines the atmosphere and spatial context that all other shots will reference.
+
+## Inputs
+
+Theme: {{ theme }}
+Mood: {{ mood }}
+Style: {{ style }}
+Visual Bible — World Style: {{ world_style }}
+Visual Bible — Palette: {{ palette }}
+Visual Bible — Lighting: {{ lighting }}
+Visual Bible — Texture: {{ texture }}
+Recurring Imagery: {{ visual_anchors }}
+
+## Requirements
+
+- A pure environment establishing shot. No protagonist, no face, no centered person.
+- Capture the spatial atmosphere and emotional landscape of the song.
+- Use the palette, lighting, and texture from the Visual Bible.
+- Integrate key recurring imagery from the lyric analysis.
+- 30-45 words, cinematic, visually specific.
+- Output pure JSON only.
+
+```json
+{
+  "prompt": "environment anchor image prompt",
+  "intent": "what this anchor establishes"
+}
+```

@@ -18,7 +18,7 @@ class ProjectManager:
     """项目管理器 — 统一状态管理核心"""
 
     STEP_ORDER = [
-        "① lyrics", "② music", "③ align",
+        "① lyrics", "② music", "③ align", "③.5 scene_analysis",
         "④ base", "⑤-⑦ images", "⑧ kb",
         "⑨ concat", "⑩ merge", "⑪ export"
     ]
@@ -82,7 +82,7 @@ class ProjectManager:
         from src.config_manager import ConfigManager
         cfg = ConfigManager()
 
-        root = Path(workspace_root or cfg.get("WORKSPACE_ROOT", "~/.openclaw/workspace/mv")).expanduser()
+        root = Path(workspace_root or cfg.get("workspace_root", "~/.openclaw/workspace/mv")).expanduser()
         safe_name = cls._safe_name(theme)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         project_dir = root / f"{safe_name}_{timestamp}"

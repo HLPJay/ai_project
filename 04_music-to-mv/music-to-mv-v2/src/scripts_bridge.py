@@ -56,8 +56,6 @@ def _build_env(project_dir: str, extra_env: Dict = None) -> Dict:
         "PROJECT_DIR": project_dir,
         "FFMPEG": "ffmpeg",
         "FFPROBE": "ffprobe",
-        "no_proxy": "*",
-        "NO_PROXY": "*",
     })
 
     if extra_env:

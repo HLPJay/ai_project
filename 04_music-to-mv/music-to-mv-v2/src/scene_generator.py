@@ -102,8 +102,13 @@ class SceneImageGenerator:
         self._mood_desc = ""
         self._api_style = ""
         self._negative_prompt = ""
+        self._visual_bible = {}
+        self._visual_bible_prompt = ""
         self._style = "动漫风"
         self._mood = "欢快"
+        self._character_policy = "optional protagonist"
+        self._visual_mode = "mixed"
+        self._do_not_do = ""
 
         if base_char_path.exists():
             bc = json.loads(base_char_path.read_text(encoding="utf-8"))
@@ -117,6 +122,12 @@ class SceneImageGenerator:
                 info = json.loads(info_path.read_text(encoding="utf-8"))
                 self._style = info.get("style", "动漫风")
                 self._mood = info.get("mood", "欢快")
+                self._character_policy = info.get("character_policy", "optional protagonist")
+                self._visual_mode = info.get("visual_mode", "mixed")
+                # 读取 do_not_do
+                dnd = info.get("do_not_do", [])
+                if isinstance(dnd, list) and dnd:
+                    self._do_not_do = " | ".join(dnd)
                 self._char_prompt = build_char_prompt(
                     self._style, info.get("theme", ""),
                     info.get("song_title", ""), self._mood,
@@ -127,6 +138,35 @@ class SceneImageGenerator:
         self._mood_desc = get_mood_desc(self._mood)
         self._api_style = get_api_style(self._style)
         self._negative_prompt = get_negative_prompt(self._style)
+        self._load_visual_bible()
+
+    def _load_visual_bible(self):
+        self._visual_bible = {}
+        self._visual_bible_prompt = ""
+        path = self.metadata_dir / "visual_bible.json"
+        if not path.exists():
+            return
+
+        try:
+            self._visual_bible = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            self._visual_bible = {}
+            return
+
+        parts = []
+        if self._visual_bible.get("world_style"):
+            parts.append(self._visual_bible["world_style"])
+        palette = self._visual_bible.get("palette") or []
+        if palette:
+            parts.append("palette: " + ", ".join(palette[:3]))
+        if self._visual_bible.get("lighting"):
+            parts.append(self._visual_bible["lighting"])
+        if self._visual_bible.get("texture"):
+            parts.append(self._visual_bible["texture"])
+        if self._visual_bible.get("camera_language"):
+            parts.append(self._visual_bible["camera_language"])
+
+        self._visual_bible_prompt = ", ".join(parts)
 
     # ══════════════════════════════════════════════════════
     # 公开 API
@@ -201,6 +241,196 @@ class SceneImageGenerator:
         except Exception as e:
             print(f"  [Step ④] 失败: {e}")
             return False
+
+    def generate_anchors(self, scenes: List[Dict] = None) -> Dict[str, Any]:
+        """生成全局锚定图（environment + symbolic anchor）
+
+        Anchor 定义全局视觉基调，供 shot prompt 注入使用。
+        仅当 visual_bible.json 存在时才会调用 LLM。
+
+        Args:
+            scenes: 可选场景列表（用于提取 visual_anchors）
+
+        Returns:
+            {"environment_anchor": str, "symbolic_anchor": str}
+        """
+        if not self._visual_bible:
+            print("  [Anchors] visual_bible.json 不存在，跳过 anchor 生成")
+            return {}
+
+        output_env = self.images_dir / "environment_anchor.png"
+        output_sym = self.images_dir / "symbolic_anchor.png"
+
+        # 幂等检查：已存在的 anchor 不重新生成
+        env_done = output_env.exists() and output_env.stat().st_size > MIN_IMAGE_SIZE
+        sym_done = output_sym.exists() and output_sym.stat().st_size > MIN_IMAGE_SIZE
+        if env_done and sym_done:
+            print("  [Anchors] 锚定图已存在，跳过")
+            result = {}
+            if self.metadata_dir.joinpath("anchors.json").exists():
+                result = json.loads(self.metadata_dir.joinpath("anchors.json").read_text(encoding="utf-8"))
+            return result
+
+        # 提取 visual_anchors
+        visual_anchors = self._load_visual_anchors(scenes)
+
+        # 读取 bible 字段
+        bible = self._visual_bible
+        world_style = bible.get("world_style", "")
+        palette = bible.get("palette", [])
+        lighting = bible.get("lighting", "")
+        texture = bible.get("texture", "")
+
+        palette_str = ", ".join(palette[:4]) if palette else ""
+
+        result = {}
+
+        # 1. Environment anchor
+        if not env_done:
+            try:
+                from src.llm.registry import PromptRegistry
+                registry = PromptRegistry()
+                prompt = registry.render("image.environment_anchor", {
+                    "theme": self._load_theme(),
+                    "mood": self._mood,
+                    "style": self._style,
+                    "world_style": world_style,
+                    "palette": palette_str,
+                    "lighting": lighting,
+                    "texture": texture,
+                    "visual_anchors": visual_anchors,
+                })
+                anchor_prompt = self._call_anchor_llm(prompt)
+                if anchor_prompt:
+                    if not self.dry_run:
+                        self.client.call_image_api(
+                            prompt=anchor_prompt,
+                            output_path=str(output_env),
+                            style=self._api_style,
+                            negative_prompt=self._negative_prompt,
+                            seed=self._image_seed + 9000,
+                        )
+                    result["environment_anchor"] = anchor_prompt
+                    print(f"  [Anchor][env] {'[dry_run] ' if self.dry_run else ''}生成完成")
+            except Exception as e:
+                print(f"  [Anchor][env] 失败: {e}")
+
+        # 2. Symbolic anchor
+        if not sym_done:
+            try:
+                from src.llm.registry import PromptRegistry
+                registry = PromptRegistry()
+                prompt = registry.render("image.symbolic_anchor", {
+                    "theme": self._load_theme(),
+                    "mood": self._mood,
+                    "style": self._style,
+                    "visual_anchors": visual_anchors,
+                })
+                anchor_prompt = self._call_anchor_llm(prompt)
+                if anchor_prompt:
+                    if not self.dry_run:
+                        self.client.call_image_api(
+                            prompt=anchor_prompt,
+                            output_path=str(output_sym),
+                            style=self._api_style,
+                            negative_prompt=self._negative_prompt,
+                            seed=self._image_seed + 9001,
+                        )
+                    result["symbolic_anchor"] = anchor_prompt
+                    print(f"  [Anchor][sym] {'[dry_run] ' if self.dry_run else ''}生成完成")
+            except Exception as e:
+                print(f"  [Anchor][sym] 失败: {e}")
+
+        # 持久化 anchors.json
+        if result:
+            self.metadata_dir.mkdir(parents=True, exist_ok=True)
+            (self.metadata_dir / "anchors.json").write_text(
+                json.dumps(result, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+        return result
+
+    def _load_visual_anchors(self, scenes: List[Dict] = None) -> str:
+        """从 info.json 或场景列表提取 visual_anchors 字段"""
+        # 优先使用 Creative Brief 的 visual_anchors
+        info_path = self.metadata_dir / "info.json"
+        if info_path.exists():
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+                va = info.get("visual_anchors", "")
+                if va and isinstance(va, str):
+                    return va
+            except Exception:
+                pass
+
+        # 次优：从 scenes.json 提取 symbolic_objects
+        if scenes:
+            all_objects = set()
+            for s in scenes:
+                objs = s.get("symbolic_objects") or []
+                if isinstance(objs, list):
+                    for o in objs:
+                        all_objects.add(str(o))
+            if all_objects:
+                return ", ".join(sorted(all_objects)[:5])
+
+        return self._theme
+
+    def _call_anchor_llm(self, prompt: str) -> Optional[str]:
+        """调用 LLM 生成 anchor prompt，返回解析后的 prompt 字符串"""
+        token = self.cfg.get("minimax_token", "")
+        if not token:
+            return None
+
+        api_url = "https://api.minimaxi.com/v1/chat/completions"
+        payload = json.dumps({
+            "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 512,
+        }).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        resp_data = self.client._call_raw_api(
+            api_url, payload, headers,
+            prompt_key="anchor_generation",
+            model=self.cfg.get("llm_model", "MiniMax-M2.7"),
+            prompt_text=prompt,
+        )
+        raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # 解析 JSON
+        import re
+        json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            brace_start = raw.find("{")
+            brace_end = raw.rfind("}")
+            json_str = raw[brace_start:brace_end + 1] if brace_start != -1 and brace_end > brace_start else raw
+
+        try:
+            data = json.loads(json_str)
+            anchor_prompt = data.get("prompt", "")
+            if anchor_prompt and len(anchor_prompt) > 10:
+                return anchor_prompt
+        except Exception:
+            pass
+
+        return None
+
+    def _load_theme(self) -> str:
+        """从 info.json 加载 theme"""
+        info_path = self.metadata_dir / "info.json"
+        if info_path.exists():
+            try:
+                return json.loads(info_path.read_text(encoding="utf-8")).get("theme", "")
+            except Exception:
+                pass
+        return ""
 
     def generate_all(self, parallel: int = 2) -> Dict[str, Any]:
         """生成所有场景图（Step ⑤-⑦）
@@ -483,13 +713,13 @@ class SceneImageGenerator:
             for vi in range(n_variants):
                 if vi == 0:
                     out_path = self.images_dir / f"seg{sid}_scene.png"
-                    desc = s.get("desc", "")
+                    desc = self._augment_scene_desc(s.get("desc", ""), s)
                 else:
                     out_path = self.images_dir / f"seg{sid}_variant{vi}.png"
                     if vi - 1 < len(scene_variants):
-                        desc = scene_variants[vi - 1]
+                        desc = self._augment_scene_desc(scene_variants[vi - 1], s)
                     else:
-                        desc = s.get("desc", "")
+                        desc = self._augment_scene_desc(s.get("desc", ""), s)
 
                 tasks.append((sid, vi, desc, str(out_path)))
 
@@ -596,11 +826,70 @@ class SceneImageGenerator:
             "attempt": MAX_RETRY,
         }
 
+    @staticmethod
+    def _needs_character_anchor(desc: str) -> bool:
+        """Only inject character continuity when the shot clearly involves a person."""
+        if not desc:
+            return False
+
+        lower = desc.lower()
+        subject_tokens = (
+            "person", "people", "character", "girl", "boy", "woman", "man",
+            "child", "face", "portrait", "figure", "couple", "singer",
+            "dancer", "hands", "eyes", "walking", "standing", "looking",
+        )
+        return any(token in lower for token in subject_tokens)
+
+    @staticmethod
+    def _augment_scene_desc(desc: str, scene: Dict) -> str:
+        extras = []
+
+        visual_focus = scene.get("visual_focus")
+        shot_type = scene.get("shot_type")
+        motion_hint = scene.get("motion_hint")
+        symbolic_objects = scene.get("symbolic_objects") or []
+
+        if visual_focus:
+            extras.append(f"{visual_focus} focused shot")
+        if shot_type:
+            extras.append(f"{shot_type} framing")
+        if motion_hint:
+            extras.append(motion_hint)
+        if symbolic_objects:
+            extras.append("symbolic elements: " + ", ".join(symbolic_objects[:3]))
+        if scene.get("character_needed") is False:
+            extras.append("no centered human subject")
+
+        extra_text = ", ".join(extras)
+        if not extra_text:
+            return desc
+        if not desc:
+            return extra_text
+        return f"{desc}, {extra_text}"
+
     def _build_scene_prompt(self, desc: str) -> str:
         """构建场景图片 prompt（MiniMax 要求 <= 1500 字符）"""
-        char_part = self._char_prompt[:PROMPT_CHAR_MAX] if self._char_prompt else ""
         desc_part = desc[:PROMPT_DESC_MAX] if desc else ""
-        parts = [p for p in [char_part, desc_part, self._mood_desc, self._art_style] if p]
+        char_part = ""
+        if self._char_prompt and self._needs_character_anchor(desc_part):
+            char_part = (
+                "maintain recurring subject continuity when a human appears, "
+                + self._char_prompt[:PROMPT_CHAR_MAX]
+            )
+        # 根据 character_policy 决定是否注入角色
+        if self._character_policy == "no fixed protagonist":
+            char_part = ""
+
+        parts = [
+            p for p in [
+                desc_part,
+                self._visual_bible_prompt,
+                char_part,
+                self._mood_desc,
+                self._art_style,
+                self._do_not_do,
+            ] if p
+        ]
         prompt = ", ".join(parts)
         if len(prompt) > PROMPT_MAX_LEN:
             prompt = prompt[:PROMPT_MAX_LEN - 20] + ", anime style, 8k"

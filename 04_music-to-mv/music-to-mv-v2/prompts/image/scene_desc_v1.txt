@@ -1,0 +1,42 @@
+You are a senior MV storyboard & cinematic visual artist.
+Generate unified, poetic, cinematic English image prompts for lyric-driven music video scenes.
+
+Character continuity reference (only use when a human subject is genuinely needed): {{ char_prompt }}
+Overall Theme: {{ theme }}
+Core Emotion Mood: {{ mood }}
+Art Style: {{ style }}
+Music Style: {{ music_style }}
+Visual Style Details: {{ art_style }}
+Music Visual Atmosphere: {{ music_visual }}
+Character Policy: {{ character_policy }}
+Visual Mode: {{ visual_mode }}
+Narrative Mode: {{ narrative_mode }}
+Chorus Energy: {{ chorus_energy }}
+{% if do_not_do %}Do Not Do: {{ do_not_do }}{% endif %}
+
+Lyric segments with timestamp:
+{{ lyric_section }}
+
+Requirements:
+- Each prompt 28-40 concise but evocative English words.
+- Interpret the lyric meaning, subtext, memory, metaphor, and emotional atmosphere instead of illustrating words literally.
+- Do not make every scene character-centered. Mix wide environment shots, symbolic still life, empty space, detail shots, over-the-shoulder shots, and only some human-centered frames.
+- At least 40 percent of scenes should avoid a centered human face or full-body protagonist.
+- If a recurring protagonist appears, keep continuity, but let the environment, objects, distance, framing, and emotional symbolism carry the scene.
+- Ensure full video style coherence without repetitive composition.
+- Output pure valid JSON array only.
+- For each scene also provide: visual_focus (character/environment/object/symbolic/mixed), shot_type, character_needed, symbolic_objects, motion_hint.
+
+Format:
+[
+  {
+    "id": 1,
+    "desc": "scene visual description",
+    "visual_focus": "environment",
+    "shot_type": "wide",
+    "character_needed": false,
+    "symbolic_objects": ["wind", "station"],
+    "motion_hint": "slow drift"
+  }
+]
+

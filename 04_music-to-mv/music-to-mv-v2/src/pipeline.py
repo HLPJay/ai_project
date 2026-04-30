@@ -50,6 +50,38 @@ class MVPipeline:
         self.registry = PromptRegistry()
         self.auto_mode = auto_mode
 
+    def validate_tokens(self, phases: str = "all"):
+        """启动前校验必要的 API token，缺失时提前报错
+
+        phases 决定需要检查哪些 token：
+          - init/all: 需要 minimax_token（歌词+音乐生成）
+          - produce/all: 需要图片 provider 对应的 token
+        """
+        missing = []
+        phases = phases or "all"
+
+        if phases in ("all", "init"):
+            if not self.cfg.get("minimax_token"):
+                missing.append("MINIMAX_TOKEN（歌词/音乐生成）")
+
+        if phases in ("all", "produce"):
+            provider = self.cfg.get("image_api_provider", "minimax")
+            token_map = {
+                "minimax": ("minimax_token", "MINIMAX_TOKEN（图片生成）"),
+                "alibaba": ("alibaba_token", "ALIBABA_TOKEN（图片生成）"),
+                "dall-e":  ("openai_token",  "OPENAI_TOKEN（图片生成）"),
+            }
+            if provider in token_map:
+                key, label = token_map[provider]
+                if not self.cfg.get(key):
+                    missing.append(label)
+
+        if missing:
+            raise ValueError(
+                "缺少必要的 API Token，请在 .env 中配置：\n"
+                + "\n".join(f"  - {m}" for m in missing)
+            )
+
     @classmethod
     def create_new(cls, theme: str, style: str = "动漫风",
                    music_style: str = "流行", mood: str = "温柔",
@@ -78,6 +110,9 @@ class MVPipeline:
 
         注意：每个步骤内部管理自己的暂停点检查，不在此处全局处理
         """
+        # 启动前校验 token，缺失时立即报错
+        self.validate_tokens(phases)
+
         print(f"\n{'='*55}")
         print(f"  MV 流水线启动")
         print(f"  项目: {self.pm.project_name}")
@@ -85,14 +120,20 @@ class MVPipeline:
         print(f"  模式: {'全自动' if self.auto_mode else '含暂停点'}")
         print(f"{'='*55}\n")
 
-        # 检查打断
+                # 检查打断
         if self.pm.check_interrupt():
             print("检测到中断信号，流水线停止")
             return
 
         phases = phases or "all"
 
-        # 步骤 ①-②: 歌词 + 音乐（含内部暂停点检查）
+        # 步骤 0: 创意简报 (Creative Brief) — 在所有步骤之前执行
+        if phases in ("all", "init"):
+            self._run_creative_brief()
+            if self.pm.check_interrupt():
+                return
+
+        # 步骤 ①
         if phases in ("all", "init"):
             self._run_lyrics_and_music()
             if self.pm.check_interrupt():
@@ -119,6 +160,87 @@ class MVPipeline:
         print(f"  MV 流水线完成！")
         print(f"  输出: {self.pm.project_dir}/output/")
         print(f"{'='*55}\n")
+
+        # ══════════════════════════════════════════════════════
+    # Step 0: 创意简报 (Creative Brief)
+    # ══════════════════════════════════════════════════════
+
+    def _run_creative_brief(self):
+        """Step 0: 生成创意简报 — 在所有 LLM 步骤之前执行
+
+        调用 LLM 将用户原始输入扩展为结构化 brief：
+        - narrative_mode, visual_mode, character_policy, chorus_energy
+        - visual_anchors, do_not_do
+        这些字段会持久化到 info.json，供后续场景分析和图片生成使用。
+        """
+        if self.pm.get("narrative_mode"):
+            print("  创意简报已存在，跳过")
+            return
+
+        print("\n[Step 0] 创意简报...")
+        self.pm.update_step("① lyrics", "running", "creative brief...")
+
+        try:
+            prompt = self.registry.render("brief.creative", {
+                "theme": self.pm.theme,
+                "style": self.pm.style,
+                "mood": self.pm.mood,
+                "music_style": self.pm.music_style,
+                "language": self.pm.language,
+                "reference": self.pm.get("reference", ""),
+            })
+
+            api_url = "https://api.minimaxi.com/v1/chat/completions"
+            payload = json.dumps({
+                "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1024,
+            }).encode("utf-8")
+            headers = {
+                "Authorization": f"Bearer {self.cfg.get('minimax_token', '')}",
+                "Content-Type": "application/json",
+            }
+
+            resp_data = self.client._call_raw_api(
+                api_url, payload, headers,
+                prompt_key="creative_brief",
+                model=self.cfg.get("llm_model", "MiniMax-M2.7"),
+                prompt_text=prompt,
+            )
+            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            # 解析 JSON（兼容 markdown 代码块包裹）
+            import re
+            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                brace_start = raw.find("{")
+                brace_end = raw.rfind("}")
+                json_str = raw[brace_start:brace_end + 1] if brace_start != -1 and brace_end > brace_start else raw
+
+            brief = json.loads(json_str) if json_str.strip().startswith("{") else {}
+
+            for key in ("narrative_mode", "visual_mode", "character_policy",
+                        "chorus_energy", "visual_anchors", "do_not_do"):
+                if key in brief:
+                    self.pm.set(key, brief[key])
+
+            print(f"  brief: narrative={brief.get('narrative_mode', 'N/A')}, "
+                  f"visual={brief.get('visual_mode', 'N/A')}, "
+                  f"character={brief.get('character_policy', 'N/A')}, "
+                  f"chorus={brief.get('chorus_energy', 'N/A')}")
+
+            self.pm.update_step("① lyrics", "running", "creative brief done")
+
+        except Exception as e:
+            print(f"  创意简报生成失败: {e}（使用默认值继续）")
+            # 失败不阻塞流程，使用默认值
+            self.pm.set("narrative_mode", "mixed")
+            self.pm.set("visual_mode", "environment-led")
+            self.pm.set("character_policy", "optional protagonist")
+            self.pm.set("chorus_energy", "lifted")
+            self.pm.update_step("① lyrics", "running", "creative brief fallback")
 
     # ══════════════════════════════════════════════════════
     # Step ①-②: 歌词 + 音乐（Python v2 原生实现）
@@ -300,21 +422,29 @@ class MVPipeline:
         """Step ③.5: 场景分析"""
         scenes_path = self.pm.project_dir / "metadata" / "scenes.json"
         if scenes_path.exists():
+            self.pm.update_step("scene_analysis", "completed", "cached scenes.json")
             print("  场景分析已存在，跳过")
             return
 
         print("\n[Step ③.5] 场景分析...")
+        self.pm.update_step("scene_analysis", "running", "analyzing scenes...")
         from src.scene_analyzer import SceneAnalyzer
 
         try:
             analyzer = SceneAnalyzer(str(self.pm.project_dir))
             result = analyzer.analyze()
+            self.pm.update_step(
+                "scene_analysis",
+                "completed",
+                f"{result.get('scene_count', 0)} scenes, source={result.get('desc_source', 'unknown')}",
+            )
 
             if not self.auto_mode:
                 UserInteraction.pause_step4_review_scenes(self.pm)
                 print(UserInteraction.format_prompt_for_agent(self.pm))
 
         except Exception as e:
+            self.pm.update_step("scene_analysis", "failed", str(e))
             print(f"  场景分析失败: {e}")
             raise
 
@@ -339,7 +469,7 @@ class MVPipeline:
         try:
             scene_gen = SceneImageGenerator(str(self.pm.project_dir))
 
-            # Step ④: 基础角色图
+                        # Step ④: 基础角色图
             print("\n  [Step ④] 基础角色图...")
             if not scene_gen.generate_base_character(
                 theme=self.pm.theme,
@@ -347,6 +477,14 @@ class MVPipeline:
             ):
                 print("  [WARN] 基础角色图生成失败，继续后续步骤")
             self.pm.update_step("④ base", "completed", "done")
+
+            # Step ④.5: 全局锚定图（environment + symbolic anchor）
+            print("\n  [Step ④.5] 全局锚定图...")
+            scenes = scene_gen._load_scenes()
+            anchor_result = scene_gen.generate_anchors(scenes)
+            if anchor_result:
+                print(f"  [Anchors] environment={bool(anchor_result.get('environment_anchor'))}, "
+                      f"symbolic={bool(anchor_result.get('symbolic_anchor'))}")
 
             # Step ⑤-⑦: 批量场景图 + 变体图
             print("\n  [Steps ⑤-⑦] 批量场景图...")

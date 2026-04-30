@@ -79,7 +79,7 @@ class UserInteraction:
             scene_lines = []
             for i, s in enumerate(scenes, 1):
                 label = s.get("label", "?")
-                desc = s.get("description", "")[:60]
+                desc = (s.get("desc") or s.get("description") or "")[:60]
                 scene_lines.append(f"  {i}. [{label}] {desc}")
             scene_preview = "\n".join(scene_lines)
         else:

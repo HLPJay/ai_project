@@ -22,7 +22,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 
 class ExporterError(Exception):
@@ -236,9 +236,9 @@ class MVExporter:
             temp_audio = self.temp_dir / "merge_audio.mp3"
             temp_srt = self.temp_dir / "merge_sub.srt"
             temp_out = self.temp_dir / "merge_out.mp4"
-            shutil.copy2(str(video_raw), str(temp_video))
-            shutil.copy2(str(audio_file), str(temp_audio))
-            shutil.copy2(str(srt_file), str(temp_srt))
+            self._stage_temp_input(video_raw, temp_video)
+            self._stage_temp_input(audio_file, temp_audio)
+            self._stage_temp_input(srt_file, temp_srt)
 
             cmd = [
                 self.ffmpeg, "-y",
@@ -257,6 +257,7 @@ class MVExporter:
                 shutil.move(str(temp_out), str(final_output))
             else:
                 success = False
+                error = error or "subtitle burn fallback failed"
         else:
             success = False
 
@@ -271,6 +272,10 @@ class MVExporter:
 
             if not success2 or not final_output.exists():
                 return {"status": "failed", "error": error2 or "unknown"}
+            if srt_file.exists():
+                warning = error or "merged without subtitles"
+            else:
+                warning = None
 
         size_mb = final_output.stat().st_size / (1024 * 1024)
         duration = self._get_duration(str(final_output))
@@ -280,12 +285,15 @@ class MVExporter:
         except OSError:
             pass
 
-        return {
+        result = {
             "status": "ok",
             "size_mb": round(size_mb, 1),
             "duration_sec": duration,
             "output": str(final_output),
         }
+        if 'warning' in locals() and warning:
+            result["warnings"] = [warning]
+        return result
 
     # ══════════════════════════════════════════════════════
     # Step ⑪: 导出版本
@@ -316,6 +324,7 @@ class MVExporter:
         vertical_output = self.output_dir / "vertical.mp4"
 
         result = {"status": "ok"}
+        errors = []
 
         # ── TikTok 版本（横屏 + 字幕） ──
         if srt_file.exists():
@@ -324,8 +333,8 @@ class MVExporter:
             # 用 subprocess cwd 参数让 ffmpeg 在当前目录工作，只用文件名。
             temp_srt = self.temp_dir / "subs.srt"
             temp_video = self.temp_dir / "input.mp4"
-            shutil.copy2(str(final_output), str(temp_video))
-            shutil.copy2(str(srt_file), str(temp_srt))
+            self._stage_temp_input(final_output, temp_video)
+            self._stage_temp_input(srt_file, temp_srt)
 
             font = "Microsoft YaHei"
             style = (f"FontName={font},FontSize=28,"
@@ -351,6 +360,7 @@ class MVExporter:
             else:
                 # 降级：无字幕直接复制
                 print(f"  [!] tiktok 字幕导出失败, 降级为无字幕复制")
+                errors.append(f"tiktok subtitle render failed: {err or 'unknown'}")
                 shutil.copy(str(final_output), str(tiktok_output))
         else:
             # 无字幕则直接复制
@@ -365,6 +375,7 @@ class MVExporter:
             result["tiktok"] = ""
             result["tiktok_size_mb"] = 0
             result["status"] = "partial"
+            errors.append("tiktok output missing")
 
         # ── 竖屏版本（9:16, 使用 TikTok 版本作为输入） ──
         if tiktok_output.exists() and tiktok_output.stat().st_size > 0:
@@ -382,7 +393,9 @@ class MVExporter:
                 "-c:a", "copy",
                 str(vertical_output)
             ]
-            success_v, _ = self._run_ffmpeg(cmd, log_tag="⑪ export vertical")
+            success_v, vertical_error = self._run_ffmpeg(cmd, log_tag="⑪ export vertical")
+            if not success_v:
+                errors.append(f"vertical export failed: {vertical_error or 'unknown'}")
 
         if vertical_output.exists() and vertical_output.stat().st_size > 0:
             result["vertical"] = str(vertical_output)
@@ -393,7 +406,10 @@ class MVExporter:
             result["vertical"] = ""
             result["vertical_size_mb"] = 0
             result["status"] = "partial"
+            errors.append("vertical output missing")
 
+        if errors:
+            result["errors"] = errors
         return result
 
     # ══════════════════════════════════════════════════════
@@ -563,3 +579,17 @@ class MVExporter:
             return False, f"ffmpeg not found: {self.ffmpeg}"
         except Exception as e:
             return False, str(e)
+
+    def _stage_temp_input(self, source: Path, target: Path):
+        """灏嗚緭鍏ユ枃浠舵斁鍒颁复鏃剁洰褰曪紝浼樺厛纭摼鎺ワ紝澶辫触鍐嶅鍒躲€?"""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            try:
+                target.unlink()
+            except OSError:
+                pass
+
+        try:
+            os.link(str(source), str(target))
+        except OSError:
+            shutil.copy2(str(source), str(target))

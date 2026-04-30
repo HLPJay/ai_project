@@ -1,0 +1,40 @@
+Analyze the following creative intent for a music video (MV) project and produce a structured creative brief.
+
+## User Input
+Theme: {{ theme }}
+Style: {{ style }}
+Mood: {{ mood }}
+Music Style: {{ music_style }}
+Language: {{ language }}
+{% if reference %}Reference: {{ reference }}{% endif %}
+
+## Task
+
+Interpret the user's input and expand it into a structured creative brief that will guide all downstream steps (lyrics, music, visual interpretation, and image generation).
+
+## Output Keys
+
+- `narrative_mode`: how the story/emotion unfolds — one of: "story" (a clear narrative arc), "memory" (fragmented recollections), "mood" (pure atmosphere, no story), "abstract" (symbolic, non-literal), "mixed"
+- `visual_mode`: what the MV visually prioritizes — one of: "character-led" (protagonist-centered), "environment-led" (world/atmosphere driven), "symbolic" (objects and metaphors carry meaning), "mixed"
+- `character_policy`: how characters should be used — one of: "fixed protagonist" (same person throughout), "optional protagonist" (may appear intermittently), "no fixed protagonist" (no recurring character)
+- `chorus_energy`: how the chorus should feel relative to verses — one of: "restrained" (similar intensity), "lifted" (more energetic/wide), "explosive" (dramatic shift)
+- `visual_anchors`: brief description of key recurring visual motifs (1-2 sentences)
+- `do_not_do`: array of 2-4 things to avoid in visuals (e.g., "do not make every shot character-centered", "do not use harsh neon")
+
+## Rules
+
+- Base your decisions on the theme, mood, and style provided.
+- narrative_mode and visual_mode should be consistent with each other.
+- character_policy affects how the system plans scenes; be honest about whether a fixed protagonist makes sense.
+- Output pure JSON only, no extra text.
+
+```json
+{
+  "narrative_mode": "mixed",
+  "visual_mode": "environment-led",
+  "character_policy": "optional protagonist",
+  "chorus_energy": "lifted",
+  "visual_anchors": "recurring motifs and symbolic imagery description",
+  "do_not_do": ["rule 1", "rule 2", "rule 3"]
+}
+```

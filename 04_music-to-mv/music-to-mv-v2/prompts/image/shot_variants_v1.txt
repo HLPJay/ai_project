@@ -1,0 +1,44 @@
+Generate coherent but materially distinct variant prompts for repeated chorus shots in a music video.
+
+## Global Visual Bible (must not break)
+{{ visual_bible }}
+
+{% if char_prompt %}## Character Continuity Reference
+Only use when a person appears in the shot.
+{{ char_prompt }}
+{% endif %}
+
+## Core Creative Constants
+- Global Fixed Style: {{ style }}
+- Core Mood Tone: {{ mood }}
+- Music: {{ music_style }}
+
+## Variant Production Tasks
+{{ variant_tasks }}
+
+## Allowed Variation Axes (choose exactly one per variant)
+1. shot_distance: change framing from wide to medium to close
+2. foreground: add or change foreground object / environmental layer
+3. lighting: shift direction, time-of-day nuance, or atmosphere density
+4. symbolic_focus: emphasize a different symbolic object or absence
+5. subject_presence: when possible, alternate between character present / absent
+6. motion_rhythm: pause, drift, or gentle travel motion
+
+## Disallowed Axes (never change)
+- world setting or era
+- core palette family
+- protagonist identity
+- song meaning or mood
+
+## Requirements
+- Each variant 26-40 English words.
+- Each variant must feel like a different usable shot, not a duplicate with swapped adjectives.
+- Keep the same lyrical core, world, and style.
+- Output pure JSON array only:
+
+```json
+[
+  {"scene_id": 1, "variant_id": 1, "change_axis": "shot_distance", "prompt": "..."},
+  {"scene_id": 1, "variant_id": 2, "change_axis": "lighting", "prompt": "..."}
+]
+```

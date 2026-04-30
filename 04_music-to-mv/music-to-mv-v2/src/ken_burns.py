@@ -49,6 +49,7 @@ class KenBurnsGenerator:
     def __init__(self, fps: int = FPS, ffmpeg_path: str = "ffmpeg"):
         self.fps = fps
         self.ffmpeg = ffmpeg_path
+        self.last_error = ""
 
     # ══════════════════════════════════════════════════════
     # 公开 API
@@ -72,11 +73,13 @@ class KenBurnsGenerator:
         返回:
             True 成功, False 失败
         """
+        self.last_error = ""
         if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
             return True
 
         kb_frames = int(self.fps * duration_sec)
         if kb_frames < 1:
+            self.last_error = "invalid frame count"
             return False
 
         zoom_start, zoom_end = zoom_range
@@ -131,17 +134,25 @@ class KenBurnsGenerator:
                     timeout=duration_sec + 30
                 )
                 if result.returncode == 0 and os.path.getsize(output_path) > 1000:
+                    self.last_error = ""
                     return True
                 if result.returncode != 0 and attempt == 0:
                     err_text = result.stderr.decode("utf-8", errors="replace")[-200:]
                     print(f"     [KB ffmpeg err] {err_text.strip()}")
+                if result.returncode != 0:
+                    self.last_error = (
+                        result.stderr.decode("utf-8", errors="replace")[-300:].strip()
+                        or f"ffmpeg exit code {result.returncode}"
+                    )
             except subprocess.TimeoutExpired:
-                pass
-            except Exception:
-                pass
+                self.last_error = f"ffmpeg timed out after {duration_sec + 30}s"
+            except Exception as e:
+                self.last_error = str(e)
             if attempt < KB_MAX_RETRIES - 1:
                 time.sleep(1)
 
+        if not self.last_error:
+            self.last_error = "ken burns generation failed"
         return False
 
     def generate_scene_with_variants(self, image_paths: List[str],
@@ -167,7 +178,9 @@ class KenBurnsGenerator:
         返回:
             True 成功, False 失败
         """
+        self.last_error = ""
         if not image_paths:
+            self.last_error = "no image paths"
             return False
 
         # 只有一张图 -> 直接生成单图 KB
@@ -205,6 +218,7 @@ class KenBurnsGenerator:
             # 只有一个成功 -> 直接复制
             if len(temp_clips) == 1:
                 shutil.copy(temp_clips[0], output_path)
+                self.last_error = ""
                 return True
 
             # 多个 -> crossfade 拼接
@@ -303,7 +317,10 @@ class KenBurnsGenerator:
             )
 
             status = "ok" if ok else "failed"
-            results.append({"sid": sid, "status": status})
+            row = {"sid": sid, "status": status}
+            if not ok and self.last_error:
+                row["error"] = self.last_error
+            results.append(row)
             print(f"     {'[OK]' if ok else '[FAIL]'} done scene {sid}")
 
         # 统计
@@ -331,6 +348,7 @@ class KenBurnsGenerator:
         """多 clip crossfade 拼接"""
         if len(clip_paths) == 1:
             shutil.copy(clip_paths[0], output_path)
+            self.last_error = ""
             return True
 
         cmd = [self.ffmpeg, "-y"]
@@ -370,9 +388,17 @@ class KenBurnsGenerator:
 
         try:
             result = subprocess.run(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 timeout=total_duration + 30
             )
-            return result.returncode == 0
-        except Exception:
+            if result.returncode != 0:
+                self.last_error = (
+                    result.stderr.decode("utf-8", errors="replace")[-300:].strip()
+                    or f"xfade ffmpeg exit code {result.returncode}"
+                )
+                return False
+            self.last_error = ""
+            return True
+        except Exception as e:
+            self.last_error = str(e)
             return False

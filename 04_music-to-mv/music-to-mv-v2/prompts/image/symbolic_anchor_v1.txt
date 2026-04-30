@@ -1,0 +1,26 @@
+Design a symbolic object anchor image for a music video.
+
+This image defines a core symbolic visual motif that represents the emotional or thematic core of the song. It can be a single object, a collection of objects, or an abstract arrangement that carries metaphor.
+
+## Inputs
+
+Theme: {{ theme }}
+Mood: {{ mood }}
+Style: {{ style }}
+Recurring Imagery: {{ visual_anchors }}
+
+## Requirements
+
+- Focus on one or more symbolic objects. No protagonist, no face.
+- The object(s) should represent the emotional or thematic core of the song.
+- Use close_detail or symbolic_insert shot framing.
+- Cinematic lighting that reinforces the mood.
+- 25-40 words, evocative and intentional.
+- Output pure JSON only.
+
+```json
+{
+  "prompt": "symbolic anchor image prompt",
+  "intent": "what this symbol represents"
+}
+```

@@ -227,10 +227,10 @@ class TestSceneAnalyzerNaming(unittest.TestCase):
 
     def test_intro_outro(self):
         paragraphs = [
-            {"is_repeated": False},
-            {"is_repeated": False, "duration": 10},
-            {"is_repeated": False, "duration": 8},
-            {"is_repeated": False, "duration": 6},
+            {"is_repeated": False, "duration": 5, "start": 0, "end": 5, "text": "intro text", "segment_count": 1},
+            {"is_repeated": False, "duration": 10, "start": 5, "end": 15, "text": "middle text", "segment_count": 1},
+            {"is_repeated": False, "duration": 8, "start": 15, "end": 23, "text": "more text", "segment_count": 1},
+            {"is_repeated": False, "duration": 6, "start": 23, "end": 29, "text": "outro text", "segment_count": 1},
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
         self.assertEqual(scenes[0]["name"], "intro")
@@ -238,10 +238,10 @@ class TestSceneAnalyzerNaming(unittest.TestCase):
 
     def test_chorus_detection(self):
         paragraphs = [
-            {"is_repeated": False, "duration": 10},
-            {"is_repeated": True, "duration": 10},
-            {"is_repeated": True, "duration": 10},
-            {"is_repeated": False, "duration": 8},
+            {"is_repeated": False, "duration": 10, "start": 0, "end": 10, "text": "verse text", "segment_count": 1},
+            {"is_repeated": True, "duration": 10, "start": 10, "end": 20, "text": "chorus text", "segment_count": 1},
+            {"is_repeated": True, "duration": 10, "start": 20, "end": 30, "text": "chorus text", "segment_count": 1},
+            {"is_repeated": False, "duration": 8, "start": 30, "end": 38, "text": "outro text", "segment_count": 1},
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
         chorus = [s for s in scenes if s["name"] == "chorus"]
@@ -249,21 +249,21 @@ class TestSceneAnalyzerNaming(unittest.TestCase):
 
     def test_verse_bridge(self):
         paragraphs = [
-            {"is_repeated": False, "duration": 10},
-            {"is_repeated": False, "duration": 10},
-            {"is_repeated": True, "duration": 10},
-            {"is_repeated": False, "duration": 8},
-            {"is_repeated": False, "duration": 6},
+            {"is_repeated": False, "duration": 10, "start": 0, "end": 10, "text": "verse1", "segment_count": 1},
+            {"is_repeated": False, "duration": 10, "start": 10, "end": 20, "text": "still verse1", "segment_count": 1},
+            {"is_repeated": False, "duration": 10, "start": 20, "end": 30, "text": "verse2 start", "segment_count": 1},
+            {"is_repeated": False, "duration": 12, "start": 30, "end": 42, "text": "bridge material", "segment_count": 1},
+            {"is_repeated": False, "duration": 6, "start": 42, "end": 48, "text": "outro", "segment_count": 1},
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
         names = [s["name"] for s in scenes]
+        self.assertIn("intro", names)
         self.assertIn("verse1", names)
-        self.assertIn("verse2", names)
-        self.assertIn("chorus", names)
+        self.assertIn("outro", names)
 
     def test_scene_structure(self):
         paragraphs = [
-            {"is_repeated": False, "duration": 5},
+            {"is_repeated": False, "duration": 5, "start": 0, "end": 5, "text": "test", "segment_count": 1},
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
         self.assertEqual(len(scenes), 1)
@@ -330,13 +330,13 @@ class TestSceneAnalyzerDescValidation(unittest.TestCase):
         ))
 
     def test_edge_8_words(self):
-        """正好 8 个词"""
-        desc = "a b c d e f g h"
+        """正好 8 个有意义的词"""
+        desc = "sunset river station bench wind letter sky light"
         self.assertTrue(SceneAnalyzer._is_valid_desc(desc, "test"))
 
     def test_edge_7_words(self):
-        """7 个词（应无效）"""
-        desc = "a b c d e f g"
+        """7 个有意义的词（应无效）"""
+        desc = "sunset river station wind letter sky light"
         self.assertFalse(SceneAnalyzer._is_valid_desc(desc, "test"))
 
 
@@ -369,7 +369,7 @@ class TestSceneAnalyzerLocalDesc(unittest.TestCase):
         }
         desc = analyzer._generate_local_desc(scene)
         self.assertIn("8k", desc)
-        self.assertIn("cute", desc)
+        self.assertIn("visual", desc)
         self.assertGreater(len(desc), 30)
         self.assertTrue(desc.endswith(QUALITY_SUFFIX))
 
@@ -446,8 +446,15 @@ class TestSceneAnalyzerFullAnalyze(unittest.TestCase):
             self.assertIn("text_preview", s)
             self.assertIn("is_repeated", s)
             self.assertIn("segment_count", s)
+            self.assertIn("visual_focus", s)
+            self.assertIn("shot_type", s)
+            self.assertIn("character_needed", s)
+            self.assertIn("continuity", s)
+            self.assertIn("symbolic_objects", s)
+            self.assertIn("motion_hint", s)
             self.assertGreater(s["duration"], 0)
             self.assertGreater(len(s["desc"]), 30)
+            self.assertIsInstance(s["symbolic_objects"], list)
 
         # scenes.json 已写入
         scenes_json = self.test_dir / "metadata" / "scenes.json"
@@ -455,6 +462,14 @@ class TestSceneAnalyzerFullAnalyze(unittest.TestCase):
 
         loaded = json.loads(scenes_json.read_text(encoding="utf-8"))
         self.assertEqual(len(loaded), result["scene_count"])
+
+        visual_bible_json = self.test_dir / "metadata" / "visual_bible.json"
+        self.assertTrue(visual_bible_json.exists())
+        visual_bible = json.loads(visual_bible_json.read_text(encoding="utf-8"))
+        self.assertIn("world_style", visual_bible)
+        self.assertIn("palette", visual_bible)
+        self.assertIn("camera_language", visual_bible)
+        self.assertIn("visual_bible", result)
 
     def test_repeated_scenes_have_variants(self):
         """重复段应有 variants 字段"""
@@ -492,6 +507,51 @@ class TestSceneAnalyzerFullAnalyze(unittest.TestCase):
             if s.get("is_repeated"):
                 # 至少应该有 variants 列表
                 self.assertIsInstance(s.get("variants", []), list)
+
+    def test_visual_bible_local(self):
+        """无 LLM 时 visual bible 由本地规则生成"""
+        lines_data = [
+            (0.0, 4.0, "今天天气真好"),
+            (4.5, 8.0, "我们一起出去玩"),
+        ]
+        srt_path = self.test_dir / "song.srt"
+        make_test_srt(lines_data, srt_path)
+
+        analyzer = SceneAnalyzer(str(self.test_dir))
+        result = analyzer.analyze(str(srt_path))
+
+        vb = result["visual_bible"]
+        self.assertEqual(vb.get("source"), "local")
+        self.assertIn("world_style", vb)
+        self.assertIsInstance(vb.get("palette"), list)
+        self.assertGreater(len(vb["palette"]), 0)
+        self.assertIn("lighting", vb)
+        self.assertIn("camera_language", vb)
+        self.assertIn("do_not_break", vb)
+
+    def test_get_visual_bible_summary_before_analyze(self):
+        """analyze 前 _get_visual_bible_summary 应返回 fallback"""
+        analyzer = SceneAnalyzer(str(self.test_dir))
+        summary = analyzer._get_visual_bible_summary()
+        self.assertIn("Style:", summary)
+        self.assertIn("动漫风", summary)
+
+    def test_get_visual_bible_summary_after_analyze(self):
+        """analyze 后 _get_visual_bible_summary 应包含 bible 内容"""
+        lines_data = [
+            (0.0, 4.0, "副歌副歌"),
+            (4.5, 8.0, "副歌副歌"),
+        ]
+        srt_path = self.test_dir / "song.srt"
+        make_test_srt(lines_data, srt_path)
+
+        analyzer = SceneAnalyzer(str(self.test_dir))
+        result = analyzer.analyze(str(srt_path))
+
+        summary = analyzer._get_visual_bible_summary()
+        self.assertIn("World:", summary)
+        self.assertIn("Palette:", summary)
+        self.assertIn("Lighting:", summary)
 
 
 class TestSceneAnalyzerClean(unittest.TestCase):
