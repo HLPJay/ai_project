@@ -35,6 +35,9 @@ DEFAULT_SHARPEN = "5:5:0.8:3:3:0.4"       # unsharp 滤镜参数
 DEFAULT_TRANSITION_RATIO = 0.2             # crossfade 占每片段比例
 DEFAULT_MIN_IMG_DUR = 5.0                  # 单图最短时长（秒）
 DEFAULT_FADE_DUR = 1.5                     # 淡入淡出时长（秒）
+DEFAULT_PAN_X = 30.0                       # 默认水平平移幅度（像素）
+DEFAULT_PAN_Y = 18.0                       # 默认垂直平移幅度（像素）
+DEFAULT_SUPERSAMPLE = 2                    # 高分辨率运动后再降采样，减少抖动
 KB_MAX_RETRIES = 3
 
 
@@ -46,9 +49,37 @@ class KenBurnsError(Exception):
 class KenBurnsGenerator:
     """Ken Burns 视频生成器"""
 
-    def __init__(self, fps: int = FPS, ffmpeg_path: str = "ffmpeg"):
+    def __init__(self, fps: int = FPS, ffmpeg_path: str = "ffmpeg",
+                 timeout_buffer_sec: int = None,
+                 pan_x: float = None,
+                 pan_y: float = None,
+                 supersample_scale: int = None):
         self.fps = fps
         self.ffmpeg = ffmpeg_path
+        cfg = None
+        if timeout_buffer_sec is None:
+            try:
+                from src.config_manager import ConfigManager
+                cfg = ConfigManager()
+                timeout_buffer_sec = cfg.get_int("kb_timeout_buffer_sec", 30)
+            except Exception:
+                timeout_buffer_sec = 30
+        if cfg is None:
+            try:
+                from src.config_manager import ConfigManager
+                cfg = ConfigManager()
+            except Exception:
+                cfg = None
+        self.timeout_buffer_sec = timeout_buffer_sec
+        self.pan_x = pan_x if pan_x is not None else (
+            cfg.get_float("kb_pan_x", DEFAULT_PAN_X) if cfg else DEFAULT_PAN_X
+        )
+        self.pan_y = pan_y if pan_y is not None else (
+            cfg.get_float("kb_pan_y", DEFAULT_PAN_Y) if cfg else DEFAULT_PAN_Y
+        )
+        self.supersample_scale = max(1, supersample_scale if supersample_scale is not None else (
+            cfg.get_int("kb_supersample_scale", DEFAULT_SUPERSAMPLE) if cfg else DEFAULT_SUPERSAMPLE
+        ))
         self.last_error = ""
 
     # ══════════════════════════════════════════════════════
@@ -83,18 +114,21 @@ class KenBurnsGenerator:
             return False
 
         zoom_start, zoom_end = zoom_range
-        zoom_step = (zoom_end - 1.0) / max(kb_frames, 1)
-        zoom_end_actual = 1.0 + zoom_step * kb_frames
+        zoom_step = (zoom_end - zoom_start) / max(kb_frames, 1)
 
-        # 先缩放到标准 1280x720（横屏），适配任意方向图片
+        render_w = 1280 * self.supersample_scale
+        render_h = 720 * self.supersample_scale
+
+        # 先缩放到高分辨率横屏画布，再 zoompan，最后降采样到 1280x720。
+        # 这样能降低 zoompan 逐帧整数取样带来的像素级抖动。
         vf_prefix = (
-            "scale=1280:720:force_original_aspect_ratio=decrease,"
-            "pad=1280:720:(ow-iw)/2:(oh-ih)/2,"
+            f"scale={render_w}:{render_h}:force_original_aspect_ratio=decrease,"
+            f"pad={render_w}:{render_h}:(ow-iw)/2:(oh-ih)/2,"
         )
 
-        # 随机镜头偏移（使每个场景的镜头移动不同）
-        offset_x = random.uniform(-120, 120)
-        offset_y = random.uniform(-80, 80)
+        # 随机镜头偏移。默认幅度较小，避免短镜头中出现明显抖动。
+        offset_x = random.uniform(-self.pan_x, self.pan_x) * self.supersample_scale
+        offset_y = random.uniform(-self.pan_y, self.pan_y) * self.supersample_scale
 
         # 淡出起始时间
         fade_out_start = max(fade_duration, duration_sec - fade_duration)
@@ -104,11 +138,12 @@ class KenBurnsGenerator:
         vf = (
             f"{vf_prefix}"
             f"zoompan="
-            f"z=1+{zoom_step:.6f}*on:"
-            f"x=iw/2-(iw/zoom/2)+{offset_x:.0f}*on/{kb_frames}:"
-            f"y=ih/2-(ih/zoom/2)+{offset_y:.0f}*on/{kb_frames}:"
+            f"z={zoom_start:.6f}+{zoom_step:.8f}*on:"
+            f"x=(iw-iw/zoom)/2+{offset_x:.3f}*on/{kb_frames}:"
+            f"y=(ih-ih/zoom)/2+{offset_y:.3f}*on/{kb_frames}:"
             f"d={kb_frames}:"
-            f"s=1280x720:fps={self.fps},"
+            f"s={render_w}x{render_h}:fps={self.fps},"
+            f"scale=1280:720:flags=lanczos,"
             f"unsharp={sharpen_params},"
             f"fade=t=in:st=0:d={min(fade_duration, duration_sec*0.3):.2f},"
             f"fade=t=out:st={fade_out_start:.2f}:d={min(fade_duration, duration_sec*0.3):.2f}"
@@ -131,7 +166,7 @@ class KenBurnsGenerator:
             try:
                 result = subprocess.run(
                     cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                    timeout=duration_sec + 30
+                    timeout=duration_sec + self.timeout_buffer_sec
                 )
                 if result.returncode == 0 and os.path.getsize(output_path) > 1000:
                     self.last_error = ""
@@ -145,7 +180,9 @@ class KenBurnsGenerator:
                         or f"ffmpeg exit code {result.returncode}"
                     )
             except subprocess.TimeoutExpired:
-                self.last_error = f"ffmpeg timed out after {duration_sec + 30}s"
+                self.last_error = (
+                    f"ffmpeg timed out after {duration_sec + self.timeout_buffer_sec}s"
+                )
             except Exception as e:
                 self.last_error = str(e)
             if attempt < KB_MAX_RETRIES - 1:
@@ -240,7 +277,7 @@ class KenBurnsGenerator:
     # 场景级批量处理
     # ══════════════════════════════════════════════════════
 
-    def process_project(self, project_dir: str, zoom_range: str = "1.0-1.25",
+    def process_project(self, project_dir: str, zoom_range: str = None,
                         sharpen: str = DEFAULT_SHARPEN,
                         transition_ratio: float = DEFAULT_TRANSITION_RATIO,
                         min_img_dur: float = DEFAULT_MIN_IMG_DUR) -> Dict[str, Any]:
@@ -272,6 +309,17 @@ class KenBurnsGenerator:
         if variants_path.exists():
             data = json.loads(variants_path.read_text(encoding="utf-8"))
             variant_scenes = {int(k): v for k, v in data.get("variant_scenes", {}).items()}
+
+        if zoom_range is None:
+            try:
+                from src.config_manager import ConfigManager
+                cfg = ConfigManager()
+                zoom_range = (
+                    f"{cfg.get_float('kb_zoom_start', 1.0)}-"
+                    f"{cfg.get_float('kb_zoom_end', 1.12)}"
+                )
+            except Exception:
+                zoom_range = "1.0-1.12"
 
         zoom_start, zoom_end = map(float, zoom_range.split("-"))
         zoom = (zoom_start, zoom_end)
@@ -389,7 +437,7 @@ class KenBurnsGenerator:
         try:
             result = subprocess.run(
                 cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                timeout=total_duration + 30
+                timeout=total_duration + self.timeout_buffer_sec
             )
             if result.returncode != 0:
                 self.last_error = (

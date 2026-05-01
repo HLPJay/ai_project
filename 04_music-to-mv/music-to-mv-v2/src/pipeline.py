@@ -9,7 +9,7 @@ pipeline.py — MV 流水线主编排器
   Step ②:  生成音乐       → generate_music()          [Python v2]
   Step ③:  歌词对齐       → align_lyrics()            [Shell: align_lyrics.sh]
   Step ③.5: 场景分析      → analyze_scenes()          [Python v2: src/scene_analyzer.py]
-  Step ④:  基础角色图     → base_character()          [Python v2: src/scene_generator.py]
+  Step ④:  基础视觉参考图 → base_character()          [Python v2: src/scene_generator.py]
   Step ⑤-⑦: 批量场景图   → scene_images()            [Python v2: src/scene_generator.py]
   Step ⑧:  Ken Burns     → ken_burns()               [Python v2: src/
   Step ⑨:  视频拼接       → concat_video()            [Python v2: src/exporter.py]
@@ -33,6 +33,7 @@ from src.llm.registry import PromptRegistry
 from src.interaction import UserInteraction
 from src.ken_burns import KenBurnsGenerator
 from src.exporter import MVExporter
+from src.song_structure import select_song_structure
 from src.scripts_bridge import (
     run_produce_mv, run_merge_and_export, run_align_lyrics,
     run_analyze_srt, run_generate_music, run_generate_lyrics,
@@ -174,6 +175,11 @@ class MVPipeline:
         这些字段会持久化到 info.json，供后续场景分析和图片生成使用。
         """
         if self.pm.get("narrative_mode"):
+            if not self.pm.get("song_structure"):
+                structure = self._select_song_structure()
+                self.pm.set("song_structure_name", structure.name)
+                self.pm.set("song_structure", structure.sequence)
+                self.pm.set("song_structure_notes", structure.notes)
             print("  创意简报已存在，跳过")
             return
 
@@ -194,7 +200,7 @@ class MVPipeline:
             payload = json.dumps({
                 "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1024,
+                "max_tokens": self.cfg.get_int("creative_brief_max_tokens", 2048),
             }).encode("utf-8")
             headers = {
                 "Authorization": f"Bearer {self.cfg.get('minimax_token', '')}",
@@ -226,10 +232,16 @@ class MVPipeline:
                 if key in brief:
                     self.pm.set(key, brief[key])
 
+            structure = self._select_song_structure()
+            self.pm.set("song_structure_name", structure.name)
+            self.pm.set("song_structure", structure.sequence)
+            self.pm.set("song_structure_notes", structure.notes)
+
             print(f"  brief: narrative={brief.get('narrative_mode', 'N/A')}, "
                   f"visual={brief.get('visual_mode', 'N/A')}, "
                   f"character={brief.get('character_policy', 'N/A')}, "
-                  f"chorus={brief.get('chorus_energy', 'N/A')}")
+                  f"chorus={brief.get('chorus_energy', 'N/A')}, "
+                  f"structure={structure.name}")
 
             self.pm.update_step("① lyrics", "running", "creative brief done")
 
@@ -240,7 +252,23 @@ class MVPipeline:
             self.pm.set("visual_mode", "environment-led")
             self.pm.set("character_policy", "optional protagonist")
             self.pm.set("chorus_energy", "lifted")
+            structure = self._select_song_structure()
+            self.pm.set("song_structure_name", structure.name)
+            self.pm.set("song_structure", structure.sequence)
+            self.pm.set("song_structure_notes", structure.notes)
             self.pm.update_step("① lyrics", "running", "creative brief fallback")
+
+    def _select_song_structure(self):
+        """根据配置和创意简报选择歌词/音乐共用的歌曲结构。"""
+        return select_song_structure(
+            theme=self.pm.theme,
+            music_style=self.pm.music_style,
+            mood=self.pm.mood,
+            narrative_mode=self.pm.get("narrative_mode", ""),
+            chorus_energy=self.pm.get("chorus_energy", ""),
+            mode=self.cfg.get("lyrics_structure_mode", "adaptive"),
+            override=self.cfg.get("lyrics_structure", ""),
+        )
 
     # ══════════════════════════════════════════════════════
     # Step ①-②: 歌词 + 音乐（Python v2 原生实现）
@@ -270,6 +298,11 @@ class MVPipeline:
 
         # 渲染 prompt
         try:
+            structure = self._select_song_structure()
+            if not self.pm.get("song_structure"):
+                self.pm.set("song_structure_name", structure.name)
+                self.pm.set("song_structure", structure.sequence)
+                self.pm.set("song_structure_notes", structure.notes)
             prompt = self.registry.render("lyrics.generation", {
                 "theme": self.pm.theme,
                 "style": self.pm.style,
@@ -277,6 +310,8 @@ class MVPipeline:
                 "mood": self.pm.mood,
                 "language": self.pm.language,
                 "reference": self.pm.get("reference", ""),
+                "song_structure": self.pm.get("song_structure", structure.sequence),
+                "structure_notes": self.pm.get("song_structure_notes", structure.notes),
             })
         except KeyError:
             prompt = self._build_lyrics_prompt_fallback()
@@ -333,16 +368,35 @@ class MVPipeline:
 
         # 构建 prompt
         song_title = self.pm.song_title
-        music_prompt_parts = []
-        if song_title:
-            music_prompt_parts.append(f"歌曲名：{song_title}")
-        music_prompt_parts.append(f"情绪：{self.pm.mood}")
-        music_prompt_parts.append(f"音乐风格：{self.pm.music_style}")
-        music_prompt_parts.append(f"主题：{self.pm.theme}")
-        music_prompt_parts.append(f"演唱语言：{self.pm.language}")
-        music_prompt_parts.append("旋律流畅自然，节奏清晰，副歌抓耳，主歌舒缓")
-        music_prompt_parts.append("完整歌曲结构：主歌1 → 副歌 → 主歌2 → 副歌 → 尾奏")
-        music_prompt = "，".join(music_prompt_parts)
+        structure = self._select_song_structure()
+        if not self.pm.get("song_structure"):
+            self.pm.set("song_structure_name", structure.name)
+            self.pm.set("song_structure", structure.sequence)
+            self.pm.set("song_structure_notes", structure.notes)
+        try:
+            music_prompt = self.registry.render("music.generation", {
+                "song_title": song_title or self.pm.theme,
+                "mood": self.pm.mood,
+                "music_style": self.pm.music_style,
+                "theme": self.pm.theme,
+                "language": self.pm.language,
+                "reference": self.pm.get("reference", ""),
+                "song_structure": self.pm.get("song_structure", structure.sequence),
+                "structure_notes": self.pm.get("song_structure_notes", structure.notes),
+            })
+        except KeyError:
+            music_prompt_parts = []
+            if song_title:
+                music_prompt_parts.append(f"歌曲名：{song_title}")
+            music_prompt_parts.append(f"情绪：{self.pm.mood}")
+            music_prompt_parts.append(f"音乐风格：{self.pm.music_style}")
+            music_prompt_parts.append(f"主题：{self.pm.theme}")
+            music_prompt_parts.append(f"演唱语言：{self.pm.language}")
+            music_prompt_parts.append(
+                f"歌曲结构：{self.pm.get('song_structure', structure.sequence)}"
+            )
+            music_prompt_parts.append("旋律流畅自然，节奏清晰，hook 抓耳，段落层次分明")
+            music_prompt = "，".join(music_prompt_parts)
 
         try:
             result = self.client.call_minimax_music(music_prompt, lyrics_text)
@@ -366,6 +420,50 @@ class MVPipeline:
             print(f"  音乐生成失败: {e}")
             raise
 
+    def _wait_for_user_choice(self, step_name: str) -> str:
+        """等待用户选择，兼容终端交互（input）和 Agent 模式（approve）
+
+        检查顺序：
+          1. get_user_choice() — Agent 已通过 approve() 设置的选择
+          2. auto_mode — 跳过，返回默认值
+          3. 终端 input() — 交互式等待用户输入
+        """
+        choice = self.pm.get_user_choice(step_name)
+        if choice:
+            return choice
+
+        if self.auto_mode:
+            defaults = {
+                "step_2_approval": "continue",
+                "step_3_alignment": "auto",
+                "step_4_scene_review": "continue",
+            }
+            return defaults.get(step_name, "continue")
+
+        options_map = {
+            "step_2_approval": {
+                "1": "continue", "2": "pause", "3": "retry_music", "4": "retry_lyrics",
+                "c": "continue", "继续": "continue",
+                "p": "pause", "暂停": "pause",
+            },
+            "step_3_alignment": {
+                "1": "auto", "2": "manual", "a": "auto", "b": "manual",
+                "auto": "auto", "manual": "manual", "自动": "auto", "手动": "manual",
+            },
+            "step_4_scene_review": {
+                "1": "continue", "2": "retry", "c": "continue", "r": "retry",
+                "继续": "continue", "重新分析": "retry",
+            },
+        }
+        opts = options_map.get(step_name, {"": "continue"})
+        while True:
+            raw = input("\n请输入选项 > ").strip().lower()
+            if raw in opts:
+                selected = opts[raw]
+                self.pm.approve(selected)
+                return selected
+            print("  无效输入，请重新选择")
+
     # ══════════════════════════════════════════════════════
     # 暂停点检查
     # ══════════════════════════════════════════════════════
@@ -385,6 +483,25 @@ class MVPipeline:
         UserInteraction.pause_step2(self.pm)
         print(UserInteraction.format_prompt_for_agent(self.pm))
 
+        choice = self._wait_for_user_choice("step_2_approval")
+
+        if choice == "retry_lyrics":
+            print("  用户选择重新生成歌词...")
+            self.pm.update_step("① lyrics", "pending", "retry")
+            self.pm.set("step2_approved", False)
+            return self._run_lyrics_and_music()
+        elif choice == "retry_music":
+            print("  用户选择重新生成音乐...")
+            self.pm.update_step("② music", "pending", "retry")
+            self.pm.set("step2_approved", False)
+            return self._run_lyrics_and_music()
+        elif choice == "pause":
+            print("  用户选择暂停，流水线停止")
+            sys.exit(0)
+        else:
+            self.pm.set("step2_approved", True)
+            print("  ✅ 继续执行")
+
     # ══════════════════════════════════════════════════════
     # Step ③: 对齐 — 桥接到原版 Shell 脚本
     # ══════════════════════════════════════════════════════
@@ -395,7 +512,7 @@ class MVPipeline:
         if not choice and not self.auto_mode:
             UserInteraction.pause_step3_alignment(self.pm)
             print(UserInteraction.format_prompt_for_agent(self.pm))
-            choice = self.pm.get_user_choice("step_3_alignment")
+            choice = self._wait_for_user_choice("step_3_alignment")
 
         align_mode = choice or "auto"
 
@@ -405,7 +522,22 @@ class MVPipeline:
 
         try:
             srt_file = self.pm.get("manual_srt_file", "") if align_mode == "manual" else ""
-            result = run_align_lyrics(str(self.pm.project_dir), align_mode, srt_file)
+            result = run_align_lyrics(
+                str(self.pm.project_dir),
+                align_mode,
+                srt_file,
+                timeout=self.cfg.get_int("align_timeout_sec", 600),
+            )
+            self.pm.set("alignment", {
+                "mode": align_mode,
+                "status": result.get("status", "completed"),
+                "engine": result.get("engine", ""),
+                "srt_path": result.get("srt_path", ""),
+                "aligned_lines": result.get("aligned_lines", 0),
+                "total_lines": result.get("total_lines", 0),
+                "total_lyrics_lines": result.get("total_lines", 0),
+                "srt_entries": result.get("srt_entries", 0),
+            })
 
             self.pm.update_step("③ align", "completed", f"mode={align_mode}")
 
@@ -415,7 +547,7 @@ class MVPipeline:
             raise
 
     # ══════════════════════════════════════════════════════
-    # Step ③.5: 场景分析 — Python v2 (scene_analyzer.SceneAnalyzer)
+    # 步骤 ③.5: 场景分析 — Python v2 (scene_analyzer.SceneAnalyzer)
     # ══════════════════════════════════════════════════════
 
     def _run_scene_analysis(self):
@@ -442,6 +574,12 @@ class MVPipeline:
             if not self.auto_mode:
                 UserInteraction.pause_step4_review_scenes(self.pm)
                 print(UserInteraction.format_prompt_for_agent(self.pm))
+                choice = self._wait_for_user_choice("step_4_scene_review")
+                if choice == "retry":
+                    print("  用户选择重新分析...")
+                    if scenes_path.exists():
+                        scenes_path.unlink()
+                    return self._run_scene_analysis()
 
         except Exception as e:
             self.pm.update_step("scene_analysis", "failed", str(e))
@@ -455,7 +593,7 @@ class MVPipeline:
         """运行 Step ④-⑧ 生图 + Ken Burns
 
         策略：
-          Step ④:  基础角色图     -> Python v2 (scene_generator.generate_base_character)
+          Step ④:  基础视觉参考图 -> Python v2 (scene_generator.generate_base_character)
           Step ⑤-⑦: 批量场景图   -> Python v2 (scene_generator.generate_all)
           Step ⑧:  Ken Burns     -> Python v2 (ken_burns.KenBurnsGenerator.process_project)
         """
@@ -469,13 +607,13 @@ class MVPipeline:
         try:
             scene_gen = SceneImageGenerator(str(self.pm.project_dir))
 
-                        # Step ④: 基础角色图
-            print("\n  [Step ④] 基础角色图...")
+            # Step ④: 基础视觉参考图
+            print("\n  [Step ④] 基础视觉参考图...")
             if not scene_gen.generate_base_character(
                 theme=self.pm.theme,
                 song_title=self.pm.get("song_title", ""),
             ):
-                print("  [WARN] 基础角色图生成失败，继续后续步骤")
+                print("  [WARN] 基础视觉参考图生成失败，继续后续步骤")
             self.pm.update_step("④ base", "completed", "done")
 
             # Step ④.5: 全局锚定图（environment + symbolic anchor）
@@ -488,7 +626,9 @@ class MVPipeline:
 
             # Step ⑤-⑦: 批量场景图 + 变体图
             print("\n  [Steps ⑤-⑦] 批量场景图...")
-            img_result = scene_gen.generate_all(parallel=2)
+            img_result = scene_gen.generate_all(
+                parallel=max(1, self.cfg.get_int("image_parallel", 1))
+            )
             self.pm.update_step("⑤-⑦ images", "completed",
                                 f"{img_result['succeeded']}/{img_result['total']} 成功, "
                                 f"{img_result['failed']} 失败")
@@ -505,7 +645,9 @@ class MVPipeline:
         # Step ⑧: Ken Burns — 纯 Python 实现
         try:
             print("\n  [Step ⑧] Ken Burns 视频生成...")
-            kb = KenBurnsGenerator()
+            kb = KenBurnsGenerator(
+                timeout_buffer_sec=self.cfg.get_int("kb_timeout_buffer_sec", 30)
+            )
             kb_result = kb.process_project(str(self.pm.project_dir))
             if kb_result["failed"] > 0:
                 print(f"  [WARN] {kb_result['failed']} 个场景 KB 生成失败")
@@ -524,7 +666,11 @@ class MVPipeline:
         print("\n[Step ⑨-⑪] 合成视频 + 导出...")
 
         try:
-            exporter = MVExporter(str(self.pm.project_dir))
+            exporter = MVExporter(
+                str(self.pm.project_dir),
+                ffmpeg_timeout=self.cfg.get_int("ffmpeg_timeout_sec", 600),
+                ffprobe_timeout=self.cfg.get_int("ffprobe_timeout_sec", 10),
+            )
             export_result = exporter.export_all()
 
             concat = export_result.get("concat", {})
@@ -575,7 +721,8 @@ class MVPipeline:
             result = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries",
                  "format=duration", "-of", "csv=p=0", audio_file],
-                capture_output=True, text=True, timeout=10
+                capture_output=True, text=True,
+                timeout=self.cfg.get_int("ffprobe_timeout_sec", 10)
             )
             if result.returncode == 0 and result.stdout.strip():
                 return int(float(result.stdout.strip()))
@@ -585,13 +732,16 @@ class MVPipeline:
 
     def _build_lyrics_prompt_fallback(self) -> str:
         """Fallback 歌词 prompt 构造"""
+        structure = self._select_song_structure()
         parts = [
             f"创作主题：{self.pm.theme}",
             f"整体艺术风格：{self.pm.style}",
             f"音乐曲风：{self.pm.music_style}",
             f"整体情绪氛围：{self.pm.mood}",
             f"创作语言：{self.pm.language}",
-            "严格遵循标准流行歌曲结构：主歌1、副歌、主歌2、副歌、收尾段落",
+            f"推荐歌曲结构：{self.pm.get('song_structure', structure.sequence)}",
+            f"结构说明：{self.pm.get('song_structure_notes', structure.notes)}",
+            "可按音乐性微调结构，避免所有歌曲都套用固定主歌-副歌模板",
             "句式长短均衡，韵律协调，押韵自然",
         ]
         ref = self.pm.get("reference", "")

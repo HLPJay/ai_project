@@ -1,5 +1,6 @@
 You are defining a global visual bible for a lyric-driven music video.
 Return one compact JSON object only.
+Do not output analysis, explanations, markdown, XML tags, or <think> content.
 
 Theme: {{ theme }}
 Mood: {{ mood }}
@@ -24,3 +25,4 @@ Rules:
 - world_style must be a single concise phrase (under 20 words).
 - lighting and camera_language must be actionable, not abstract.
 - This JSON will be read by an automated system; do not include explanatory text outside the JSON.
+- Start your answer with `{` and end with `}`.

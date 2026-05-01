@@ -40,10 +40,25 @@ class MVExporter:
     """
 
     def __init__(self, project_dir: str, ffmpeg: str = "ffmpeg",
-                 ffprobe: str = "ffprobe"):
+                 ffprobe: str = "ffprobe",
+                 ffmpeg_timeout: int = None,
+                 ffprobe_timeout: int = None):
         self.project_dir = Path(project_dir)
         self.ffmpeg = ffmpeg
         self.ffprobe = ffprobe
+        if ffmpeg_timeout is None or ffprobe_timeout is None:
+            try:
+                from src.config_manager import ConfigManager
+                cfg = ConfigManager()
+                if ffmpeg_timeout is None:
+                    ffmpeg_timeout = cfg.get_int("ffmpeg_timeout_sec", 600)
+                if ffprobe_timeout is None:
+                    ffprobe_timeout = cfg.get_int("ffprobe_timeout_sec", 10)
+            except Exception:
+                ffmpeg_timeout = ffmpeg_timeout or 600
+                ffprobe_timeout = ffprobe_timeout or 10
+        self.ffmpeg_timeout = ffmpeg_timeout
+        self.ffprobe_timeout = ffprobe_timeout
 
         # 路径快捷方式
         self.audio_dir = self.project_dir / "audio"
@@ -431,7 +446,7 @@ class MVExporter:
         # 统计数据
         alignment = info.get("alignment", {})
         aligned = alignment.get("aligned_lines", 0)
-        total = alignment.get("total_lyrics_lines", 0)
+        total = alignment.get("total_lyrics_lines", alignment.get("total_lines", 0))
         rate = round(aligned / total * 100) if total > 0 else 0
 
         audio_path = self.audio_dir / "song.mp3"
@@ -467,10 +482,15 @@ class MVExporter:
             json.dumps(report, ensure_ascii=False, indent=2),
             encoding="utf-8"
         )
+        final_report_path = self.output_dir / "final_report.json"
+        final_report_path.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
 
         # 打印报告
         print(f"\n  {'='*50}")
-        print(f"  📊 MV 质量报告")
+        print(f"  MV 质量报告")
         print(f"  {'='*50}")
         print(f"    歌曲: {report['song_title']}")
         print(f"    主题: {report['theme']}")
@@ -480,6 +500,7 @@ class MVExporter:
         print(f"    最终 MV: {report['final_mv_size_mb']}MB")
         print(f"    场景图: {report['images_count']} 张")
         print(f"    KB 片段: {report['clips_count']} 个")
+        print(f"    最终报告: {final_report_path}")
         print(f"  {'='*50}\n")
 
         return report
@@ -508,7 +529,7 @@ class MVExporter:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                timeout=600,
+                timeout=self.ffmpeg_timeout,
             )
 
             if proc.stdout:
@@ -522,7 +543,7 @@ class MVExporter:
             return True, None
 
         except subprocess.TimeoutExpired:
-            return False, "ffmpeg timed out after 600s"
+            return False, f"ffmpeg timed out after {self.ffmpeg_timeout}s"
         except FileNotFoundError:
             return False, f"ffmpeg not found: {self.ffmpeg}"
         except Exception as e:
@@ -534,7 +555,7 @@ class MVExporter:
             result = subprocess.run(
                 [self.ffprobe, "-v", "error", "-show_entries",
                  "format=duration", "-of", "csv=p=0", file_path],
-                capture_output=True, text=True, timeout=10
+                capture_output=True, text=True, timeout=self.ffprobe_timeout
             )
             if result.returncode == 0 and result.stdout.strip():
                 return int(float(result.stdout.strip()))
@@ -560,7 +581,7 @@ class MVExporter:
                 cwd=cwd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                timeout=600,
+                timeout=self.ffmpeg_timeout,
             )
 
             if proc.stdout:
@@ -574,7 +595,7 @@ class MVExporter:
             return True, None
 
         except subprocess.TimeoutExpired:
-            return False, "ffmpeg timed out after 600s"
+            return False, f"ffmpeg timed out after {self.ffmpeg_timeout}s"
         except FileNotFoundError:
             return False, f"ffmpeg not found: {self.ffmpeg}"
         except Exception as e:

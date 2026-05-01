@@ -109,11 +109,29 @@ class TestMVExporterQualityReport(unittest.TestCase):
         exporter.generate_quality_report()
 
         report_path = self.test_dir / "metadata" / "quality_report.json"
+        final_report_path = self.test_dir / "output" / "final_report.json"
         self.assertTrue(report_path.exists())
+        self.assertTrue(final_report_path.exists())
 
         saved = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(saved["song_title"], "测试歌曲")
         self.assertEqual(saved["alignment_rate"], "18/20 (90%)")
+
+    def test_quality_report_accepts_total_lines(self):
+        info = {
+            "song_title": "测试歌曲",
+            "theme": "童年",
+            "alignment": {"aligned_lines": 18, "total_lines": 20},
+            "audio_duration_sec": 120,
+        }
+        (self.test_dir / "metadata" / "info.json").write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+
+        exporter = MVExporter(str(self.test_dir))
+        report = exporter.generate_quality_report()
+
+        self.assertEqual(report["alignment_rate"], "18/20 (90%)")
 
     def test_quality_report_no_info(self):
         """缺少 info.json 时应优雅处理"""

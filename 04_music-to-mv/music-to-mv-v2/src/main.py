@@ -20,6 +20,7 @@ from src.pipeline import MVPipeline
 from src.config_manager import ConfigManager
 from src.project_manager import ProjectManager
 from src.interaction import UserInteraction
+from src.scene_generator import SceneImageGenerator
 
 
 def main():
@@ -37,6 +38,12 @@ def main():
   # 全自动模式（无暂停点）
   python -m src.main --theme "春天" --auto
 
+  # 只测试主参考图 prompt，不消耗生图
+  python -m src.main --theme "小狗的夏日冒险" --style "动漫风" --test-reference prompt
+
+  # 只生成 Step ④ 主参考图，只消耗一张图
+  python -m src.main --theme "小狗的夏日冒险" --style "动漫风" --test-reference image
+
   # 列出所有项目
   python -m src.main --list
         """
@@ -53,6 +60,8 @@ def main():
     parser.add_argument("--language", default="中文",
                        help="歌词语言（默认: 中文）")
     parser.add_argument("--reference", default="", help="参考描述/角色设定")
+    parser.add_argument("--test-reference", choices=["prompt", "image"],
+                       help="只测试 Step④ 主参考图：prompt=只打印提示词；image=只生成一张参考图")
 
     # ── 续跑参数 ──
     parser.add_argument("--project", help="已有项目目录路径")
@@ -103,6 +112,11 @@ def main():
     # 初始化配置
     cfg = ConfigManager()
 
+    # ── 只测试 Step④ 主参考图 ─────────────────────────────
+    if args.test_reference:
+        _test_reference(args, cfg)
+        return
+
     # 检查必要配置
     minimax_token = cfg.get("minimax_token", "")
     if not minimax_token:
@@ -129,6 +143,52 @@ def main():
 
     # 运行
     pipeline.run()
+
+
+def _test_reference(args, cfg: ConfigManager):
+    """只测试 Step④ 主参考图，不跑完整流水线。"""
+    pm = ProjectManager.init_new(
+        theme=args.theme,
+        style=args.style,
+        music_style=args.music_style,
+        mood=args.mood,
+        language=args.language,
+        reference=args.reference,
+    )
+    gen = SceneImageGenerator(str(pm.project_dir), dry_run=(args.test_reference == "prompt"))
+
+    mode = gen._infer_base_reference_mode(args.theme, args.theme)
+    ref_prompt = gen._build_base_reference_prompt(args.theme, args.theme)
+    sample_scene_prompt = gen._build_scene_prompt(
+        f"{args.theme}, representative MV shot, clear main subject, cinematic composition",
+        provider=cfg.get("image_api_provider", "minimax"),
+    )
+
+    print(f"\n📁 测试项目目录: {pm.project_dir}")
+    print(f"主题主体类型: {mode}")
+    print("\n[Step④ 主参考图 Prompt]")
+    print(ref_prompt)
+    print("\n[场景图主体锚定 Prompt 预览]")
+    print(sample_scene_prompt[:900])
+
+    if args.test_reference == "prompt":
+        print("\n仅打印 prompt，未调用生图 API。")
+        return
+
+    provider = cfg.get("image_api_provider", "minimax")
+    token = cfg.get_image_token()
+    if provider != "pollinations" and not token:
+        print(f"\n❌ 当前 IMAGE_API_PROVIDER={provider} 需要对应 token，无法生成图片。")
+        print("   如果只想免费测试，可设置 IMAGE_API_PROVIDER=pollinations。")
+        sys.exit(1)
+
+    ok = gen.generate_base_character(theme=args.theme, song_title=args.theme)
+    output = pm.project_dir / "images" / "base_character.png"
+    if ok and output.exists():
+        print(f"\n主参考图已生成: {output}")
+    else:
+        print("\n主参考图生成失败，请查看上方错误日志。")
+        sys.exit(1)
 
 
 def _list_projects():

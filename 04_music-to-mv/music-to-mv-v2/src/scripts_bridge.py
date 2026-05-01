@@ -56,6 +56,12 @@ def _build_env(project_dir: str, extra_env: Dict = None) -> Dict:
         "PROJECT_DIR": project_dir,
         "FFMPEG": "ffmpeg",
         "FFPROBE": "ffprobe",
+        "API_MAX_RETRIES": str(cfg.get_int("api_max_retries", 3)),
+        "API_TIMEOUT_SEC": str(cfg.get_float("api_timeout_sec", 60.0)),
+        "IMAGE_PARALLEL": str(cfg.get_int("image_parallel", 1)),
+        "ALIGN_TIMEOUT_SEC": str(cfg.get_int("align_timeout_sec", 600)),
+        "FFMPEG_TIMEOUT_SEC": str(cfg.get_int("ffmpeg_timeout_sec", 600)),
+        "FFPROBE_TIMEOUT_SEC": str(cfg.get_int("ffprobe_timeout_sec", 10)),
     })
 
     if extra_env:
@@ -66,10 +72,18 @@ def _build_env(project_dir: str, extra_env: Dict = None) -> Dict:
 
 # ── 脚本执行器 ──────────────────────────────────────────
 
+def _configured_timeout(key: str, default: int) -> int:
+    try:
+        return ConfigManager().get_int(key, default)
+    except Exception:
+        return default
+
+
 def run_script(script_name: str, project_dir: str,
                args: List[str] = None, extra_env: Dict = None,
-               timeout: int = 600, check: bool = True) -> subprocess.CompletedProcess:
+               timeout: int = None, check: bool = True) -> subprocess.CompletedProcess:
     """运行原版 Shell 脚本（需要 bash）"""
+    timeout = timeout if timeout is not None else _configured_timeout("script_timeout_sec", 600)
     scripts_dir = _get_scripts_dir()
     script_path = scripts_dir / script_name
 
@@ -109,8 +123,9 @@ def run_script(script_name: str, project_dir: str,
 
 def run_python_script(script_name: str, project_dir: str,
                       args: List[str] = None, extra_env: Dict = None,
-                      timeout: int = 600) -> subprocess.CompletedProcess:
+                      timeout: int = None) -> subprocess.CompletedProcess:
     """运行原版 Python 脚本"""
+    timeout = timeout if timeout is not None else _configured_timeout("script_timeout_sec", 600)
     scripts_dir = _get_scripts_dir()
     script_path = scripts_dir / script_name
 
@@ -156,7 +171,7 @@ def _parse_lyrics_text(lyrics_text: str):
 # ── 公开 API ────────────────────────────────────────────
 
 def run_align_lyrics(project_dir: str, align_mode: str = "auto",
-                     srt_file: str = "", timeout: int = 600) -> dict:
+                     srt_file: str = "", timeout: int = None) -> dict:
     """歌词时间轴对齐（Step 03）
 
     策略链：
@@ -167,6 +182,7 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
     返回:
         {"srt_path", "aligned_lines", "total_lines", "srt_entries", "status", "engine"}
     """
+    timeout = timeout if timeout is not None else _configured_timeout("align_timeout_sec", 600)
     # 策略 1: 原版 Shell
     try:
         shell_args = ["--align-mode", align_mode]
@@ -240,13 +256,14 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
     )
 
 
-def run_analyze_srt(project_dir: str, timeout: int = 180) -> subprocess.CompletedProcess:
+def run_analyze_srt(project_dir: str, timeout: int = None) -> subprocess.CompletedProcess:
     """调用 analyze_srt.py（Step 03.5）
 
     策略：
       1. 原版 analyze_srt.py（需要 bash/Python 环境）
       2. Python v2 SceneAnalyzer（新实现）
     """
+    timeout = timeout if timeout is not None else _configured_timeout("scene_analysis_timeout_sec", 180)
     try:
         return run_python_script("analyze_srt.py", project_dir, timeout=timeout)
     except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired) as e:
@@ -264,13 +281,13 @@ def run_analyze_srt(project_dir: str, timeout: int = 180) -> subprocess.Complete
         raise RuntimeError(f"所有场景分析策略失败: {e2}") from e2
 
 
-def run_produce_mv(project_dir: str, step: str = None, timeout: int = 600) -> subprocess.CompletedProcess:
+def run_produce_mv(project_dir: str, step: str = None, timeout: int = None) -> subprocess.CompletedProcess:
     """调用 produce_mv.sh（Step 04-08）"""
     args = ["--step", step] if step else None
     return run_script("produce_mv.sh", project_dir, args, timeout=timeout)
 
 
-def run_merge_and_export(project_dir: str, timeout: int = 600) -> subprocess.CompletedProcess:
+def run_merge_and_export(project_dir: str, timeout: int = None) -> subprocess.CompletedProcess:
     """调用 merge_and_export.sh（Step 09-11）
 
     策略：
@@ -294,13 +311,15 @@ def run_merge_and_export(project_dir: str, timeout: int = 600) -> subprocess.Com
         raise RuntimeError(f"所有导出策略失败: {e2}") from e2
 
 
-def run_generate_music(project_dir: str, timeout: int = 180) -> subprocess.CompletedProcess:
+def run_generate_music(project_dir: str, timeout: int = None) -> subprocess.CompletedProcess:
     """调用 generate_music.sh（Step 02）"""
+    timeout = timeout if timeout is not None else _configured_timeout("music_api_timeout_sec", 180)
     return run_script("generate_music.sh", project_dir, timeout=timeout)
 
 
-def run_generate_lyrics(project_dir: str, timeout: int = 120) -> subprocess.CompletedProcess:
+def run_generate_lyrics(project_dir: str, timeout: int = None) -> subprocess.CompletedProcess:
     """调用 generate_lyrics.sh（Step 01）"""
+    timeout = timeout if timeout is not None else _configured_timeout("lyrics_api_timeout_sec", 120)
     return run_script("generate_lyrics.sh", project_dir, timeout=timeout)
 
 

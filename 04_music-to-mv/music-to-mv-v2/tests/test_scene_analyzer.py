@@ -578,6 +578,10 @@ class TestSceneAnalyzerStripThink(unittest.TestCase):
         raw = "just normal text"
         self.assertEqual(SceneAnalyzer._strip_think(raw), "just normal text")
 
+    def test_unclosed_think_tag_is_removed(self):
+        raw = "prefix <think>reasoning was truncated"
+        self.assertEqual(SceneAnalyzer._strip_think(raw), "prefix")
+
 
 class TestSceneAnalyzerExtractJson(unittest.TestCase):
     """测试 _extract_json_array"""
@@ -591,6 +595,19 @@ class TestSceneAnalyzerExtractJson(unittest.TestCase):
         raw = "no json here"
         result = SceneAnalyzer._extract_json_array(raw)
         self.assertEqual(result, "no json here")
+
+
+class TestSceneAnalyzerParseJsonResponse(unittest.TestCase):
+    """测试 LLM JSON 响应解析"""
+
+    def test_unclosed_think_returns_none(self):
+        raw = "<think>reasoning was truncated before json"
+        self.assertIsNone(SceneAnalyzer._parse_json_response(raw))
+
+    def test_removes_closed_think_then_parses_json(self):
+        raw = '<think>ignore this</think>[{"id": 1, "desc": "summer heat"}]'
+        result = SceneAnalyzer._parse_json_response(raw)
+        self.assertEqual(result[0]["id"], 1)
 
 
 if __name__ == "__main__":

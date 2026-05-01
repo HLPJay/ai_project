@@ -676,6 +676,7 @@ class SceneAnalyzer:
                 prompt = (
                     f"You are a senior MV storyboard & cinematic visual artist.\n"
                     f"Generate unified, poetic, cinematic English image prompts for lyric-driven music video scenes.\n"
+                    f"Return JSON only. Do not output analysis, explanations, markdown, XML tags, or <think> content.\n"
                     f"\n"
                     f"Character continuity reference (only use when a human subject is genuinely needed): {self._char_prompt}\n"
                     f"Overall Theme: {self._theme}\n"
@@ -701,6 +702,8 @@ class SceneAnalyzer:
                     f"- If a recurring protagonist appears, keep continuity, but let the environment, objects, distance, framing, and emotional symbolism carry the scene.\n"
                     f"- Ensure full video style coherence without repetitive composition.\n"
                     f"- Output pure valid JSON array only.\n"
+                    f"- Start your answer with `[` and end with `]`.\n"
+                    f"- Do not include `<think>`, reasoning text, comments, or markdown code fences.\n"
                     f'- For each scene also provide: visual_focus (character/environment/object/symbolic/mixed), shot_type, character_needed, symbolic_objects, motion_hint.\n'
                     f'Format: [{{"id": 1, "desc": "scene visual description", "visual_focus": "environment", "shot_type": "wide", "character_needed": false, "symbolic_objects": ["wind", "station"], "motion_hint": "slow drift"}}, ...]'
                 )
@@ -709,7 +712,7 @@ class SceneAnalyzer:
             payload = json.dumps({
                 "model": cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 2048,
+                "max_tokens": cfg.get_int("scene_desc_max_tokens", 4096),
             }).encode("utf-8")
 
             headers = {
@@ -828,7 +831,7 @@ class SceneAnalyzer:
             payload = json.dumps({
                 "model": cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 2048,
+                "max_tokens": cfg.get_int("variant_desc_max_tokens", 4096),
             }).encode("utf-8")
 
             headers = {
@@ -969,7 +972,9 @@ class SceneAnalyzer:
     @staticmethod
     def _strip_think(raw: str) -> str:
         """移除 LLM 的思考标签"""
-        return re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.DOTALL).strip()
+        text = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.DOTALL)
+        text = re.sub(r"<think>[\s\S]*$", "", text, flags=re.DOTALL)
+        return text.strip()
 
     @staticmethod
     def _extract_json_array(raw_text: str) -> str:
@@ -989,8 +994,11 @@ class SceneAnalyzer:
         if not raw_text or not raw_text.strip():
             return None
 
-        # 步骤 1: 清理包装
-        text = re.sub(r"<think>[\s\S]*?</think>", "", raw_text, flags=re.DOTALL).strip()
+        # 步骤 1: 清理包装。若 <think> 被截断且未闭合，剩余内容不能作为 JSON。
+        text = re.sub(r"<think>[\s\S]*?</think>", "", raw_text, flags=re.DOTALL)
+        text = re.sub(r"<think>[\s\S]*$", "", text, flags=re.DOTALL).strip()
+        if not text:
+            return None
         m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.DOTALL)
         if m:
             text = m.group(1).strip()
@@ -1209,6 +1217,7 @@ class SceneAnalyzer:
                 prompt = (
                     "You are defining a global visual bible for a lyric-driven music video.\n"
                     "Return one compact JSON object only.\n"
+                    "Do not output analysis, explanations, markdown, XML tags, or <think> content.\n"
                     f"Theme: {self._theme}\n"
                     f"Mood: {self._mood}\n"
                     f"Style: {self._style}\n"
@@ -1220,13 +1229,14 @@ class SceneAnalyzer:
                     "Output keys: world_style, palette, lighting, texture, camera_language, "
                     "continuity_subject, do_not_break.\n"
                     "palette and do_not_break must be arrays.\n"
+                    "Start your answer with `{` and end with `}`.\n"
                 )
 
             api_url = "https://api.minimaxi.com/v1/chat/completions"
             payload = json.dumps({
                 "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1024,
+                "max_tokens": self.cfg.get_int("visual_bible_max_tokens", 2048),
             }).encode("utf-8")
             headers = {
                 "Authorization": f"Bearer {token}",

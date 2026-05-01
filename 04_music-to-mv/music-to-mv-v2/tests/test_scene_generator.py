@@ -365,6 +365,73 @@ class TestSceneGeneratorGenerateBaseCharacter(unittest.TestCase):
             str(gen.images_dir / "base_character.png")
         )
 
+    def test_base_reference_prompt_environment_led(self):
+        """非固定主角时，基础参考图应优先主题环境/意象，而不是人物主体"""
+        info = {
+            "theme": "春雨",
+            "style": "国风",
+            "music_style": "中国风",
+            "mood": "梦幻",
+            "song_title": "烟雨江南梦",
+            "visual_mode": "environment-led",
+            "character_policy": "optional protagonist",
+            "visual_anchors": "spring rain, wet stone lane, willow, peach blossom",
+        }
+        (self.test_dir / "metadata" / "info.json").write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+
+        gen = SceneImageGenerator(str(self.test_dir))
+        prompt = gen._build_base_reference_prompt("春雨", "烟雨江南梦")
+
+        self.assertIn("core theme: 春雨", prompt)
+        self.assertIn("no protagonist", prompt)
+        self.assertIn("not a character sheet", prompt)
+
+    def test_base_reference_prompt_relation_theme(self):
+        """爱情/关系主题应允许人物关系成为参考图主体"""
+        info = {
+            "theme": "爱情",
+            "style": "国风",
+            "music_style": "中国风",
+            "mood": "浪漫",
+            "song_title": "月下相思",
+            "visual_mode": "environment-led",
+            "character_policy": "optional protagonist",
+            "visual_anchors": "moonlight, bridge, willow, shared umbrella",
+        }
+        (self.test_dir / "metadata" / "info.json").write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+
+        gen = SceneImageGenerator(str(self.test_dir))
+        prompt = gen._build_base_reference_prompt("爱情", "月下相思")
+
+        self.assertIn("relationship-centered", prompt)
+        self.assertIn("two human subjects", prompt)
+        self.assertIn("avoid generic empty scenery", prompt)
+        self.assertNotIn("no protagonist", prompt)
+
+    def test_base_reference_prompt_fixed_protagonist(self):
+        """固定主角时仍允许生成角色参考图"""
+        info = {
+            "theme": "童年",
+            "style": "动漫风",
+            "mood": "欢快",
+            "song_title": "测试歌曲",
+            "visual_mode": "character-led",
+            "character_policy": "fixed protagonist",
+        }
+        (self.test_dir / "metadata" / "info.json").write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+
+        gen = SceneImageGenerator(str(self.test_dir))
+        prompt = gen._build_base_reference_prompt("童年", "测试歌曲")
+
+        self.assertIn("character", prompt.lower())
+        self.assertNotIn("not a character sheet", prompt)
+
 
 class TestSceneGeneratorErrorHandling(unittest.TestCase):
     """测试错误处理"""

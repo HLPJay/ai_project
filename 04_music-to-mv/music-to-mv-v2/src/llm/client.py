@@ -33,14 +33,65 @@ from src.llm.logger import LLMLogger, LLMCallRecord
 
 class RetryConfig:
     """重试配置"""
-    def __init__(self, max_retries: int = 3, base_delay: float = 2.0,
-                 max_delay: float = 30.0, request_timeout: float = 60.0,
+    def __init__(self, max_retries: int = None, base_delay: float = None,
+                 max_delay: float = None, request_timeout: float = None,
                  retryable_status: set = None):
-        self.max_retries = max_retries
-        self.base_delay = base_delay
-        self.max_delay = max_delay
-        self.request_timeout = request_timeout
+        defaults = self._load_defaults()
+        self.max_retries = max_retries if max_retries is not None else defaults["max_retries"]
+        self.base_delay = base_delay if base_delay is not None else defaults["base_delay"]
+        self.max_delay = max_delay if max_delay is not None else defaults["max_delay"]
+        self.request_timeout = (
+            request_timeout if request_timeout is not None else defaults["request_timeout"]
+        )
         self.retryable_status = retryable_status or {429, 500, 502, 503, 504}
+
+    @staticmethod
+    def _load_defaults() -> Dict[str, float]:
+        try:
+            from src.config_manager import ConfigManager
+            cfg = ConfigManager()
+            return {
+                "max_retries": cfg.get_int("api_max_retries", 3),
+                "base_delay": cfg.get_float("api_base_delay_sec", 2.0),
+                "max_delay": cfg.get_float("api_max_delay_sec", 30.0),
+                "request_timeout": cfg.get_float("api_timeout_sec", 60.0),
+            }
+        except Exception:
+            return {
+                "max_retries": 3,
+                "base_delay": 2.0,
+                "max_delay": 30.0,
+                "request_timeout": 60.0,
+            }
+
+    @classmethod
+    def for_profile(cls, profile: str) -> "RetryConfig":
+        """按用途读取配置覆盖，如 lyrics/music/image/download。"""
+        try:
+            from src.config_manager import ConfigManager
+            cfg = ConfigManager()
+            return cls(
+                max_retries=cfg.get_int(f"{profile}_api_max_retries", cfg.get_int("api_max_retries", 3)),
+                base_delay=cfg.get_float(f"{profile}_api_base_delay_sec", cfg.get_float("api_base_delay_sec", 2.0)),
+                request_timeout=cfg.get_float(f"{profile}_api_timeout_sec", cfg.get_float("api_timeout_sec", 60.0)),
+                max_delay=cfg.get_float("api_max_delay_sec", 30.0),
+            )
+        except Exception:
+            return cls()
+
+    @classmethod
+    def for_download(cls) -> "RetryConfig":
+        try:
+            from src.config_manager import ConfigManager
+            cfg = ConfigManager()
+            return cls(
+                max_retries=cfg.get_int("download_max_retries", cfg.get_int("api_max_retries", 3)),
+                base_delay=cfg.get_float("download_base_delay_sec", cfg.get_float("api_base_delay_sec", 2.0)),
+                request_timeout=cfg.get_float("download_timeout_sec", cfg.get_float("api_timeout_sec", 60.0)),
+                max_delay=cfg.get_float("api_max_delay_sec", 30.0),
+            )
+        except Exception:
+            return cls()
 
 
 class LLMClient:
@@ -145,7 +196,7 @@ class LLMClient:
             prompt_key="lyrics_generation",
             model=model,
             prompt_text=prompt,
-            retry_config=retry_config,
+            retry_config=retry_config or RetryConfig.for_profile("lyrics"),
         )
 
         return {
@@ -184,7 +235,7 @@ class LLMClient:
             prompt_key="music_generation",
             model=model,
             prompt_text=prompt,
-            retry_config=retry_config,
+            retry_config=retry_config or RetryConfig.for_profile("music"),
         )
 
         audio_hex = resp_data.get("data", {}).get("audio", "")
@@ -243,7 +294,8 @@ class LLMClient:
 
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         resp_data = self._call_raw_api(api_url, payload, headers, prompt_key,
-                                       f"MiniMax-{model}", prompt)
+                                       f"MiniMax-{model}", prompt,
+                                       retry_config=RetryConfig.for_profile("image"))
 
         data_obj = resp_data.get("data") or {}
         img_url = ""
@@ -282,7 +334,8 @@ class LLMClient:
 
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         resp_data = self._call_raw_api(api_url, payload, headers, prompt_key,
-                                       f"Alibaba-{model}", prompt)
+                                       f"Alibaba-{model}", prompt,
+                                       retry_config=RetryConfig.for_profile("image"))
 
         results = resp_data.get("output", {}).get("results", [])
         if not results or not results[0].get("url"):
@@ -298,9 +351,12 @@ class LLMClient:
                                  negative_prompt: str = "", seed: int = 0,
                                  prompt_key: str = "image_generation") -> str:
         """调用 Pollinations 免费图片 API"""
+        from src.config_manager import ConfigManager
+        cfg = ConfigManager()
         base = "https://image.pollinations.ai/prompt"
         escaped = urllib.parse.quote(prompt)
-        url = f"{base}/{escaped}?width=1280&height=720&model=flux&n=1"
+        model = cfg.get_image_model() or "flux"
+        url = f"{base}/{escaped}?width=1280&height=720&model={urllib.parse.quote(model)}&n=1"
         if negative_prompt:
             url += f"&negative={urllib.parse.quote(negative_prompt)}"
         if seed > 0:
@@ -332,7 +388,8 @@ class LLMClient:
 
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         resp_data = self._call_raw_api(api_url, payload, headers, prompt_key,
-                                       f"DALL-E-{model}", prompt)
+                                       f"DALL-E-{model}", prompt,
+                                       retry_config=RetryConfig.for_profile("image"))
 
         img_data = resp_data.get("data", [])
         if not img_data or not img_data[0].get("url"):
@@ -349,7 +406,7 @@ class LLMClient:
     def _download_file(self, url: str, output_path: str,
                        retry_config: RetryConfig = None):
         """下载文件到本地"""
-        cfg = retry_config or RetryConfig()
+        cfg = retry_config or RetryConfig.for_download()
         for attempt in range(1, cfg.max_retries + 1):
             try:
                 req = urllib_request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -361,12 +418,13 @@ class LLMClient:
                 if attempt == cfg.max_retries:
                     raise
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                print(f"   Download failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                if self._api_log_retries_enabled():
+                    print(f"   Download failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
                 time.sleep(delay)
 
     def _urlopen_with_retry(self, req, retry_config: RetryConfig = None):
         """以指数退避重试打开 URL"""
-        cfg = retry_config or RetryConfig()
+        cfg = retry_config or RetryConfig.for_profile("image")
         for attempt in range(1, cfg.max_retries + 1):
             try:
                 return urllib_request.urlopen(req, timeout=cfg.request_timeout)
@@ -374,13 +432,15 @@ class LLMClient:
                 if e.code not in cfg.retryable_status or attempt == cfg.max_retries:
                     raise
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                print(f"   HTTP {e.code}, retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                if self._api_log_retries_enabled():
+                    print(f"   HTTP {e.code}, retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
                 time.sleep(delay)
             except Exception as e:
                 if attempt == cfg.max_retries:
                     raise
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                print(f"   Request failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                if self._api_log_retries_enabled():
+                    print(f"   Request failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
                 time.sleep(delay)
 
     # ── 通用 API 调用 ────────────────────────────────────
@@ -408,6 +468,9 @@ class LLMClient:
         start_time = time.time()
 
         for attempt in range(1, cfg.max_retries + 1):
+            self._print_api_request_log(
+                prompt_key, model, prompt_text, attempt, cfg.max_retries, timeout
+            )
             try:
                 req = urllib_request.Request(
                     url, data=data,
@@ -422,6 +485,7 @@ class LLMClient:
                 # 记录成功
                 self._log_call(prompt_key, model, prompt_text, response_data,
                               latency=latency)
+                self._print_api_success_log(prompt_key, model, response_data, latency)
 
                 return response_data
 
@@ -438,14 +502,16 @@ class LLMClient:
 
             if attempt < cfg.max_retries:
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                print(f"  [{prompt_key}] 尝试 {attempt}/{cfg.max_retries} 失败，"
-                      f"{delay:.0f}s 后重试... 错误: {last_error}")
+                if self._api_log_retries_enabled():
+                    print(f"  [{prompt_key}] 尝试 {attempt}/{cfg.max_retries} 失败，"
+                          f"{delay:.0f}s 后重试... 错误: {last_error}")
                 time.sleep(delay)
 
         # 记录失败
         latency = (time.time() - start_time) * 1000
         self._log_call(prompt_key, model, prompt_text, None,
                       error=last_error, latency=latency)
+        self._print_api_failure_log(prompt_key, model, last_error, latency)
 
         raise RuntimeError(
             f"[{prompt_key}] API 调用失败 ({cfg.max_retries}/{cfg.max_retries}): "
@@ -453,6 +519,78 @@ class LLMClient:
         )
 
     # ── 日志记录 ─────────────────────────────────────────
+
+    @staticmethod
+    def _cfg():
+        from src.config_manager import ConfigManager
+        return ConfigManager()
+
+    def _api_log_enabled(self) -> bool:
+        try:
+            return self._cfg().get_bool("api_log_enabled", False)
+        except Exception:
+            return False
+
+    def _api_log_retries_enabled(self) -> bool:
+        try:
+            return self._cfg().get_bool("api_log_retries", True)
+        except Exception:
+            return True
+
+    def _api_log_max_chars(self) -> int:
+        try:
+            return max(0, self._cfg().get_int("api_log_max_chars", 500))
+        except Exception:
+            return 500
+
+    def _truncate_for_console(self, value: Any) -> str:
+        text = (
+            json.dumps(value, ensure_ascii=False)
+            if isinstance(value, (dict, list))
+            else str(value)
+        )
+        max_chars = self._api_log_max_chars()
+        if max_chars and len(text) > max_chars:
+            return text[:max_chars] + "...(truncated)"
+        return text
+
+    def _print_api_request_log(self, prompt_key: str, model: str, prompt_text: str,
+                               attempt: int, max_retries: int, timeout: float):
+        if not self._api_log_enabled():
+            return
+        print(
+            f"  [API] request key={prompt_key} model={model} "
+            f"attempt={attempt}/{max_retries} timeout={timeout}s"
+        )
+        try:
+            if self._cfg().get_bool("api_log_prompt", False):
+                print(f"  [API prompt] {self._truncate_for_console(prompt_text)}")
+        except Exception:
+            pass
+
+    def _print_api_success_log(self, prompt_key: str, model: str,
+                               response: Any, latency_ms: float):
+        if not self._api_log_enabled():
+            return
+        resp_len = len(json.dumps(response, ensure_ascii=False)) if response is not None else 0
+        print(
+            f"  [API] success key={prompt_key} model={model} "
+            f"latency={latency_ms:.0f}ms response_chars={resp_len}"
+        )
+        try:
+            if self._cfg().get_bool("api_log_response", False):
+                print(f"  [API response] {self._truncate_for_console(response)}")
+        except Exception:
+            pass
+
+    def _print_api_failure_log(self, prompt_key: str, model: str,
+                               error: str, latency_ms: float):
+        if not self._api_log_enabled():
+            return
+        print(
+            f"  [API] failed key={prompt_key} model={model} "
+            f"latency={latency_ms:.0f}ms error={error}"
+        )
 
     def _log_call(self, prompt_key: str, model: str, prompt_text: str,
                   response: Any, error: str = None,

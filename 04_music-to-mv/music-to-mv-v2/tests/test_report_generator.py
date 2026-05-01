@@ -110,6 +110,33 @@ class TestReportGeneratorDataLoading(unittest.TestCase):
         self.gen._load_records()
         self.assertEqual(len(self.gen.records), 2)
 
+    def test_load_llm_logger_summary_record(self):
+        responses = self.test_dir / "metadata" / "llm_calls" / "responses"
+        responses.mkdir()
+        response_path = responses / "call.json"
+        response_path.write_text(
+            json.dumps({
+                "prompt_key": "lyrics",
+                "rendered_prompt": "生成歌词",
+                "response": "{\"title\":\"春风\"}",
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        make_log_file(self.test_dir / "metadata" / "llm_calls", [
+            {
+                "prompt_key": "lyrics",
+                "model": "MiniMax-M2.7",
+                "response_file": "responses/call.json",
+                "status": "success",
+            }
+        ])
+
+        self.gen._load_records()
+
+        self.assertEqual(self.gen.records[0]["step"], "lyrics")
+        self.assertEqual(self.gen.records[0]["prompt"], "生成歌词")
+        self.assertEqual(self.gen.records[0]["response"], "{\"title\":\"春风\"}")
+
 
 class TestReportGeneratorProjectInfo(unittest.TestCase):
     """测试项目信息读取"""

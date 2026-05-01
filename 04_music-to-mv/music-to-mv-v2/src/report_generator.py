@@ -219,9 +219,48 @@ class ReportGenerator:
                         continue
                     try:
                         entry = json.loads(line)
-                        self.records.append(entry)
+                        self.records.append(self._normalize_record(entry))
                     except json.JSONDecodeError:
                         pass
+
+    def _normalize_record(self, entry: Dict) -> Dict:
+        """兼容旧版 step/prompt 日志和新版 LLMLogger 摘要日志。"""
+        rec = dict(entry)
+
+        response_file = rec.get("response_file")
+        full = self._load_response_file(response_file) if response_file else {}
+
+        prompt_key = rec.get("prompt_key") or full.get("prompt_key")
+        if "step" not in rec and prompt_key:
+            rec["step"] = prompt_key
+
+        prompt = rec.get("prompt") or rec.get("rendered_prompt") or full.get("rendered_prompt")
+        if prompt is not None:
+            rec["prompt"] = prompt
+
+        if "response" not in rec:
+            response = full.get("response") or full.get("raw_response")
+            if response not in (None, ""):
+                rec["response"] = response
+
+        if rec.get("status") == "failed" and "error" not in rec:
+            rec["error"] = full.get("error") or rec.get("error") or "failed"
+
+        return rec
+
+    def _load_response_file(self, response_file: str) -> Dict:
+        """读取 LLMLogger 保存的完整响应文件。"""
+        if not response_file:
+            return {}
+
+        path = Path(response_file)
+        if not path.is_absolute():
+            path = self.llm_dir / path
+
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
 
     def _load_project_info(self) -> tuple:
         """读取歌曲标题和主题"""

@@ -151,14 +151,56 @@ python -m src.main
 # 一键全自动模式（无人工干预）
 python -m src.main --auto
 
-# 指定主题和风格
-python -m src.main --theme "星空" --style "国风" --music-style "中国风" --mood "梦幻"
+# 全自动模式（跳过所有暂停点）
+python -m src.main --theme "星空1" --style "国风" --music-style "中国风" --mood "梦幻" --auto
+
+# 交互模式（在暂停点等你输入 1/2/3 等）
+python -m src.main --theme "星空1" --style "国风" --music-style "中国风" --mood "梦幻"
 
 # 只跑部分阶段（断点续传）
+python -m src.main --project <项目路径> --phase produce
 python -m src.main --project "~/mv/我的项目" --phase 5
 
 # 列出所有项目
 python -m src.main --list
+```
+
+### 主参考图/锚定图轻量测试
+
+`tools/test_reference_anchors.py` 用来低成本验证主题主体是否锚定正确。
+默认输出到仓库内 `.reference_tests/`，不会污染正式 workspace。
+
+模式说明：
+
+- `--mode prompt`：只打印提示词，不调用生图 API，不消耗额度。
+- `--mode image`：每个 case 只生成一张 Step④ 主参考图 `images/base_character.png`。
+- `--mode batch`：自动创建最小 `scenes.json`，只跑 Step⑤-⑦ 批量场景图。
+- `--dry-run`：仅 batch 模式使用，生成占位图，不调用生图 API。
+
+```bash
+# 汇总测试多个主题，只打印 prompt，不调用生图 API
+python tools/test_reference_anchors.py
+
+# 查看可用测试主题
+python tools/test_reference_anchors.py --list
+
+# 只测小狗主体 prompt
+python tools/test_reference_anchors.py --case puppy
+
+# 只生成一张小狗主参考图，用 Pollinations 测试主体是否准确
+python tools/test_reference_anchors.py --mode image --case puppy --provider pollinations
+
+# 一次测多个主题，每个主题各生成一张主参考图
+python tools/test_reference_anchors.py --mode image --case puppy galaxy poem --provider pollinations
+
+# 测全部内置主题，每个主题一张；当前共 8 张
+python tools/test_reference_anchors.py --mode image --case all --provider pollinations
+
+# 批量生图 dry-run：自动生成测试 scenes，占位图不调用 API
+python tools/test_reference_anchors.py --mode batch --case puppy --dry-run
+
+# 批量真实生图：只生成少量测试场景图，不跑音乐/视频
+python tools/test_reference_anchors.py --mode batch --case puppy --provider pollinations --limit-scenes 3 --parallel 1
 ```
 
 ---

@@ -48,6 +48,62 @@ class Config:
     # 项目
     workspace_root: str = "~/.openclaw/workspace/mv"
 
+    # API 重试/超时（通用默认）
+    api_max_retries: int = 3
+    api_base_delay_sec: float = 2.0
+    api_max_delay_sec: float = 30.0
+    api_timeout_sec: float = 60.0
+    api_log_enabled: bool = False
+    api_log_retries: bool = True
+    api_log_prompt: bool = False
+    api_log_response: bool = False
+    api_log_max_chars: int = 500
+
+    # 分类型 API 覆盖
+    lyrics_api_max_retries: int = 2
+    lyrics_api_base_delay_sec: float = 2.0
+    lyrics_api_timeout_sec: float = 120.0
+
+    music_api_max_retries: int = 2
+    music_api_base_delay_sec: float = 5.0
+    music_api_timeout_sec: float = 180.0
+
+    image_api_max_retries: int = 3
+    image_api_base_delay_sec: float = 2.0
+    image_api_timeout_sec: float = 60.0
+
+    download_max_retries: int = 3
+    download_base_delay_sec: float = 2.0
+    download_timeout_sec: float = 60.0
+
+    # Chat completion 输出长度
+    scene_desc_max_tokens: int = 4096
+    variant_desc_max_tokens: int = 4096
+    visual_bible_max_tokens: int = 2048
+    creative_brief_max_tokens: int = 2048
+
+    # 并发
+    image_parallel: int = 1
+
+    # 歌曲结构
+    lyrics_structure_mode: str = "adaptive"
+    lyrics_structure: str = ""
+
+    # 本地处理超时
+    align_timeout_sec: int = 600
+    script_timeout_sec: int = 600
+    scene_analysis_timeout_sec: int = 180
+    ffmpeg_timeout_sec: int = 600
+    ffprobe_timeout_sec: int = 10
+    kb_timeout_buffer_sec: int = 30
+
+    # Ken Burns 镜头运动
+    kb_zoom_start: float = 1.0
+    kb_zoom_end: float = 1.12
+    kb_pan_x: float = 30.0
+    kb_pan_y: float = 18.0
+    kb_supersample_scale: int = 2
+
 
 class ConfigManager:
     """配置管理器（单例，线程安全）"""
@@ -129,13 +185,66 @@ class ConfigManager:
             "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
             "TELEGRAM_CHAT_ID": "telegram_chat_id",
             "WORKSPACE_ROOT": "workspace_root",
+            "API_MAX_RETRIES": "api_max_retries",
+            "API_BASE_DELAY_SEC": "api_base_delay_sec",
+            "API_MAX_DELAY_SEC": "api_max_delay_sec",
+            "API_TIMEOUT_SEC": "api_timeout_sec",
+            "API_LOG_ENABLED": "api_log_enabled",
+            "API_LOG_RETRIES": "api_log_retries",
+            "API_LOG_PROMPT": "api_log_prompt",
+            "API_LOG_RESPONSE": "api_log_response",
+            "API_LOG_MAX_CHARS": "api_log_max_chars",
+            "LYRICS_API_MAX_RETRIES": "lyrics_api_max_retries",
+            "LYRICS_API_BASE_DELAY_SEC": "lyrics_api_base_delay_sec",
+            "LYRICS_API_TIMEOUT_SEC": "lyrics_api_timeout_sec",
+            "MUSIC_API_MAX_RETRIES": "music_api_max_retries",
+            "MUSIC_API_BASE_DELAY_SEC": "music_api_base_delay_sec",
+            "MUSIC_API_TIMEOUT_SEC": "music_api_timeout_sec",
+            "IMAGE_API_MAX_RETRIES": "image_api_max_retries",
+            "IMAGE_API_BASE_DELAY_SEC": "image_api_base_delay_sec",
+            "IMAGE_API_TIMEOUT_SEC": "image_api_timeout_sec",
+            "DOWNLOAD_MAX_RETRIES": "download_max_retries",
+            "DOWNLOAD_BASE_DELAY_SEC": "download_base_delay_sec",
+            "DOWNLOAD_TIMEOUT_SEC": "download_timeout_sec",
+            "SCENE_DESC_MAX_TOKENS": "scene_desc_max_tokens",
+            "VARIANT_DESC_MAX_TOKENS": "variant_desc_max_tokens",
+            "VISUAL_BIBLE_MAX_TOKENS": "visual_bible_max_tokens",
+            "CREATIVE_BRIEF_MAX_TOKENS": "creative_brief_max_tokens",
+            "IMAGE_PARALLEL": "image_parallel",
+            "LYRICS_STRUCTURE_MODE": "lyrics_structure_mode",
+            "LYRICS_STRUCTURE": "lyrics_structure",
+            "ALIGN_TIMEOUT_SEC": "align_timeout_sec",
+            "SCRIPT_TIMEOUT_SEC": "script_timeout_sec",
+            "SCENE_ANALYSIS_TIMEOUT_SEC": "scene_analysis_timeout_sec",
+            "FFMPEG_TIMEOUT_SEC": "ffmpeg_timeout_sec",
+            "FFPROBE_TIMEOUT_SEC": "ffprobe_timeout_sec",
+            "KB_TIMEOUT_BUFFER_SEC": "kb_timeout_buffer_sec",
+            "KB_ZOOM_START": "kb_zoom_start",
+            "KB_ZOOM_END": "kb_zoom_end",
+            "KB_PAN_X": "kb_pan_x",
+            "KB_PAN_Y": "kb_pan_y",
+            "KB_SUPERSAMPLE_SCALE": "kb_supersample_scale",
         }
 
         for env_key, config_key in mapping.items():
             # os.environ 优先，其次 .env 文件，均无则保留 Config 默认值
             value = os.environ.get(env_key) or self._file_values.get(env_key)
             if value:
-                setattr(self._config, config_key, value)
+                setattr(self._config, config_key, self._coerce_value(config_key, value))
+
+    def _coerce_value(self, config_key: str, value: str) -> Any:
+        """按默认值类型转换 .env 字符串。转换失败时保留默认值。"""
+        current = getattr(self._config, config_key, "")
+        try:
+            if isinstance(current, bool):
+                return str(value).strip().lower() in ("1", "true", "yes", "on", "y")
+            if isinstance(current, int) and not isinstance(current, bool):
+                return int(value)
+            if isinstance(current, float):
+                return float(value)
+        except (TypeError, ValueError):
+            return current
+        return value
 
     # ── 属性访问 ─────────────────────────────────────────
 
@@ -147,6 +256,31 @@ class ConfigManager:
         """获取配置值"""
         normalized = self._legacy_key_map.get(key, key)
         return getattr(self._config, normalized, default)
+
+    def get_int(self, key: str, default: int = 0) -> int:
+        """获取整数配置，兼容字符串环境变量。"""
+        value = self.get(key, default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def get_float(self, key: str, default: float = 0.0) -> float:
+        """获取浮点配置，兼容字符串环境变量。"""
+        value = self.get(key, default)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def get_bool(self, key: str, default: bool = False) -> bool:
+        """获取布尔配置，兼容 .env 中的 true/false/1/0。"""
+        value = self.get(key, default)
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        return str(value).strip().lower() in ("1", "true", "yes", "on", "y")
 
     def get_image_api_url(self) -> str:
         """获取当前 provider 的图片 API URL"""
@@ -191,6 +325,10 @@ class ConfigManager:
             "has_minimax_token": bool(self._config.minimax_token),
             "has_alibaba_token": bool(self._config.alibaba_token),
             "has_openai_token": bool(self._config.openai_token),
+            "image_parallel": self._config.image_parallel,
+            "api_timeout_sec": self._config.api_timeout_sec,
+            "api_max_retries": self._config.api_max_retries,
+            "api_log_enabled": self._config.api_log_enabled,
         }
 
     def __repr__(self):

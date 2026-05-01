@@ -1,4 +1,5 @@
 Generate coherent but materially distinct variant prompts for repeated chorus shots in a music video.
+Return JSON only. Do not output analysis, explanations, markdown, XML tags, or <think> content.
 
 ## Global Visual Bible (must not break)
 {{ visual_bible }}
@@ -34,11 +35,10 @@ Only use when a person appears in the shot.
 - Each variant 26-40 English words.
 - Each variant must feel like a different usable shot, not a duplicate with swapped adjectives.
 - Keep the same lyrical core, world, and style.
-- Output pure JSON array only:
+- Output pure JSON array only. Start with `[` and end with `]`.
+- Do not include markdown code fences.
 
-```json
 [
   {"scene_id": 1, "variant_id": 1, "change_axis": "shot_distance", "prompt": "..."},
   {"scene_id": 1, "variant_id": 2, "change_axis": "lighting", "prompt": "..."}
 ]
-```
