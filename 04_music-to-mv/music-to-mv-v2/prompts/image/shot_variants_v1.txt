@@ -1,5 +1,5 @@
-Generate coherent but materially distinct variant prompts for repeated chorus shots in a music video.
-Return JSON only. Do not output analysis, explanations, markdown, XML tags, or <think> content.
+Generate materially distinct image prompt variants for repeated chorus shots.
+Return JSON only. The first character must be `[`. Do not output analysis, explanations, markdown, XML tags, or <think> content.
 
 ## Global Visual Bible (must not break)
 {{ visual_bible }}
@@ -17,13 +17,8 @@ Only use when a person appears in the shot.
 ## Variant Production Tasks
 {{ variant_tasks }}
 
-## Allowed Variation Axes (choose exactly one per variant)
-1. shot_distance: change framing from wide to medium to close
-2. foreground: add or change foreground object / environmental layer
-3. lighting: shift direction, time-of-day nuance, or atmosphere density
-4. symbolic_focus: emphasize a different symbolic object or absence
-5. subject_presence: when possible, alternate between character present / absent
-6. motion_rhythm: pause, drift, or gentle travel motion
+## Allowed Variation Axes
+Choose one clear change per variant: shot_distance, foreground, lighting, symbolic_focus, subject_presence, or motion_rhythm.
 
 ## Disallowed Axes (never change)
 - world setting or era
@@ -32,13 +27,12 @@ Only use when a person appears in the shot.
 - song meaning or mood
 
 ## Requirements
-- Each variant 26-40 English words.
+- Each variant 16-28 English words.
 - Each variant must feel like a different usable shot, not a duplicate with swapped adjectives.
 - Keep the same lyrical core, world, and style.
 - Output pure JSON array only. Start with `[` and end with `]`.
 - Do not include markdown code fences.
 
 [
-  {"scene_id": 1, "variant_id": 1, "change_axis": "shot_distance", "prompt": "..."},
-  {"scene_id": 1, "variant_id": 2, "change_axis": "lighting", "prompt": "..."}
+  {"scene_id": 1, "variant_id": 1, "prompt": "..."}
 ]

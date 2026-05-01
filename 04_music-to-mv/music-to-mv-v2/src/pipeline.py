@@ -442,27 +442,39 @@ class MVPipeline:
 
         options_map = {
             "step_2_approval": {
+                "": "continue",
                 "1": "continue", "2": "pause", "3": "retry_music", "4": "retry_lyrics",
-                "c": "continue", "继续": "continue",
-                "p": "pause", "暂停": "pause",
+                "c": "continue", "continue": "continue", "y": "continue", "yes": "continue", "继续": "continue",
+                "p": "pause", "pause": "pause", "暂停": "pause",
+                "retry_music": "retry_music", "重做音乐": "retry_music", "重新生成音乐": "retry_music",
+                "retry_lyrics": "retry_lyrics", "重做歌词": "retry_lyrics", "重新生成歌词": "retry_lyrics",
             },
             "step_3_alignment": {
+                "": "auto",
                 "1": "auto", "2": "manual", "a": "auto", "b": "manual",
                 "auto": "auto", "manual": "manual", "自动": "auto", "手动": "manual",
             },
             "step_4_scene_review": {
-                "1": "continue", "2": "retry", "c": "continue", "r": "retry",
+                "": "continue",
+                "1": "continue", "2": "retry", "c": "continue", "continue": "continue", "r": "retry", "retry": "retry",
                 "继续": "continue", "重新分析": "retry",
             },
         }
         opts = options_map.get(step_name, {"": "continue"})
+        hint_map = {
+            "step_2_approval": "回车/1/continue=继续，2/pause=暂停，3/retry_music=重做音乐，4/retry_lyrics=重做歌词",
+            "step_3_alignment": "回车/1/auto/A=自动对齐，2/manual/B=手动 SRT",
+            "step_4_scene_review": "回车/1/continue=继续，2/retry=重新分析",
+        }
+        if step_name in hint_map:
+            print(f"  可输入: {hint_map[step_name]}")
         while True:
-            raw = input("\n请输入选项 > ").strip().lower()
+            raw = input("\n请输入选项（直接回车=默认继续/自动）> ").strip().lower()
             if raw in opts:
                 selected = opts[raw]
                 self.pm.approve(selected)
                 return selected
-            print("  无效输入，请重新选择")
+            print(f"  无效输入: {raw or '<空>'}，请重新选择。")
 
     # ══════════════════════════════════════════════════════
     # 暂停点检查
@@ -481,7 +493,7 @@ class MVPipeline:
             return
 
         UserInteraction.pause_step2(self.pm)
-        print(UserInteraction.format_prompt_for_agent(self.pm))
+        print(UserInteraction.format_prompt_for_agent(self.pm, cli_mode=True))
 
         choice = self._wait_for_user_choice("step_2_approval")
 
@@ -511,7 +523,7 @@ class MVPipeline:
         choice = self.pm.get_user_choice("step_3_alignment")
         if not choice and not self.auto_mode:
             UserInteraction.pause_step3_alignment(self.pm)
-            print(UserInteraction.format_prompt_for_agent(self.pm))
+            print(UserInteraction.format_prompt_for_agent(self.pm, cli_mode=True))
             choice = self._wait_for_user_choice("step_3_alignment")
 
         align_mode = choice or "auto"
@@ -573,7 +585,7 @@ class MVPipeline:
 
             if not self.auto_mode:
                 UserInteraction.pause_step4_review_scenes(self.pm)
-                print(UserInteraction.format_prompt_for_agent(self.pm))
+                print(UserInteraction.format_prompt_for_agent(self.pm, cli_mode=True))
                 choice = self._wait_for_user_choice("step_4_scene_review")
                 if choice == "retry":
                     print("  用户选择重新分析...")
@@ -650,7 +662,17 @@ class MVPipeline:
             )
             kb_result = kb.process_project(str(self.pm.project_dir))
             if kb_result["failed"] > 0:
-                print(f"  [WARN] {kb_result['failed']} 个场景 KB 生成失败")
+                failed_rows = [
+                    r for r in kb_result.get("results", [])
+                    if r.get("status") == "failed"
+                ]
+                detail = "; ".join(
+                    f"scene {r.get('sid')}: {r.get('error', 'unknown')}"
+                    for r in failed_rows[:3]
+                )
+                raise RuntimeError(
+                    f"{kb_result['failed']} 个场景 KB 生成失败: {detail}"
+                )
             self.pm.update_step("⑧ kb", "completed",
                                 f"{kb_result['succeeded']}/{kb_result['total']} clips")
         except Exception as e:

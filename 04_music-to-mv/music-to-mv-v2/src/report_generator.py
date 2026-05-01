@@ -171,6 +171,7 @@ class ReportGenerator:
         """
         # 1. 收集数据
         self._load_records()
+        execution_summary = self.generate_execution_summary(write=True)
 
         # 2. 读取项目信息
         project_name = self.project_dir.name
@@ -188,18 +189,129 @@ class ReportGenerator:
         sorted_steps = self._sort_steps(step_groups)
 
         # 5. 构建 HTML
+        summary_html = self._build_execution_summary_html(execution_summary)
         sections_html = self._build_sections(step_groups, sorted_steps)
         filter_btns = self._build_filter_buttons(step_groups, sorted_steps)
 
         html_content = self._wrap_html(
             project_name, song_title, total, len(providers),
-            total_tokens, scenes_count, filter_btns, sections_html,
+            total_tokens, scenes_count, filter_btns, summary_html + sections_html,
         )
 
         # 6. 写入文件
         self._write_output(html_content, output_path)
 
         return html_content
+
+    def generate_execution_summary(self, write: bool = True) -> Dict[str, Any]:
+        """生成执行过程摘要，聚合调用次数、超时、错误原因和慢请求。"""
+        calls = self._load_call_records()
+        song_title, theme = self._load_project_info()
+
+        by_key: Dict[str, Dict[str, Any]] = {}
+        errors = Counter()
+        slow_calls = []
+        finish_reasons = Counter()
+        reasoning_only_count = 0
+
+        total_latency = 0.0
+        max_latency = 0.0
+        success_count = 0
+        failed_count = 0
+        timeout_count = 0
+
+        for rec in calls:
+            key = rec.get("prompt_key") or rec.get("step") or "unknown"
+            status = rec.get("status", "success")
+            latency = float(rec.get("latency_ms") or 0)
+            error = rec.get("error") or ""
+            total_latency += latency
+            max_latency = max(max_latency, latency)
+
+            if key not in by_key:
+                by_key[key] = {
+                    "calls": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "timeouts": 0,
+                    "avg_latency_ms": 0.0,
+                    "max_latency_ms": 0.0,
+                    "finish_reasons": {},
+                    "errors": {},
+                }
+            item = by_key[key]
+            item["calls"] += 1
+            item["max_latency_ms"] = max(item["max_latency_ms"], latency)
+            item["avg_latency_ms"] = (
+                (item["avg_latency_ms"] * (item["calls"] - 1) + latency) / item["calls"]
+            )
+
+            if status == "failed" or error:
+                failed_count += 1
+                item["failed"] += 1
+                if error:
+                    errors[error] += 1
+                    item_errors = Counter(item["errors"])
+                    item_errors[error] += 1
+                    item["errors"] = dict(item_errors)
+            else:
+                success_count += 1
+                item["success"] += 1
+
+            if self._is_timeout_error(error):
+                timeout_count += 1
+                item["timeouts"] += 1
+
+            response_info = self._inspect_response(rec)
+            reason = response_info.get("finish_reason")
+            if reason:
+                finish_reasons[reason] += 1
+                item_reasons = Counter(item["finish_reasons"])
+                item_reasons[reason] += 1
+                item["finish_reasons"] = dict(item_reasons)
+            if response_info.get("reasoning_only"):
+                reasoning_only_count += 1
+
+            if latency >= 60000:
+                slow_calls.append({
+                    "prompt_key": key,
+                    "model": rec.get("model", ""),
+                    "latency_ms": int(latency),
+                    "status": status,
+                    "error": error,
+                    "finish_reason": reason or "",
+                })
+
+        total_calls = len(calls)
+        summary = {
+            "generated_at": datetime.now().isoformat(),
+            "project": self.project_dir.name,
+            "song_title": song_title,
+            "theme": theme,
+            "totals": {
+                "api_calls": total_calls,
+                "success": success_count,
+                "failed": failed_count,
+                "timeouts": timeout_count,
+                "avg_latency_ms": int(total_latency / total_calls) if total_calls else 0,
+                "max_latency_ms": int(max_latency),
+                "finish_reason_length": finish_reasons.get("length", 0),
+                "reasoning_only_responses": reasoning_only_count,
+            },
+            "by_prompt_key": by_key,
+            "top_errors": [
+                {"error": err, "count": count}
+                for err, count in errors.most_common(10)
+            ],
+            "slow_calls": sorted(
+                slow_calls, key=lambda x: x.get("latency_ms", 0), reverse=True
+            )[:20],
+            "notes": self._build_execution_notes(timeout_count, failed_count, finish_reasons, reasoning_only_count),
+        }
+
+        if write:
+            self._write_execution_summary(summary)
+        return summary
 
     # ══════════════════════════════════════════════════════
     # 数据加载
@@ -222,6 +334,24 @@ class ReportGenerator:
                         self.records.append(self._normalize_record(entry))
                     except json.JSONDecodeError:
                         pass
+
+    def _load_call_records(self) -> List[Dict]:
+        """只读取 calls.jsonl，避免 errors/evaluations 重复计数。"""
+        calls_path = self.llm_dir / "calls.jsonl"
+        if not calls_path.exists():
+            return []
+
+        calls = []
+        with open(calls_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    calls.append(self._normalize_record(json.loads(line)))
+                except json.JSONDecodeError:
+                    pass
+        return calls
 
     def _normalize_record(self, entry: Dict) -> Dict:
         """兼容旧版 step/prompt 日志和新版 LLMLogger 摘要日志。"""
@@ -261,6 +391,75 @@ class ReportGenerator:
             return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
+
+    @staticmethod
+    def _is_timeout_error(error: str) -> bool:
+        lower = (error or "").lower()
+        return "timeout" in lower or "timed out" in lower
+
+    @staticmethod
+    def _parse_response_payload(response: Any) -> Any:
+        if isinstance(response, (dict, list)):
+            return response
+        if not response:
+            return None
+        try:
+            return json.loads(str(response))
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def _inspect_response(self, rec: Dict) -> Dict[str, Any]:
+        """提取 finish_reason 和 reasoning-only 等模型输出特征。"""
+        payload = self._parse_response_payload(rec.get("response"))
+        if not isinstance(payload, dict):
+            return {}
+
+        choices = payload.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            return {}
+
+        choice = choices[0]
+        message = choice.get("message") or {}
+        content = message.get("content", "")
+        reasoning = (
+            message.get("reasoning_content")
+            or message.get("reasoning_details")
+            or message.get("reasoning")
+        )
+        return {
+            "finish_reason": choice.get("finish_reason", ""),
+            "reasoning_only": bool(reasoning and not content),
+        }
+
+    @staticmethod
+    def _build_execution_notes(timeout_count: int, failed_count: int,
+                               finish_reasons: Counter,
+                               reasoning_only_count: int) -> List[str]:
+        notes = []
+        if timeout_count:
+            notes.append("存在 API 超时，请查看 top_errors 和 slow_calls 中的 prompt_key。")
+        if finish_reasons.get("length", 0):
+            notes.append("存在 finish_reason=length，说明模型输出被截断，可能导致 JSON 解析失败或触发 fallback。")
+        if reasoning_only_count:
+            notes.append("存在 reasoning-only 响应，说明推理内容占用输出额度，content 为空。")
+        if failed_count == 0 and not notes:
+            notes.append("未发现失败调用或明显超时。")
+        return notes
+
+    def _write_execution_summary(self, summary: Dict[str, Any]):
+        """写入 metadata/output 两份摘要 JSON。"""
+        for target in [
+            self.metadata_dir / "execution_summary.json",
+            self.project_dir / "output" / "execution_summary.json",
+        ]:
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    json.dumps(summary, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
 
     def _load_project_info(self) -> tuple:
         """读取歌曲标题和主题"""
@@ -482,6 +681,52 @@ class ReportGenerator:
                 f'{tag_label} ({count})</button>'
             )
         return btns
+
+    def _build_execution_summary_html(self, summary: Dict[str, Any]) -> str:
+        """构建执行过程摘要 HTML。"""
+        totals = summary.get("totals", {})
+        notes = summary.get("notes", [])
+        top_errors = summary.get("top_errors", [])[:5]
+        slow_calls = summary.get("slow_calls", [])[:5]
+
+        notes_html = "".join(
+            f"<li>{html.escape(str(note))}</li>" for note in notes
+        ) or "<li>暂无提示</li>"
+        errors_html = "".join(
+            f"<li>{item.get('count', 0)} 次：{html.escape(str(item.get('error', '')))}</li>"
+            for item in top_errors
+        ) or "<li>无失败错误</li>"
+        slow_html = "".join(
+            "<li>"
+            f"{html.escape(str(item.get('prompt_key', 'unknown')))} "
+            f"{int(item.get('latency_ms', 0))}ms "
+            f"{html.escape(str(item.get('status', '')))} "
+            f"{html.escape(str(item.get('finish_reason', '')))}"
+            "</li>"
+            for item in slow_calls
+        ) or "<li>无超过 60 秒的慢请求</li>"
+
+        return f"""
+<div class="section" id="sec-exec-summary">
+  <h2>执行过程摘要 <span class="full-badge">自动生成</span></h2>
+  <div class="stat">
+    <div class="s"><div class="n">{totals.get('api_calls', 0)}</div><div class="l">API 调用</div></div>
+    <div class="s"><div class="n">{totals.get('success', 0)}</div><div class="l">成功</div></div>
+    <div class="s"><div class="n">{totals.get('failed', 0)}</div><div class="l">失败</div></div>
+    <div class="s"><div class="n">{totals.get('timeouts', 0)}</div><div class="l">超时</div></div>
+    <div class="s"><div class="n">{totals.get('finish_reason_length', 0)}</div><div class="l">输出截断</div></div>
+    <div class="s"><div class="n">{totals.get('reasoning_only_responses', 0)}</div><div class="l">仅推理响应</div></div>
+  </div>
+  <div class="record">
+    <div class="record-body open">
+      <div class="field"><div class="field-label">诊断提示</div><div class="field-value"><ul>{notes_html}</ul></div></div>
+      <div class="field"><div class="field-label">错误原因 Top</div><div class="field-value"><ul>{errors_html}</ul></div></div>
+      <div class="field"><div class="field-label">慢请求 Top</div><div class="field-value"><ul>{slow_html}</ul></div></div>
+      <div class="field"><div class="field-label">JSON 摘要文件</div><div class="field-value">output/execution_summary.json</div></div>
+    </div>
+  </div>
+</div>
+"""
 
     def _wrap_html(
         self,

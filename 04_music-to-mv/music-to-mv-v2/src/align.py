@@ -26,6 +26,34 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Any
 
+from src.config_manager import ConfigManager
+
+
+def _resolve_torch_device(config_value: str = "auto") -> str:
+    """Resolve auto/cuda/cpu config to a torch-compatible device string."""
+    value = (config_value or "auto").strip().lower()
+    if value in ("cuda", "cpu"):
+        return value
+    if value.startswith("cuda:"):
+        return value
+    if value not in ("auto", ""):
+        return value
+    try:
+        import torch
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:
+        return "cpu"
+
+
+def _configured_model_chain(primary: str, fallbacks: str) -> List[str]:
+    """Build a de-duplicated Whisper model fallback chain."""
+    chain = []
+    for item in [primary, *(fallbacks or "").split(",")]:
+        name = str(item).strip()
+        if name and name not in chain:
+            chain.append(name)
+    return chain or ["medium", "small", "base", "tiny"]
+
 
 # ════════════════════════════════════════════════════════════
 # 相似度评分器
@@ -73,6 +101,7 @@ class WhisperTranscriber:
     @staticmethod
     def is_available() -> bool:
         """检查 whisper 是否已安装"""
+        print("  [..] 检查 Whisper 是否可用...", flush=True)
         try:
             import whisper
             return True
@@ -116,21 +145,28 @@ class WhisperTranscriber:
             except (json.JSONDecodeError, KeyError):
                 pass
 
-        print(f"  [..] Whisper 转写中（small 模型）...")
+        cfg = ConfigManager()
+        primary_model = str(cfg.get("align_whisper_model", "medium"))
+        fallback_models = str(cfg.get("align_whisper_fallback_models", "small,base,tiny"))
+        model_sizes = _configured_model_chain(primary_model, fallback_models)
+        device = _resolve_torch_device(str(cfg.get("align_whisper_device", "auto")))
+        language = str(cfg.get("align_whisper_language", "zh") or "zh")
+        fp16 = device.startswith("cuda")
+
+        print(f"  [..] Whisper 转写中（模型链: {' -> '.join(model_sizes)}, device={device}）...")
         print(f"  [..] 音频: {audio_path}")
 
-        # 尝试 small 模型
-        model_sizes = ["small", "base", "tiny"]
         last_error = None
 
         for model_size in model_sizes:
             try:
-                print(f"      {model_size} 模型...")
-                model = whisper.load_model(model_size)
+                print(f"      {model_size} 模型 ({device})...")
+                model = whisper.load_model(model_size, device=device)
                 result = model.transcribe(
                     audio_path,
-                    language="zh",
+                    language=language,
                     verbose=False,
+                    fp16=fp16,
                 )
 
                 # 验证结果
@@ -146,7 +182,7 @@ class WhisperTranscriber:
                         encoding="utf-8"
                     )
 
-                print(f"      [OK] Whisper {model_size}: "
+                print(f"      [OK] Whisper {model_size} ({device}): "
                       f"{len(result['segments'])} 段, "
                       f"{result.get('text', '')[:50]}...")
                 return result
@@ -177,10 +213,13 @@ class DemucsVocalSeparator:
     @staticmethod
     def is_available() -> bool:
         """检查 demucs 是否可调用"""
+        cfg = ConfigManager()
+        check_timeout = cfg.get_int("align_demucs_check_timeout_sec", 10)
+        print(f"  [..] 检查 Demucs 是否可用（timeout={check_timeout}s）...", flush=True)
         try:
             result = subprocess.run(
-                ["demucs", "--help"],
-                capture_output=True, text=True, timeout=10
+                [sys.executable, "-m", "demucs", "--help"],
+                capture_output=True, text=True, timeout=check_timeout
             )
             return result.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -193,37 +232,56 @@ class DemucsVocalSeparator:
         返回:
             人声 WAV 路径，或 None 表示失败
         """
-        print(f"  [..] Demucs 人声分离中...")
+        cfg = ConfigManager()
+        demucs_device = _resolve_torch_device(str(cfg.get("align_demucs_device", "auto")))
+        print(f"  [..] Demucs 人声分离中（device={demucs_device}）...", flush=True)
 
         demucs_out = Path(temp_dir) / "demucs_out"
         demucs_out.mkdir(parents=True, exist_ok=True)
         log_path = Path(temp_dir) / "demucs.log"
 
         try:
+            cmd = [
+                sys.executable, "-m", "demucs",
+                "--two-stems", "vocals",
+                "-o", str(demucs_out),
+                "--device", demucs_device,
+                str(audio_path),
+            ]
+            print(f"  -> run: {' '.join(cmd)}", flush=True)
             result = subprocess.run(
-                ["demucs", "--two-stems", "vocals",
-                 "-o", str(demucs_out),
-                 "--device", "cpu",
-                 str(audio_path)],
+                cmd,
                 capture_output=True, text=True,
                 timeout=timeout,
             )
+            log_path.write_text(
+                "STDOUT:\n" + (result.stdout or "") + "\n\nSTDERR:\n" + (result.stderr or ""),
+                encoding="utf-8",
+            )
 
             if result.returncode != 0:
-                log_path.write_text(result.stderr, encoding="utf-8")
                 print(f"  [!] Demucs 失败 (code={result.returncode}), 使用原始音频")
+                print(f"  [!] Demucs 日志: {log_path}")
                 return None
 
-            # 查找分离后的人声文件
+            # 查找分离后的人声文件。Demucs 不同版本/封装的输出目录略有差异。
             basename = Path(audio_path).stem
-            candidate = (demucs_out / "htdemucs" / "separated"
-                         / basename / "vocals.wav")
+            candidates = [
+                demucs_out / "htdemucs" / basename / "vocals.wav",
+                demucs_out / "htdemucs" / "separated" / basename / "vocals.wav",
+                demucs_out / basename / "vocals.wav",
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    print(f"  [OK] 人声分离完成: {candidate}")
+                    return str(candidate)
 
-            if candidate.exists():
-                print(f"  [OK] 人声分离完成: {candidate}")
-                return str(candidate)
+            found = list(demucs_out.rglob("vocals.wav"))
+            if found:
+                print(f"  [OK] 人声分离完成: {found[0]}")
+                return str(found[0])
 
-            print(f"  [!] Demucs 输出未找到: {candidate}")
+            print(f"  [!] Demucs 输出未找到: {candidates[0]}")
             return None
 
         except FileNotFoundError:
@@ -364,11 +422,19 @@ class LyricsAligner:
         start_time = time.time()
 
         # ① 人声分离（可选）
-        if DemucsVocalSeparator.is_available():
+        cfg = ConfigManager()
+        if not cfg.get_bool("align_asr_enabled", True):
+            raise ImportError("ALIGN_ASR_ENABLED=false")
+
+        demucs_enabled = cfg.get_bool("align_demucs_enabled", True)
+        if demucs_enabled and DemucsVocalSeparator.is_available():
             vocal_path = DemucsVocalSeparator().separate(
                 str(audio_path), str(temp_dir), timeout
             )
             audio_for_asr = vocal_path or str(audio_path)
+        elif not demucs_enabled:
+            audio_for_asr = str(audio_path)
+            print(f"  [..] Demucs 已通过配置关闭，使用原始音频")
         else:
             audio_for_asr = str(audio_path)
             print(f"  [..] Demucs 未安装，使用原始音频")
@@ -394,6 +460,7 @@ class LyricsAligner:
         alignments = self._align(
             clean_lyrics, asr_segments
         )
+        self._repair_alignment_timeline(alignments)
 
         # ④ 生成 SRT
         srt_content = self._generate_srt(alignments, clean_lyrics)
@@ -496,19 +563,22 @@ class LyricsAligner:
                 continue
             best_score = 0
             best_entry = None
-            for _, start, end, text in unassigned_asr:
+            for asr_i, start, end, text in unassigned_asr:
+                if asr_assigned[asr_i]:
+                    continue
                 s = SimilarityScorer.score_pair(text, lyrics[j])
                 if s > best_score:
                     best_score = s
-                    best_entry = (start, end)
+                    best_entry = (asr_i, start, end)
             if best_score >= self.threshold_2 and best_entry:
-                start, end = best_entry
+                asr_i, start, end = best_entry
                 if j in align_map:
                     a = align_map[j]
                     align_map[j] = (a[0], end, a[2] + best_score, a[3] + 1)
                 else:
                     align_map[j] = (start, end, best_score, 1)
                 lyric_assigned[j] = True
+                asr_assigned[asr_i] = True
 
         # ── 后处理修正 ──
         # 修正1: 第一行未匹配 → 分配第一个有效 ASR 时间
@@ -555,6 +625,58 @@ class LyricsAligner:
                 result[i]["matched"] = True
 
         return result
+
+    @staticmethod
+    def _repair_alignment_timeline(alignments: List[Dict],
+                                   min_gap: float = 0.05,
+                                   min_duration: float = 0.6,
+                                   fallback_duration: float = 2.0) -> None:
+        """Ensure SRT entries follow lyric order on a monotonic timeline.
+
+        Whisper matching can occasionally attach a later lyric line to an
+        earlier ASR segment, especially with repeated chorus lines. SRT players
+        render by timestamp, so non-monotonic or overlapping entries make
+        multi-line captions appear out of order. Keep lyric order authoritative
+        and repair timestamps in place.
+        """
+        matched = [a for a in alignments if a.get("matched")]
+        if not matched:
+            return
+
+        repaired = 0
+        for a in matched:
+            start = float(a.get("start", 0.0) or 0.0)
+            end = float(a.get("end", 0.0) or 0.0)
+            if end <= start:
+                a["end"] = start + fallback_duration
+                a["interpolated"] = True
+                repaired += 1
+
+        for prev, cur in zip(matched, matched[1:]):
+            prev_start = float(prev["start"])
+            prev_end = float(prev["end"])
+            cur_start = float(cur["start"])
+            cur_end = float(cur["end"])
+
+            if cur_start < prev_end + min_gap:
+                if prev_end - prev_start > min_duration:
+                    prev["end"] = max(prev_start + min_duration, cur_start - min_gap)
+                    prev_end = float(prev["end"])
+
+                if cur_start < prev_end + min_gap:
+                    shift = prev_end + min_gap - cur_start
+                    cur["start"] = cur_start + shift
+                    cur["end"] = max(cur_end + shift, cur["start"] + min_duration)
+                    cur["interpolated"] = True
+                    repaired += 1
+
+            if cur["end"] <= cur["start"]:
+                cur["end"] = cur["start"] + fallback_duration
+                cur["interpolated"] = True
+                repaired += 1
+
+        if repaired:
+            print(f"      [post] 修正 {repaired} 个非单调/重叠字幕时间戳")
 
     def _generate_srt(self, alignments: List[Dict],
                       lyrics: List[str]) -> str:

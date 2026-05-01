@@ -1,0 +1,276 @@
+{
+  "version": "1.0",
+  "default_mode": "environment_symbolic",
+  "description": "Step 4 主参考图主体类型推断配置。按 priority 从小到大匹配，命中关键词即返回 mode。",
+  "modes": [
+    {
+      "mode": "family_person",
+      "priority": 5,
+      "description": "亲情人物、父母、祖辈、家人和家庭记忆主题",
+      "keywords": [
+        "妈妈", "母亲", "母爱", "娘", "奶奶", "外婆", "祖母", "姥姥",
+        "爷爷", "外公", "祖父", "爸爸", "父亲", "父爱",
+        "父母", "亲情", "家人", "家庭", "老家", "陪伴", "牵挂",
+        "family", "mother", "mom", "grandmother", "grandma", "father",
+        "parent", "parents", "elder", "home memory"
+      ]
+    },
+    {
+      "mode": "relation",
+      "priority": 10,
+      "description": "人物关系、爱情、离别、重逢等主题",
+      "keywords": [
+        "爱情", "恋爱", "相爱", "爱人", "情侣", "恋人", "情人",
+        "思念", "想你", "等你", "离别", "重逢", "告白", "心动",
+        "拥抱", "牵手", "誓言", "婚礼",
+        "love", "lover", "romance", "romantic", "couple", "kiss", "embrace"
+      ]
+    },
+    {
+      "mode": "human_action",
+      "priority": 20,
+      "description": "战争、灾难、群像、行动压力等主题",
+      "keywords": [
+        "战争", "战场", "士兵", "军队", "英雄", "战火", "冲锋",
+        "革命", "逃亡", "灾难", "末日", "人群", "城市逃离",
+        "war", "battle", "soldier", "army", "hero", "crowd",
+        "conflict", "battlefield"
+      ]
+    },
+    {
+      "mode": "nonhuman_subject",
+      "priority": 30,
+      "description": "动物、宠物、机器人、玩偶等非人物主体",
+      "keywords": [
+        "小狗", "狗", "猫", "小猫", "宠物", "狐狸", "鹿", "马",
+        "鸟", "蝴蝶", "鱼", "鲸", "兔", "熊猫", "龙猫", "机器人", "玩偶", "娃娃",
+        "puppy", "dog", "cat", "pet", "fox", "deer", "horse",
+        "bird", "butterfly", "fish", "whale", "rabbit", "panda", "robot", "doll"
+      ]
+    },
+    {
+      "mode": "botanical_subject",
+      "priority": 35,
+      "description": "植物、花卉、树木、藤蔓等自然生命主体",
+      "keywords": [
+        "牵牛花", "喇叭花", "玫瑰", "月季", "蔷薇", "荷花", "莲花", "梅花",
+        "兰花", "菊花", "桃花", "樱花", "桂花", "牡丹", "海棠", "芙蓉",
+        "竹", "竹子", "松", "柳", "梧桐", "藤蔓", "花卉", "植物",
+        "morning glory", "trumpet flower", "rose", "lotus", "plum blossom",
+        "orchid", "chrysanthemum", "peony", "bamboo", "willow", "vine",
+        "flower", "botanical", "plant"
+      ]
+    },
+    {
+      "mode": "cosmic_environment",
+      "priority": 40,
+      "description": "星系、宇宙、星云、太空等宇宙环境",
+      "keywords": [
+        "星系", "银河", "宇宙", "星云", "星际", "行星", "太空",
+        "galaxy", "cosmos", "universe", "nebula", "planet", "space", "interstellar"
+      ]
+    },
+    {
+      "mode": "food_subject",
+      "priority": 45,
+      "description": "食物、饮品、菜肴、水果等可食用主体",
+      "keywords": [
+        "油泼面", "臊子面", "炸酱面", "牛肉面", "汤面", "热汤面",
+        "面条", "拉面", "面食", "面馆", "米粉", "粉面",
+        "饺子", "包子", "火锅", "米饭", "粥", "月饼", "糖葫芦",
+        "茶", "咖啡", "酒", "蛋糕", "面包", "苹果", "橘子", "柠檬", "西瓜",
+        "food", "dish", "noodle", "dumpling", "hotpot", "tea", "coffee",
+        "cake", "bread", "fruit", "apple", "lemon", "watermelon"
+      ]
+    },
+    {
+      "mode": "architecture_place",
+      "priority": 46,
+      "description": "具体建筑、场所、空间、地标",
+      "keywords": [
+        "亭", "阁", "楼", "桥", "古桥", "寺", "庙", "宫殿", "庭院", "园林",
+        "院子", "老宅", "城墙", "长城", "码头", "港口", "车站", "剧场",
+        "pavilion", "tower", "bridge", "temple", "palace", "courtyard",
+        "garden", "house", "station", "harbor", "theater", "landmark"
+      ]
+    },
+    {
+      "mode": "vehicle_subject",
+      "priority": 47,
+      "description": "交通工具、船、车、列车、飞行器",
+      "keywords": [
+        "船", "小船", "孤舟", "帆船", "火车", "列车", "汽车", "巴士",
+        "自行车", "摩托", "飞机", "飞船", "地铁",
+        "boat", "ship", "sailboat", "train", "car", "bus", "bicycle",
+        "motorcycle", "airplane", "spaceship", "subway"
+      ]
+    },
+    {
+      "mode": "weather_nature",
+      "priority": 48,
+      "description": "天气、季节、自然现象作为主体",
+      "keywords": [
+        "春风", "夏雨", "秋风", "冬雪", "雨", "雪", "风", "雾", "霜",
+        "云", "雷", "闪电", "彩虹", "日出", "落日", "黄昏",
+        "rain", "snow", "wind", "fog", "mist", "frost", "cloud",
+        "thunder", "lightning", "rainbow", "sunrise", "sunset", "dusk"
+      ]
+    },
+    {
+      "mode": "landscape_subject",
+      "priority": 49,
+      "description": "山川湖海、沙漠、森林、田野等地貌景观",
+      "keywords": [
+        "山", "山川", "大山", "江", "河", "湖", "大海", "海", "森林",
+        "草原", "田野", "沙漠", "峡谷", "瀑布", "岛", "海岸",
+        "mountain", "river", "lake", "sea", "ocean", "forest",
+        "grassland", "field", "desert", "canyon", "waterfall", "island", "coast"
+      ]
+    },
+    {
+      "mode": "poetic_imagery",
+      "priority": 50,
+      "description": "古诗、山水、江南、诗性意境",
+      "keywords": [
+        "古诗", "诗词", "唐诗", "宋词", "诗意", "意境", "山水", "江南",
+        "烟雨", "春江", "花月夜", "明月", "月下", "孤舟", "寒江",
+        "落霞", "秋水", "长亭", "古道", "西风", "瘦马", "边塞",
+        "故乡", "乡愁", "清明", "上河", "兰亭", "桃花源", "滕王阁",
+        "poem", "poetry", "poetic", "ancient poem", "moonlit", "misty river"
+      ]
+    },
+    {
+      "mode": "festival_culture",
+      "priority": 60,
+      "description": "节日文化、仪式、团圆",
+      "keywords": [
+        "春节", "新年", "元宵", "清明", "端午", "七夕", "中秋", "重阳",
+        "节日", "灯会", "庙会", "烟花", "灯笼", "团圆",
+        "festival", "lantern", "new year", "mid autumn"
+      ]
+    },
+    {
+      "mode": "urban_life",
+      "priority": 70,
+      "description": "城市、街道、车站、房间、校园等生活空间",
+      "keywords": [
+        "城市", "都市", "街道", "地铁", "车站", "夜市", "咖啡厅", "房间",
+        "窗边", "霓虹", "校园", "图书馆", "办公室",
+        "city", "urban", "street", "subway", "station", "cafe", "room", "campus"
+      ]
+    },
+    {
+      "mode": "profession_activity",
+      "priority": 75,
+      "description": "职业、手艺、表演、运动和行动主题",
+      "keywords": [
+        "舞者", "歌手", "诗人", "画家", "书法家", "匠人", "渔夫", "农夫",
+        "医生", "老师", "运动员", "舞蹈", "奔跑", "远行", "登山", "练剑",
+        "dancer", "singer", "poet", "painter", "craftsman", "doctor",
+        "teacher", "athlete", "dance", "running", "journey", "climbing"
+      ]
+    },
+    {
+      "mode": "object_symbol",
+      "priority": 80,
+      "description": "旧照片、书信、时钟、乐器等象征物",
+      "keywords": [
+        "信", "书信", "旧照片", "相册", "时钟", "钟表", "雨伞", "灯",
+        "窗", "酒杯", "茶", "琴", "古筝", "笛", "玩具", "纸船", "风铃",
+        "letter", "photo", "clock", "umbrella", "lamp", "window",
+        "instrument", "toy", "keepsake"
+      ]
+    },
+    {
+      "mode": "abstract_symbolic",
+      "priority": 85,
+      "description": "抽象概念、情绪、命运、时间等象征主题",
+      "keywords": [
+        "时间", "命运", "自由", "孤独", "希望", "梦想", "勇气", "记忆",
+        "秘密", "沉默", "光", "影", "回声", "轮回",
+        "time", "destiny", "freedom", "loneliness", "hope", "dream",
+        "courage", "memory", "secret", "silence", "light", "shadow", "echo"
+      ]
+    },
+    {
+      "mode": "fantasy_myth",
+      "priority": 90,
+      "description": "神话、奇幻、山海经、龙凤、魔法",
+      "keywords": [
+        "神话", "传说", "仙", "仙境", "龙", "凤凰", "妖", "魔法", "奇幻",
+        "精灵", "梦境", "幻境", "山海经",
+        "fantasy", "myth", "dragon", "phoenix", "fairy", "magic", "dreamland"
+      ]
+    }
+  ],
+  "visual_hint_groups": [
+    {
+      "keywords": ["春", "spring"],
+      "hint": "spring rain, tender new leaves, flowers, wet stone path, soft mist"
+    },
+    {
+      "keywords": ["夏", "summer", "炙热"],
+      "hint": "scorching sunlight, heat shimmer, cicadas, deep shade, bright leaves, sweat, open sky"
+    },
+    {
+      "keywords": ["秋", "autumn"],
+      "hint": "falling leaves, golden fields, cool wind, distant mountains, dusk light"
+    },
+    {
+      "keywords": ["冬", "winter", "雪"],
+      "hint": "snow, cold air, bare branches, white silence, warm window light"
+    },
+    {
+      "keywords": ["月", "moon"],
+      "hint": "moonlight, long shadows, quiet water, distant pavilion, night mist"
+    },
+    {
+      "keywords": ["雨", "rain"],
+      "hint": "rain threads, wet reflections, ripples, umbrella, mist, softened distance"
+    },
+    {
+      "keywords": ["风", "wind"],
+      "hint": "moving fabric, bending grass, drifting petals, clouds, hair or leaves in motion"
+    },
+    {
+      "keywords": ["江", "河", "水", "river"],
+      "hint": "riverbank, boat, reflections, bridge, reeds, flowing water"
+    },
+    {
+      "keywords": ["山", "mountain"],
+      "hint": "layered mountains, mist, pine trees, cliff path, distant temple"
+    },
+    {
+      "keywords": ["花", "flower"],
+      "hint": "falling petals, blooming branches, delicate foreground flowers, soft fragrance atmosphere"
+    },
+    {
+      "keywords": ["梦", "dream"],
+      "hint": "surreal soft light, floating particles, blurred boundary between memory and reality"
+    },
+    {
+      "keywords": ["故乡", "乡愁", "home"],
+      "hint": "old doorway, village path, cooking smoke, distant lights, remembered home"
+    }
+  ],
+  "mode_hints": {
+    "family_person": "family elder or parent as emotional anchor, warm lived-in home memory, hands, wrinkles, domestic details, tenderness",
+    "botanical_subject": "clear botanical subject, flower species accuracy, petals, leaves, vines, stem, growth habit, dew, natural habitat",
+    "food_subject": "clear food or drink subject, ingredients, shape, texture, steam, vessel, table setting, sensory realism",
+    "architecture_place": "specific place or architecture as anchor, structure, materials, entrance, scale, surrounding spatial context",
+    "vehicle_subject": "clear vehicle subject, silhouette, material, motion path, travel context, environment supports the vehicle",
+    "weather_nature": "weather or natural phenomenon as main subject, atmosphere, light, particles, movement, environmental effect",
+    "landscape_subject": "specific landform or natural place, scale, geography, foreground, distance, weather, coherent terrain",
+    "profession_activity": "clear human activity or profession, tools, body motion, working context, stakes, cinematic action",
+    "abstract_symbolic": "symbolic visual metaphor, object and light motifs, spatial emotion, abstract idea made concrete",
+    "poetic_imagery": "classical Chinese poetic imagery, season, moon, river, mountain, mist, pavilion, boat, empty space",
+    "festival_culture": "festival objects, ritual details, lanterns, family gathering traces, seasonal cultural atmosphere",
+    "urban_life": "lived-in street, window light, transit, room details, city weather, everyday objects",
+    "object_symbol": "symbolic object close detail, texture, light, shadow, surrounding memory space",
+    "fantasy_myth": "mythic world, enchanted light, legendary creatures, ancient symbols, sacred landscape",
+    "cosmic_environment": "galaxy, nebula, stars, planets, deep space, vast celestial scale",
+    "nonhuman_subject": "clear non-human subject, expressive body language, texture, surrounding environment",
+    "human_action": "human stakes, group movement, conflict traces, aftermath, scale, cinematic tension",
+    "relation": "two-person relationship, distance and intimacy, gesture, shared space, emotional atmosphere"
+  }
+}

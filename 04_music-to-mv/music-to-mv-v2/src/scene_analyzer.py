@@ -43,6 +43,15 @@ QUALITY_SUFFIX = (
     "minimal composition, no text, no logo, no clutter"
 )
 
+THEME_REFERENCE_CONFIG = Path(__file__).resolve().parents[1] / "config" / "theme_reference_modes.json"
+
+NON_PERSON_REFERENCE_MODES = {
+    "botanical_subject", "food_subject", "architecture_place",
+    "vehicle_subject", "weather_nature", "landscape_subject",
+    "cosmic_environment", "poetic_imagery", "object_symbol",
+    "abstract_symbolic",
+}
+
 
 # ════════════════════════════════════════════════════════════
 # 变体类型定义
@@ -633,14 +642,30 @@ class SceneAnalyzer:
         注意：LLM 返回内容常含 markdown 代码块、思考标签、前缀噪音等，
         使用 _parse_json_response 进行鲁棒解析。
         """
+        cfg = ConfigManager()
+        batch_size = max(1, cfg.get_int("scene_desc_batch_size", 4))
+        if len(scenes) > batch_size:
+            merged: Dict[int, Dict] = {}
+            for idx in range(0, len(scenes), batch_size):
+                chunk = scenes[idx:idx + batch_size]
+                chunk_result = self._call_llm_batch_descs(chunk)
+                merged.update(chunk_result)
+            if merged:
+                print(f"  [LLM batch descs] 小批次完成: {len(merged)}/{len(scenes)}")
+            return merged
+
         try:
-            cfg = ConfigManager()
             token = cfg.get("minimax_token", "")
             if not token:
                 return {}
 
-            art_style = get_art_style(self._style)
+            reference_modes = self._matching_theme_reference_modes()
+            reference_mode = reference_modes[0] if reference_modes else self._infer_theme_reference_mode()
+            art_style = self._sanitize_subject_text(
+                get_art_style(self._style), reference_mode, reference_modes
+            )
             music_visual = get_music_style_desc(self._music_style)
+            subject_guidance = self._build_subject_guidance(reference_mode, reference_modes)
 
             # 构建歌词段列表
             lyric_lines = []
@@ -663,6 +688,7 @@ class SceneAnalyzer:
                     "music_style": self._music_style,
                     "art_style": art_style,
                     "music_visual": music_visual,
+                    "subject_guidance": subject_guidance,
                     "lyric_section": lyric_section,
                     "character_policy": self._character_policy,
                     "visual_mode": self._visual_mode,
@@ -685,13 +711,14 @@ class SceneAnalyzer:
                     f"Music Style: {self._music_style}\n"
                     f"Visual Style Details: {art_style}\n"
                     f"Music Visual Atmosphere: {music_visual}\n"
-                    f"Character Policy: {self._character_policy}\n"
+                    + (f"Theme Subject Guidance: {subject_guidance}\n" if subject_guidance else "")
+                    + f"Character Policy: {self._character_policy}\n"
                     f"Visual Mode: {self._visual_mode}\n"
                     f"Narrative Mode: {self._narrative_mode}\n"
                     f"Chorus Energy: {self._chorus_energy}\n"
                     + (f"Do Not Do: {do_not_do_str}\n" if do_not_do_str else "")
                     + f"\n"
-                    f"Lyric segments with timestamp:\n"
+                    + f"Lyric segments with timestamp:\n"
                     f"{lyric_section}\n"
                     f"\n"
                     f"Requirements:\n"
@@ -713,6 +740,8 @@ class SceneAnalyzer:
                 "model": cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": cfg.get_int("scene_desc_max_tokens", 4096),
+                "temperature": 0.2,
+                "reasoning_split": True,
             }).encode("utf-8")
 
             headers = {
@@ -725,19 +754,32 @@ class SceneAnalyzer:
                 prompt_key="scene_desc_batch",
                 model=cfg.get("llm_model", "MiniMax-M2.7"),
                 prompt_text=prompt,
+                retry_config=RetryConfig.for_profile("scene_desc"),
             )
 
             raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
             results = self._parse_json_response(raw)
             if not results:
+                finish_reason = resp_data.get("choices", [{}])[0].get("finish_reason", "")
+                if finish_reason == "length" or "<think" in raw.lower():
+                    compact_ret = self._call_llm_compact_descs(
+                        scenes=scenes,
+                        cfg=cfg,
+                        token=token,
+                        art_style=art_style,
+                        music_visual=music_visual,
+                        subject_guidance=subject_guidance,
+                    )
+                    if compact_ret:
+                        return compact_ret
                 print(f"  [LLM batch descs] 解析失败，使用 local fallback")
                 return {}
 
             ret = {}
             for item in results:
                 sid = item.get("id")
-                desc = self._strip_think(item.get("desc", ""))
-                if sid and desc:
+                desc = self._strip_think(item.get("desc") or item.get("prompt") or "")
+                if sid and desc and self._is_valid_desc(desc, ""):
                     ret[sid] = {
                         "desc": desc,
                         "visual_focus": item.get("visual_focus"),
@@ -753,12 +795,101 @@ class SceneAnalyzer:
             print(f"  [LLM batch descs] 失败: {e}")
             return {}
 
+    def _call_llm_compact_descs(
+        self,
+        scenes: List[Dict],
+        cfg: ConfigManager,
+        token: str,
+        art_style: str,
+        music_visual: str,
+        subject_guidance: str,
+    ) -> Dict[int, Dict]:
+        """场景描述解析失败后的极简重试，专门应对 thinking 占满输出。"""
+        lyric_lines = []
+        for s in scenes:
+            time_range = f"{int(s['start'])}s-{int(s['end'])}s"
+            lyric_lines.append(f"id={s['id']} [{time_range}] {s['text_preview']}")
+
+        prompt = (
+            "Return ONLY a valid JSON array. The first character must be '['. "
+            "Do not write analysis, markdown, XML, or <think>. "
+            "For each input line, output one object with keys: id, desc, visual_focus, "
+            "shot_type, character_needed, symbolic_objects, motion_hint. "
+            "desc must be 16-28 English words and directly image-generatable.\n\n"
+            f"Theme: {self._theme}\n"
+            f"Mood: {self._mood}\n"
+            f"Style details: {art_style}\n"
+            f"Music atmosphere: {music_visual}\n"
+            + (f"Subject rules: {subject_guidance}\n" if subject_guidance else "")
+            + "Input scenes:\n"
+            + "\n".join(lyric_lines)
+            + '\n\nExample: [{"id":1,"desc":"warm kitchen close-up of noodles steaming beside an elder hand","visual_focus":"object","shot_type":"close_detail","character_needed":false,"symbolic_objects":["bowl","steam"],"motion_hint":"slow drift"}]'
+        )
+
+        try:
+            api_url = "https://api.minimaxi.com/v1/chat/completions"
+            payload = json.dumps({
+                "model": cfg.get("llm_model", "MiniMax-M2.7"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": min(cfg.get_int("scene_desc_max_tokens", 4096), 2048),
+                "temperature": 0.1,
+                "reasoning_split": True,
+            }).encode("utf-8")
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            resp_data = self.client._call_raw_api(
+                api_url, payload, headers,
+                prompt_key="scene_desc_batch_compact",
+                model=cfg.get("llm_model", "MiniMax-M2.7"),
+                prompt_text=prompt,
+                retry_config=RetryConfig.for_profile("scene_desc"),
+            )
+            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            results = self._parse_json_response(raw)
+            if not results:
+                print("  [LLM batch descs] 极简重试仍解析失败")
+                return {}
+
+            ret: Dict[int, Dict] = {}
+            for item in results:
+                sid = item.get("id")
+                desc = self._strip_think(item.get("desc") or item.get("prompt") or "")
+                if sid and desc and self._is_valid_desc(desc, ""):
+                    ret[sid] = {
+                        "desc": desc,
+                        "visual_focus": item.get("visual_focus"),
+                        "shot_type": item.get("shot_type"),
+                        "character_needed": item.get("character_needed"),
+                        "symbolic_objects": item.get("symbolic_objects"),
+                        "motion_hint": item.get("motion_hint"),
+                    }
+            if ret:
+                print(f"  [LLM batch descs] 极简重试成功: {len(ret)}/{len(scenes)}")
+            return ret
+        except Exception as e:
+            print(f"  [LLM batch descs] 极简重试失败: {e}")
+            return {}
+
     def _call_llm_batch_variants(
         self, variant_scenes: List[Dict], all_scenes: List[Dict]
     ) -> Dict[int, List[str]]:
         """调用 LLM 批量生成变体描述"""
+        cfg = ConfigManager()
+        batch_size = max(1, cfg.get_int("variant_desc_batch_size", 4))
+        if len(variant_scenes) > batch_size:
+            merged: Dict[int, List[str]] = {}
+            for idx in range(0, len(variant_scenes), batch_size):
+                chunk = variant_scenes[idx:idx + batch_size]
+                chunk_result = self._call_llm_batch_variants(chunk, all_scenes)
+                for sid, descs in chunk_result.items():
+                    merged.setdefault(sid, []).extend(descs)
+            if merged:
+                print(f"  [LLM batch variants] 小批次完成: {len(merged)}/{len(variant_scenes)}")
+            return merged
+
         try:
-            cfg = ConfigManager()
             token = cfg.get("minimax_token", "")
             if not token:
                 return {}
@@ -832,6 +963,8 @@ class SceneAnalyzer:
                 "model": cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": cfg.get_int("variant_desc_max_tokens", 4096),
+                "temperature": 0.2,
+                "reasoning_split": True,
             }).encode("utf-8")
 
             headers = {
@@ -844,18 +977,28 @@ class SceneAnalyzer:
                 prompt_key="variant_desc_batch",
                 model=cfg.get("llm_model", "MiniMax-M2.7"),
                 prompt_text=prompt,
+                retry_config=RetryConfig.for_profile("variant"),
             )
 
             raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
             results = self._parse_json_response(raw)
             if not results:
+                finish_reason = resp_data.get("choices", [{}])[0].get("finish_reason", "")
+                if finish_reason == "length" or "<think" in raw.lower():
+                    compact_variants = self._call_llm_compact_variants(
+                        var_requests=var_requests,
+                        cfg=cfg,
+                        token=token,
+                    )
+                    if compact_variants:
+                        return compact_variants
                 print(f"  [LLM batch variants] 解析失败，使用 local fallback")
                 return {}
 
             merged = {}
             for item in results:
                 sid = item.get("scene_id")
-                desc = self._strip_think(item.get("desc", ""))
+                desc = self._strip_think(item.get("desc") or item.get("prompt") or item.get("variant_prompt") or "")
                 if sid and desc:
                     if sid not in merged:
                         merged[sid] = []
@@ -865,6 +1008,79 @@ class SceneAnalyzer:
 
         except Exception as e:
             print(f"  [LLM batch variants] 失败: {e}")
+            return {}
+
+    def _call_llm_compact_variants(
+        self,
+        var_requests: List[Dict],
+        cfg: ConfigManager,
+        token: str,
+    ) -> Dict[int, List[str]]:
+        """变体描述失败后的极简重试，减少 reasoning 和长 prompt 造成的超时。"""
+        if not var_requests:
+            return {}
+
+        task_lines = []
+        for r in var_requests:
+            task_lines.append(
+                f'scene_id={r["scene_id"]} variant_id={r["variant_idx"]} '
+                f'type={r["vtype"]} original="{r["base_desc"][:90]}" '
+                f'lyrics="{r["lyrics"][:80]}"'
+            )
+
+        prompt = (
+            "Return ONLY a valid JSON array. First character must be '['. "
+            "No analysis, no markdown, no XML, no <think>. "
+            "Create one variant prompt per task. Keep same song meaning, same world, same style, "
+            "but change the requested camera/action/foreground/lighting detail. "
+            "Each prompt 16-28 English words, directly image-generatable.\n\n"
+            f"Theme: {self._theme}\n"
+            f"Style: {self._style}\n"
+            f"Mood: {self._mood}\n"
+            "Tasks:\n"
+            + "\n".join(task_lines)
+            + '\n\nFormat: [{"scene_id":4,"variant_id":1,"prompt":"close detail of chili oil blooming across noodles beside grandmother hand"}]'
+        )
+
+        try:
+            api_url = "https://api.minimaxi.com/v1/chat/completions"
+            payload = json.dumps({
+                "model": cfg.get("llm_model", "MiniMax-M2.7"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": min(cfg.get_int("variant_desc_max_tokens", 4096), 2048),
+                "temperature": 0.1,
+                "reasoning_split": True,
+            }).encode("utf-8")
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            resp_data = self.client._call_raw_api(
+                api_url, payload, headers,
+                prompt_key="variant_desc_batch_compact",
+                model=cfg.get("llm_model", "MiniMax-M2.7"),
+                prompt_text=prompt,
+                retry_config=RetryConfig.for_profile("variant"),
+            )
+
+            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            results = self._parse_json_response(raw)
+            if not results:
+                print("  [LLM batch variants] 极简重试仍解析失败")
+                return {}
+
+            merged: Dict[int, List[str]] = {}
+            for item in results:
+                sid = item.get("scene_id")
+                desc = self._strip_think(item.get("prompt") or item.get("desc") or item.get("variant_prompt") or "")
+                if sid and desc:
+                    merged.setdefault(sid, []).append(desc)
+            if merged:
+                total = sum(len(v) for v in merged.values())
+                print(f"  [LLM batch variants] 极简重试成功: {total}/{len(var_requests)}")
+            return merged
+        except Exception as e:
+            print(f"  [LLM batch variants] 极简重试失败: {e}")
             return {}
 
     def _generate_local_desc(self, scene: Dict) -> str:
@@ -994,11 +1210,12 @@ class SceneAnalyzer:
         if not raw_text or not raw_text.strip():
             return None
 
-        # 步骤 1: 清理包装。若 <think> 被截断且未闭合，剩余内容不能作为 JSON。
+        # 步骤 1: 清理包装。优先移除完整 <think>，若不完整则仍尝试
+        # 从原文中提取 JSON，避免模型把最终 JSON 接在未闭合思考后。
         text = re.sub(r"<think>[\s\S]*?</think>", "", raw_text, flags=re.DOTALL)
-        text = re.sub(r"<think>[\s\S]*$", "", text, flags=re.DOTALL).strip()
+        text = re.sub(r"^[\s\S]*?</think>", "", text, flags=re.DOTALL).strip()
         if not text:
-            return None
+            text = raw_text.strip()
         m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.DOTALL)
         if m:
             text = m.group(1).strip()
@@ -1153,6 +1370,131 @@ class SceneAnalyzer:
             except Exception:
                 pass
         return ""
+
+    @staticmethod
+    def _load_theme_reference_config() -> Dict[str, Any]:
+        try:
+            if THEME_REFERENCE_CONFIG.exists():
+                return json.loads(THEME_REFERENCE_CONFIG.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return {"default_mode": "environment_symbolic", "modes": []}
+
+    def _infer_theme_reference_mode(self) -> str:
+        """推断主题主体类型，供场景分析 prompt 继承 Step④ 的主体约束。"""
+        modes = self._matching_theme_reference_modes()
+        if modes:
+            return modes[0]
+        return self._load_theme_reference_config().get("default_mode", "environment_symbolic")
+
+    def _matching_theme_reference_modes(self) -> List[str]:
+        """返回主题命中的全部主体类型，支持“奶奶 + 油泼面”这类复合主题。"""
+        text = f"{self._theme} {self._song_title}".lower()
+        full_text = f"{text} {self._char_prompt}".lower()
+        config = self._load_theme_reference_config()
+        modes = sorted(
+            config.get("modes", []),
+            key=lambda item: int(item.get("priority", 1000)),
+        )
+        matched: List[str] = []
+        for item in modes:
+            mode = item.get("mode")
+            keywords = item.get("keywords", [])
+            if mode and any(str(k).lower() in text for k in keywords):
+                matched.append(str(mode))
+        for item in modes:
+            mode = item.get("mode")
+            keywords = item.get("keywords", [])
+            if (
+                mode
+                and str(mode) not in matched
+                and any(str(k).lower() in full_text for k in keywords)
+            ):
+                matched.append(str(mode))
+        return matched
+
+    @staticmethod
+    def _sanitize_subject_text(
+        text: str, reference_mode: str, reference_modes: Optional[List[str]] = None
+    ) -> str:
+        """非人物主题下移除会误导模型做人像的风格词。"""
+        all_modes = set(reference_modes or [reference_mode])
+        if reference_mode not in NON_PERSON_REFERENCE_MODES and not (all_modes & NON_PERSON_REFERENCE_MODES):
+            return text or ""
+        sanitized = text or ""
+        replacements = {
+            "portrait priority": "subject priority",
+            "perfect facial features": "accurate subject details",
+            "smiling expressions": "warm inviting feeling",
+            "tender expressions": "gentle visual tone",
+            "facial expression": "visual atmosphere",
+            "expressive face": "expressive atmosphere",
+            "portrait mood": "subject mood",
+            "portrait lighting": "cinematic subject lighting",
+        }
+        for old, new in replacements.items():
+            sanitized = sanitized.replace(old, new)
+        return sanitized
+
+    def _build_subject_guidance(
+        self, reference_mode: str, reference_modes: Optional[List[str]] = None
+    ) -> str:
+        """构建场景描述阶段的主题主体约束，避免 LLM 退化成泛风景或泛人像。"""
+        theme = self._theme or self._song_title or "the song theme"
+        all_modes = set(reference_modes or [reference_mode])
+        guidance_parts: List[str] = []
+        if "family_person" in all_modes:
+            guidance_parts.append(
+                f"EMOTIONAL SUBJECT: {theme}. Keep the grandmother, elder, or family memory as the human emotional anchor when a person appears; use hands, kitchen gestures, wrinkles, clothing texture, and lived-in domestic details instead of generic portraits."
+            )
+        if "food_subject" in all_modes:
+            guidance_parts.append(
+                f"FOOD ANCHOR: {theme}. Keep the named food clearly visible: noodles, chili oil, hot oil sheen, steam, bowl, table, stove, ingredients, warmth, and sensory realism. Do not let portraits or scenery replace the food."
+            )
+        if guidance_parts:
+            return " ".join(guidance_parts)
+
+        mode_rules = {
+            "botanical_subject": (
+                f"MAIN SUBJECT: {theme}. Keep the named plant or flower visually readable: "
+                "accurate petals, leaves, vines or stems, color, growth habit, and natural habitat. "
+                "Do not replace it with generic garden scenery, lanterns, architecture, or people."
+            ),
+            "food_subject": (
+                f"MAIN SUBJECT: {theme}. Keep the named food or drink as the visual anchor: "
+                "ingredients, shape, texture, steam, vessel, table context, warmth, and sensory realism. "
+                "Do not replace it with people, landscapes, or an unrelated banquet."
+            ),
+            "architecture_place": (
+                f"MAIN SUBJECT: {theme}. Keep the named place or architecture dominant: "
+                "structure, material, entrance, scale, weathering, and spatial context."
+            ),
+            "vehicle_subject": (
+                f"MAIN SUBJECT: {theme}. Keep the named vehicle dominant: silhouette, material, "
+                "motion path, scale, and travel context. Do not replace it with a generic road or station."
+            ),
+            "weather_nature": (
+                f"MAIN SUBJECT: {theme}. Let the named weather or natural phenomenon dominate: "
+                "particles, light behavior, movement, atmosphere, and visible effects on surfaces."
+            ),
+            "landscape_subject": (
+                f"MAIN SUBJECT: {theme}. Keep the specific landform or natural place readable: "
+                "geography, scale, foreground, distance, terrain texture, water, or vegetation."
+            ),
+            "cosmic_environment": (
+                f"MAIN SUBJECT: {theme}. Cosmic space, galaxy, nebula, stars, planets, and celestial scale dominate."
+            ),
+            "object_symbol": (
+                f"MAIN SUBJECT: {theme}. Use one clear symbolic object or object group as the emotional anchor."
+            ),
+            "abstract_symbolic": (
+                f"MAIN SUBJECT: {theme}. Make the abstract idea concrete through one clear symbolic visual anchor."
+            ),
+            "nonhuman_subject": (
+                f"MAIN SUBJECT: {theme}. The named non-human subject should remain the protagonist where applicable."
+            ),
+        }
+        return mode_rules.get(reference_mode, "")
 
     def _get_visual_bible_summary(self) -> str:
         """返回 visual bible 的摘要字符串（供变体 prompt 使用）"""

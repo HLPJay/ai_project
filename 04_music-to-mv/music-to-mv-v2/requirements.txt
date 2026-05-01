@@ -14,6 +14,8 @@ openai-whisper            # 语音转写，用于歌词时间轴对齐
 
 # 人声分离（提升对齐精度）
 demucs                    # Meta 出品，分离人声和伴奏
+torchcodec
+soundfile
 
 # 图片处理（dry_run 模式生成文本占位图）
 Pillow>=10.0
@@ -21,3 +23,5 @@ Pillow>=10.0
 # ── 安装方式 ──────────────────────────────────────────
 # pip install -r requirements.txt          # 安装所有
 # pip install pyyaml                       # 仅必需
+
+#python -m pip install pyyaml jinja2 pillow requests openai-whisper demucs -v

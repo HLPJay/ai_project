@@ -193,6 +193,36 @@ ffprobe -version
 - 自动对齐链路是：`song.mp3` → Demucs 分离人声（可选）→ Whisper 转写 → 匹配歌词 → 生成 `audio/song.srt`。
 - 音视频同步链路是：`clips/*.mp4` → concat → `song.mp3 + song.srt` → `output/final.mp4`，核心依赖是 `ffmpeg`。
 
+如果电脑有 NVIDIA 显卡并安装了 CUDA 版 PyTorch，可以在 `.env` 中启用显卡自动检测和中等 Whisper 模型：
+
+```ini
+# 快速测试流程时可设 false：跳过 Whisper/Demucs，直接生成基础均匀 SRT
+ALIGN_ASR_ENABLED=true
+
+# 中等 Whisper 模型：精度高于 small/base，首次运行会下载模型
+ALIGN_WHISPER_MODEL=medium
+ALIGN_WHISPER_FALLBACK_MODELS=small,base,tiny
+
+# auto 表示检测到 CUDA 就用显卡，否则回退 CPU；也可填 cuda / cuda:0 / cpu
+ALIGN_WHISPER_DEVICE=auto
+
+# 中文歌曲建议固定 zh，避免自动识别语言跑偏
+ALIGN_WHISPER_LANGUAGE=zh
+
+# Demucs 人声分离也使用同样的设备策略；失败会自动回退原始音频
+ALIGN_DEMUCS_ENABLED=true
+ALIGN_DEMUCS_DEVICE=auto
+ALIGN_DEMUCS_CHECK_TIMEOUT_SEC=10
+```
+
+确认 PyTorch 是否能看到显卡：
+
+```bash
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
+```
+
+如果输出 `False`，说明当前 Python 环境里的 PyTorch 不是 CUDA 版，或 CUDA/驱动不可用。此时 `auto` 会自动回退 CPU。
+
 ## 5. 关键运行参数
 
 并发、API 超时、重试次数都可以在 `.env` 中配置。配置优先级是：系统环境变量 > `.env` > 代码默认值。
@@ -236,18 +266,34 @@ MUSIC_API_TIMEOUT_SEC=180
 IMAGE_API_MAX_RETRIES=3
 IMAGE_API_BASE_DELAY_SEC=2
 IMAGE_API_TIMEOUT_SEC=60
+SCENE_DESC_API_MAX_RETRIES=3
+SCENE_DESC_API_BASE_DELAY_SEC=2
+SCENE_DESC_API_TIMEOUT_SEC=120
+VARIANT_API_MAX_RETRIES=3
+VARIANT_API_BASE_DELAY_SEC=2
+VARIANT_API_TIMEOUT_SEC=120
 DOWNLOAD_MAX_RETRIES=3
 DOWNLOAD_BASE_DELAY_SEC=2
 DOWNLOAD_TIMEOUT_SEC=60
 
-# Chat completion 输出长度。出现 finish_reason=length 或 JSON 解析失败时调大
+# Chat completion 输出长度。场景描述建议小批次，减少超时和 JSON 失败
 SCENE_DESC_MAX_TOKENS=4096
+SCENE_DESC_BATCH_SIZE=2
 VARIANT_DESC_MAX_TOKENS=4096
+VARIANT_DESC_BATCH_SIZE=4
 VISUAL_BIBLE_MAX_TOKENS=2048
 CREATIVE_BRIEF_MAX_TOKENS=2048
 
 # 本地处理超时
 ALIGN_TIMEOUT_SEC=600
+ALIGN_ASR_ENABLED=true
+ALIGN_WHISPER_MODEL=medium
+ALIGN_WHISPER_FALLBACK_MODELS=small,base,tiny
+ALIGN_WHISPER_DEVICE=auto
+ALIGN_WHISPER_LANGUAGE=zh
+ALIGN_DEMUCS_ENABLED=true
+ALIGN_DEMUCS_DEVICE=auto
+ALIGN_DEMUCS_CHECK_TIMEOUT_SEC=10
 SCRIPT_TIMEOUT_SEC=600
 SCENE_ANALYSIS_TIMEOUT_SEC=180
 FFMPEG_TIMEOUT_SEC=600
@@ -260,6 +306,18 @@ KB_ZOOM_END=1.12
 KB_PAN_X=30
 KB_PAN_Y=18
 KB_SUPERSAMPLE_SCALE=2
+
+# 图片自动质检
+# 是否在 Step⑤-⑦ 批量生图后自动检查图片质量，并写入 metadata/image_quality_report.json
+IMAGE_QUALITY_ENABLED=true
+# 图片文件最小字节数。小于该值通常表示下载失败、接口返回错误页、空文件或损坏文件
+IMAGE_QUALITY_MIN_FILE_SIZE=1000
+# 图片最小宽度。小于该值判定为 resolution_too_small
+IMAGE_QUALITY_MIN_WIDTH=512
+# 图片最小高度。小于该值判定为 resolution_too_small
+IMAGE_QUALITY_MIN_HEIGHT=512
+# 灰度亮度标准差下限。越小说明越接近纯色/低信息量；小于该值判定为 low_visual_variance
+IMAGE_QUALITY_MIN_STDDEV=6
 ```
 
 调参建议：
@@ -271,6 +329,15 @@ KB_SUPERSAMPLE_SCALE=2
 - Whisper/Demucs 对齐长音频超时：把 `ALIGN_TIMEOUT_SEC` 调大。
 - 最终视频图片抖动明显：降低 `KB_ZOOM_END`、`KB_PAN_X`、`KB_PAN_Y`；保持 `KB_SUPERSAMPLE_SCALE=2` 或调到 `3`。
 - 歌词结构太固定：保持 `LYRICS_STRUCTURE_MODE=adaptive`，或改成 `ancient_poem` / `cinematic` / `ambient_mood` 等；需要完全指定时填写 `LYRICS_STRUCTURE`。
+- 生成图出现黑图、白图、纯色占位或尺寸异常：查看 `metadata/image_quality_report.json`，或用 `python tools/check_image_quality.py --project <项目目录>` 复查。
+
+图片质检参数说明：
+
+- `IMAGE_QUALITY_ENABLED=true`：开启自动质检。关闭后不会生成 `metadata/image_quality_report.json`。
+- `IMAGE_QUALITY_MIN_FILE_SIZE=1000`：文件大小下限，单位 byte。低于该值通常是空文件、错误页或下载失败。
+- `IMAGE_QUALITY_MIN_WIDTH=512`：宽度下限，低于该值会标记 `resolution_too_small`。
+- `IMAGE_QUALITY_MIN_HEIGHT=512`：高度下限，低于该值会标记 `resolution_too_small`。
+- `IMAGE_QUALITY_MIN_STDDEV=6`：灰度亮度标准差下限。低于该值说明画面接近纯色或信息量过低，会标记 `low_visual_variance`。
 
 API 日志说明：
 

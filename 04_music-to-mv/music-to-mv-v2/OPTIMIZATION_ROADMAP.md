@@ -310,6 +310,51 @@ def _is_valid_desc(desc: str, text_preview: str) -> bool:
 | 16 | registry.py Jinja2 性能 | `registry.py` | 🟢 低 | 15 分钟 | 初始化时检测可用性 |
 | 17 | 导出时的字幕处理降级过复杂 | `exporter.py` | 🟡 中 | 60 分钟 | 简化为 2 种方案 |
 | 18 | scripts_bridge.py 三策略链脆弱 | `scripts_bridge.py` | 🟡 中 | 50 分钟 | 增加 ffprobe 后备策略 |
+| 19 | 场景切分偏工程规则 | `scene_analyzer.py` | 🟡 中 | 120 分钟 | 本地候选切分 + LLM 导演式合并/命名 + 本地校验 |
+
+---
+
+### 19️⃣ `scene_analyzer.py` — LLM 辅助导演式场景切分 **[MV 叙事质量]**
+
+**问题**：当前完整歌曲的场景数和边界主要由本地规则决定：
+- 根据 SRT 歌词行数、总时长、重复歌词和最短间隔生成候选段落。
+- 大模型只负责给已切好的段落写视觉描述，不参与“哪里该合并、哪里该单独成场、每个场景承担什么叙事功能”。
+
+这套方案稳定、便宜、可控，但对叙事型主题不够导演化。例如“奶奶做的油泼面”更适合按故事推进拆分：
+老屋开场 → 灶台 → 揉面 → 泼油 → 端碗 → 记忆回望 → 情感收束。
+纯规则切分可能只按时间均匀拆，导致完整情绪段被切开，或者高潮/尾声缺少明确叙事功能。
+
+**优化目标**：改成两层架构：
+1. 本地先生成安全候选切分，保证时间戳、覆盖率、不重叠和最小时长。
+2. LLM 基于候选切分做“导演式合并/命名/叙事功能标注”，输出结构化 JSON。
+3. 本地再校验 LLM 结果，防止漏歌词、时间重叠、时长异常或乱改顺序；校验失败则回退到本地规则。
+
+**建议输出结构**：
+```json
+[
+  {
+    "scene_id": 1,
+    "start_line": 1,
+    "end_line": 3,
+    "scene_name": "老屋晨光",
+    "dramatic_function": "memory opening",
+    "visual_focus": "environment",
+    "reason": "establishes old home and emotional memory"
+  }
+]
+```
+
+**验收标准**：
+- 所有 SRT 行必须被覆盖，且只能覆盖一次。
+- 场景时间不能重叠，顺序不能倒置。
+- 单个场景时长应保持在可配置范围内，例如 4-18 秒，允许 intro/outro 例外。
+- LLM 输出失败时自动回退到当前本地切分。
+- 对叙事主题、古诗意境、动物冒险、食物记忆、战争/群像等主题，场景名称和 dramatic_function 应明显贴合主题推进。
+
+**文件**：`src/scene_analyzer.py`、`prompts/scene_analysis/*.txt`  
+**难度**：🟡 中  
+**耗时**：120 分钟  
+**收益**：最终 MV 的故事节奏和主题贴合度明显提升
 
 ---
 
@@ -340,6 +385,7 @@ def _is_valid_desc(desc: str, text_preview: str) -> bool:
 - [ ] **#15** project_manager.py — 频繁写磁盘 → `_dirty` 标记 + 延迟写入 (50m)
 - [ ] **#17** exporter.py — 字幕处理降级逻辑过复杂 → 简化为 2 种方案 (60m)
 - [ ] **#18** scripts_bridge.py — 三策略链无 ffprobe 兜底 (50m)
+- [ ] **#19** scene_analyzer.py — LLM 辅助导演式场景切分 (120m)
 
 ---
 

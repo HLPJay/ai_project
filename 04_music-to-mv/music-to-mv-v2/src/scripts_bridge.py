@@ -213,10 +213,16 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
     # 策略 2: Python + Whisper
     print("\n  [..] Try pure Python align (src.align)...")
     from src.align import LyricsAligner, generate_basic_srt
+    from src.config_manager import ConfigManager
 
     lyrics_path = os.path.join(project_dir, "audio", "lyrics.txt")
 
     try:
+        cfg = ConfigManager()
+        if not cfg.get_bool("align_asr_enabled", True):
+            raise ImportError("ALIGN_ASR_ENABLED=false")
+
+        print("  [..] Loading Whisper package...", flush=True)
         import whisper  # noqa: F401
         aligner = LyricsAligner()
         result = aligner.run(
@@ -227,8 +233,8 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         )
         result["engine"] = "python+whisper"
         return result
-    except ImportError:
-        pass
+    except ImportError as e:
+        print(f"  [..] Whisper/ASR 不可用或已关闭，使用基础均匀 SRT: {e}")
 
     # 策略 3: 基础 SRT
     from src.project_manager import ProjectManager

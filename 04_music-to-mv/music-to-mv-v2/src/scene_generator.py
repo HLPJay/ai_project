@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
 from src.config_manager import ConfigManager
+from src.image_quality import ImageQualityChecker, ImageQualityThresholds
 from src.llm.client import LLMClient, RetryConfig
 from src.style_map import (
     ART_STYLES, get_mood_desc, get_api_style, get_negative_prompt,
@@ -49,11 +50,29 @@ MIN_VALID_IMAGE_SIZE = 500000  # bytes：500KB，生成验证用
 PROMPT_MAX_LEN = 1400        # MiniMax prompt 最大长度（留 100 字符余量）
 PROMPT_CHAR_MAX = 600        # 角色描述最大字符数
 PROMPT_DESC_MAX = 700        # 场景描述最大字符数
+THEME_REFERENCE_CONFIG = (
+    Path(__file__).resolve().parent.parent / "config" / "theme_reference_modes.json"
+)
+_THEME_REFERENCE_CACHE: Optional[Dict[str, Any]] = None
 
 
 class SceneImageError(Exception):
     """场景图生成错误"""
     pass
+
+
+def _load_theme_reference_config() -> Dict[str, Any]:
+    """加载主题主体推断配置，失败时返回空配置。"""
+    global _THEME_REFERENCE_CACHE
+    if _THEME_REFERENCE_CACHE is not None:
+        return _THEME_REFERENCE_CACHE
+    try:
+        _THEME_REFERENCE_CACHE = json.loads(
+            THEME_REFERENCE_CONFIG.read_text(encoding="utf-8")
+        )
+    except Exception:
+        _THEME_REFERENCE_CACHE = {}
+    return _THEME_REFERENCE_CACHE
 
 
 class SceneImageGenerator:
@@ -243,6 +262,52 @@ class SceneImageGenerator:
             print(f"  [Step ④] 失败: {e}")
             return False
 
+    def _reference_mood_desc(self, reference_mode: str) -> str:
+        """按主题主体类型净化情绪描述，避免非人物主题被人像词带偏。"""
+        desc = self._mood_desc or ""
+        non_person_modes = {
+            "botanical_subject", "food_subject", "architecture_place",
+            "vehicle_subject", "weather_nature", "landscape_subject",
+            "cosmic_environment", "poetic_imagery", "object_symbol",
+            "abstract_symbolic",
+        }
+        if reference_mode not in non_person_modes:
+            return desc
+
+        replacements = {
+            "smiling expressions": "warm inviting feeling",
+            "tender expressions": "gentle visual tone",
+            "facial expression": "visual atmosphere",
+            "expressive face": "expressive atmosphere",
+            "portrait mood": "subject mood",
+        }
+        for old, new in replacements.items():
+            desc = desc.replace(old, new)
+        return desc
+
+    def _reference_art_style(self, reference_mode: str) -> str:
+        """按主题主体类型净化风格描述，减少“人像/脸部优先”误导。"""
+        art_style = self._art_style or ""
+        non_person_modes = {
+            "botanical_subject", "food_subject", "architecture_place",
+            "vehicle_subject", "weather_nature", "landscape_subject",
+            "cosmic_environment", "poetic_imagery", "object_symbol",
+            "abstract_symbolic",
+        }
+        if reference_mode not in non_person_modes:
+            return art_style
+
+        replacements = {
+            "portrait priority": "subject priority",
+            "perfect facial features": "accurate subject details",
+            "face detail": "subject detail",
+            "facial detail": "subject detail",
+            "portrait lighting": "cinematic subject lighting",
+        }
+        for old, new in replacements.items():
+            art_style = art_style.replace(old, new)
+        return art_style
+
     def _build_base_reference_prompt(self, theme: str = "",
                                      song_title: str = "") -> str:
         """构建 Step ④ 的基础参考图 prompt。
@@ -262,6 +327,8 @@ class SceneImageGenerator:
             theme_, song_title, visual_anchors=self._load_visual_anchors()
         )
         theme_visual = self._build_theme_visual_hint(theme_, song_title, reference_mode)
+        mood_desc = self._reference_mood_desc(reference_mode)
+        art_style = self._reference_art_style(reference_mode)
         visual_anchors = self._load_visual_anchors()
         bible_parts = []
         if self._visual_bible.get("world_style"):
@@ -275,12 +342,106 @@ class SceneImageGenerator:
         if self._visual_bible.get("texture"):
             bible_parts.append("texture: " + str(self._visual_bible["texture"]))
 
-        if reference_mode == "relation":
+        if reference_mode == "family_person":
+            parts = [
+                f"family-person-centered visual reference image for the song '{song_title or theme_}'",
+                f"core theme: {theme_}",
+                f"mood: {self._mood}",
+                mood_desc,
+                theme_visual,
+                visual_anchors,
+                "a mother, grandmother, parent, family elder, or multi-generation family presence should be the emotional focal point",
+                "show warm realistic portrait energy or a lived-in home memory scene with gentle facial presence, hands, wrinkles, clothing texture, domestic objects, and natural body language",
+                "avoid generic scenery; the room, street, kitchen, doorway, old photo, or soft light should support the family memory instead of replacing the person",
+                "not a fashion portrait, not a glamorous studio shot, not a young unrelated model",
+                "keep the person natural, documentary, tender, and coherent enough for later family-centered shots",
+                " ".join(p for p in bible_parts if p),
+                art_style,
+            ]
+        elif reference_mode == "botanical_subject":
+            parts = [
+                f"botanical subject reference image for the song '{song_title or theme_}'",
+                f"core theme: {theme_}",
+                f"mood: {self._mood}",
+                mood_desc,
+                theme_visual,
+                visual_anchors,
+                "the named plant or flower species must be the main visual anchor",
+                "show accurate flower shape, petals, leaves, vines or stems, growth habit, scale, texture, color, and natural habitat clearly",
+                "for morning glory, emphasize trumpet-shaped purple-blue blossoms, heart-shaped leaves, slender climbing vines, bamboo fence or trellis, and morning dew",
+                "environment may support the plant, but must not replace it with generic garden scenery, lanterns, buildings, or people",
+                "no centered human protagonist, no festival-object focus, no generic flower field",
+                "suitable as continuity reference for later plant-centered shots",
+                " ".join(p for p in bible_parts if p),
+                art_style,
+            ]
+        elif reference_mode in (
+            "food_subject", "architecture_place", "vehicle_subject",
+            "weather_nature", "landscape_subject", "profession_activity",
+            "abstract_symbolic",
+        ):
+            subject_rules = {
+                "food_subject": [
+                    "the named food or drink must be the main visual anchor",
+                    "show accurate ingredients, shape, texture, steam, vessel, table setting, color, and sensory realism clearly",
+                    "environment may support the meal, but must not replace it with generic scenery or people",
+                    "not a decorative still life without the named food, not an unrelated banquet scene",
+                ],
+                "architecture_place": [
+                    "the named building or place must be the main visual anchor",
+                    "show recognizable structure, entrance, materials, scale, weathering, layout, and surrounding spatial context clearly",
+                    "people may appear only as small scale references; do not replace the place with portraits or generic scenery",
+                    "not a tourist postcard, not an unrelated landmark",
+                ],
+                "vehicle_subject": [
+                    "the named vehicle must be the main visual anchor",
+                    "show silhouette, material, wheels or hull or wings, motion path, scale, and travel environment clearly",
+                    "environment supports the journey but must not replace the vehicle",
+                    "not a generic road, river, sky, or station without the vehicle",
+                ],
+                "weather_nature": [
+                    "the named weather or natural phenomenon must dominate the image",
+                    "show particles, light behavior, movement, atmosphere, surfaces affected by weather, and spatial depth clearly",
+                    "environment should reveal the phenomenon's effect, not become a generic landscape",
+                    "no unrelated protagonist, no festival-object focus",
+                ],
+                "landscape_subject": [
+                    "the named landform or natural place must be the main visual anchor",
+                    "show coherent geography, scale, foreground, distance, terrain texture, water or vegetation as relevant",
+                    "human figures may appear only as tiny scale references",
+                    "not a generic pretty background; make the specific place readable",
+                ],
+                "profession_activity": [
+                    "the named profession or activity must be the main visual anchor",
+                    "show tools, body motion, working context, posture, clothing details, and human stakes clearly",
+                    "environment supports the action but must not replace the activity",
+                    "not a static portrait unless the activity demands stillness",
+                ],
+                "abstract_symbolic": [
+                    "turn the abstract theme into one concrete symbolic visual anchor",
+                    "use objects, light, shadow, space, weather, texture, and composition to express the idea",
+                    "avoid generic scenery or random beautiful objects; every motif should support the abstract theme",
+                    "human presence is optional and should not dominate unless needed",
+                ],
+            }
+            parts = [
+                f"{reference_mode.replace('_', ' ')} reference image for the song '{song_title or theme_}'",
+                f"core theme: {theme_}",
+                f"mood: {self._mood}",
+                mood_desc,
+                theme_visual,
+                visual_anchors,
+                *subject_rules[reference_mode],
+                "suitable as continuity reference for later theme-centered shots",
+                " ".join(p for p in bible_parts if p),
+                art_style,
+            ]
+        elif reference_mode == "relation":
             parts = [
                 f"relationship-centered visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "two human subjects or a poetic couple silhouette may be the emotional focal point",
@@ -289,14 +450,14 @@ class SceneImageGenerator:
                 "not a solo portrait, not a fashion character sheet, no close-up face dominance",
                 "keep identities softly defined for continuity across later human shots",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "human_action":
             parts = [
                 f"human action and world reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "human figures, groups, uniforms, silhouettes, or action traces may be the emotional focal point",
@@ -305,14 +466,14 @@ class SceneImageGenerator:
                 "not a clean fashion portrait, not a character sheet, no close-up face dominance",
                 "keep subject design coherent enough for later people-centered shots",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "nonhuman_subject":
             parts = [
                 f"subject-centered visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "the named non-human subject should be the main visual anchor",
@@ -321,14 +482,14 @@ class SceneImageGenerator:
                 "not a generic landscape, not a decorative still life unless the subject is an object",
                 "suitable as a continuity reference for later subject-centered shots",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "cosmic_environment":
             parts = [
                 f"cosmic environment visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "vast galaxy, star fields, nebula structure, planetary scale, light and depth as the main subject",
@@ -336,14 +497,14 @@ class SceneImageGenerator:
                 "show spatial grandeur and coherent celestial geography, not a random abstract texture",
                 "suitable as a global MV visual reference for cosmic scenes",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "poetic_imagery":
             parts = [
                 f"classical poetic imagery reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "build the image from poetic Chinese imagery: season, moonlight, river, mountains, pavilion, boat, flowers, rain, snow, wind, mist, distance, and empty space as needed",
@@ -352,14 +513,14 @@ class SceneImageGenerator:
                 "avoid generic scenery; every object should carry mood, time, place, and cultural symbolism",
                 "suitable as a global MV visual reference for ancient poem or lyrical imagery",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "festival_culture":
             parts = [
                 f"festival and cultural ritual visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "show cultural objects, ritual details, architecture, food, lanterns, gathering traces, costume fragments, and seasonal atmosphere",
@@ -367,56 +528,56 @@ class SceneImageGenerator:
                 "avoid empty decorative still life; connect symbols to lived cultural emotion",
                 "not a tourist postcard, not a product photo",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "urban_life":
             parts = [
                 f"urban life visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "show streets, windows, lights, transit, rooms, crowds, signage, weather, and daily objects as emotional anchors",
                 "human figures may appear naturally in the scene, but avoid generic posed portraits",
                 "make the place feel lived-in and specific, not an empty skyline",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "object_symbol":
             parts = [
                 f"symbolic object visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "one or several meaningful objects should carry the emotion: letters, clock, umbrella, lamp, old photo, toy, instrument, flower, cup, window, or keepsake as relevant",
                 "no human protagonist; if body parts appear, use only hands or partial traces to support the symbol",
                 "avoid generic landscape; make the object, texture, light, and surrounding space tell the story",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         elif reference_mode == "fantasy_myth":
             parts = [
                 f"fantasy myth visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "show mythical creatures, enchanted landscape, sacred architecture, floating islands, magic light, ancient symbols, or legendary scale as relevant",
                 "human heroes may appear only if the theme calls for them; keep the world and mythic subject primary",
                 "avoid generic fantasy noise; keep a coherent cultural and visual logic",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
             ]
         else:
             parts = [
                 f"theme-centered visual reference image for the song '{song_title or theme_}'",
                 f"core theme: {theme_}",
                 f"mood: {self._mood}",
-                self._mood_desc,
+                mood_desc,
                 theme_visual,
                 visual_anchors,
                 "infer the most important visual subject from the theme instead of defaulting to generic scenery",
@@ -425,7 +586,7 @@ class SceneImageGenerator:
                 "use objects, weather, architecture, landscape, light, water, plants, and atmosphere to express the song",
                 "suitable as a global MV visual reference, not a character sheet",
                 " ".join(p for p in bible_parts if p),
-                self._art_style,
+                art_style,
         ]
         return ", ".join(p for p in parts if p)[:PROMPT_MAX_LEN]
 
@@ -433,7 +594,34 @@ class SceneImageGenerator:
     def _infer_base_reference_mode(theme: str = "", song_title: str = "",
                                    visual_anchors: str = "") -> str:
         """推断 Step ④ 基础参考图主体类型。"""
-        text = f"{theme} {song_title} {visual_anchors}".lower()
+        primary_text = f"{theme} {song_title}".lower()
+        full_text = f"{primary_text} {visual_anchors}".lower()
+        config = _load_theme_reference_config()
+        configured_modes = sorted(
+            config.get("modes", []),
+            key=lambda item: int(item.get("priority", 1000)),
+        )
+        for item in configured_modes:
+            mode = item.get("mode")
+            keywords = item.get("keywords", [])
+            if mode and any(str(k).lower() in primary_text for k in keywords):
+                return mode
+        for item in configured_modes:
+            mode = item.get("mode")
+            keywords = item.get("keywords", [])
+            if mode and any(str(k).lower() in full_text for k in keywords):
+                return mode
+
+        family_person_keywords = (
+            "妈妈", "母亲", "母爱", "娘", "奶奶", "外婆", "祖母", "姥姥",
+            "爷爷", "外公", "祖父", "爸爸", "父亲", "父爱", "父母",
+            "亲情", "家人", "家庭", "老家", "陪伴", "牵挂",
+            "family", "mother", "mom", "grandmother", "grandma", "father",
+            "parent", "parents", "elder", "home memory",
+        )
+        text = primary_text
+        if any(k in text for k in family_person_keywords):
+            return "family_person"
 
         relation_keywords = (
             "爱情", "恋爱", "相爱", "爱人", "情侣", "恋人", "情人",
@@ -461,6 +649,17 @@ class SceneImageGenerator:
         )
         if any(k in text for k in nonhuman_subject_keywords):
             return "nonhuman_subject"
+
+        botanical_keywords = (
+            "牵牛花", "喇叭花", "玫瑰", "月季", "蔷薇", "荷花", "莲花", "梅花",
+            "兰花", "菊花", "桃花", "樱花", "桂花", "牡丹", "海棠", "芙蓉",
+            "竹", "竹子", "松", "柳", "梧桐", "藤蔓", "花卉", "植物",
+            "morning glory", "trumpet flower", "rose", "lotus", "plum blossom",
+            "orchid", "chrysanthemum", "peony", "bamboo", "willow", "vine",
+            "flower", "botanical", "plant",
+        )
+        if any(k in text for k in botanical_keywords):
+            return "botanical_subject"
 
         cosmic_keywords = (
             "星系", "银河", "宇宙", "星云", "星际", "行星", "太空",
@@ -513,7 +712,7 @@ class SceneImageGenerator:
         if any(k in text for k in fantasy_keywords):
             return "fantasy_myth"
 
-        return "environment_symbolic"
+        return config.get("default_mode", "environment_symbolic")
 
     @staticmethod
     def _build_theme_visual_hint(theme: str, song_title: str = "",
@@ -524,7 +723,19 @@ class SceneImageGenerator:
             return exact
 
         text = f"{theme} {song_title}".lower()
-        hint_groups = [
+        config = _load_theme_reference_config()
+        configured_groups = config.get("visual_hint_groups", [])
+        if configured_groups:
+            hints = [
+                str(group.get("hint", ""))
+                for group in configured_groups
+                if group.get("hint")
+                and any(str(k).lower() in text for k in group.get("keywords", []))
+            ]
+        else:
+            hints = []
+
+        fallback_hint_groups = [
             (("春", "spring"), "spring rain, tender new leaves, flowers, wet stone path, soft mist"),
             (("夏", "summer", "炙热"), "scorching sunlight, heat shimmer, cicadas, deep shade, bright leaves, sweat, open sky"),
             (("秋", "autumn"), "falling leaves, golden fields, cool wind, distant mountains, dusk light"),
@@ -538,9 +749,15 @@ class SceneImageGenerator:
             (("梦", "dream"), "surreal soft light, floating particles, blurred boundary between memory and reality"),
             (("故乡", "乡愁", "home"), "old doorway, village path, cooking smoke, distant lights, remembered home"),
         ]
-        hints = [hint for keys, hint in hint_groups if any(k in text for k in keys)]
+        if not hints:
+            hints = [
+                hint for keys, hint in fallback_hint_groups
+                if any(k in text for k in keys)
+            ]
 
-        mode_hints = {
+        mode_hints = config.get("mode_hints") or {
+            "family_person": "family elder or parent as emotional anchor, warm lived-in home memory, hands, wrinkles, domestic details, tenderness",
+            "botanical_subject": "clear botanical subject, flower species accuracy, petals, leaves, vines, stem, growth habit, dew, natural habitat",
             "poetic_imagery": "classical Chinese poetic imagery, season, moon, river, mountain, mist, pavilion, boat, empty space",
             "festival_culture": "festival objects, ritual details, lanterns, family gathering traces, seasonal cultural atmosphere",
             "urban_life": "lived-in street, window light, transit, room details, city weather, everyday objects",
@@ -778,12 +995,15 @@ class SceneImageGenerator:
             if variants_map:
                 self._write_variants_json(variants_map)
 
+            quality_report = self._write_image_quality_report(all_tasks)
+
             return {
                 "total": len(all_tasks),
                 "succeeded": len(all_tasks),
                 "failed": 0,
                 "skipped": 0,
                 "variant_scenes": variants_map,
+                "image_quality": quality_report.get("summary", {}),
                 "results": [{"sid": s[0], "variant_index": s[1],
                              "status": "ok", "size": 0} for s in all_tasks],
             }
@@ -808,12 +1028,14 @@ class SceneImageGenerator:
             print(f"  [OK] 全部场景图已存在")
             if variants_map:
                 self._write_variants_json(variants_map)
+            quality_report = self._write_image_quality_report(all_tasks)
             return {
                 "total": len(all_tasks),
                 "succeeded": len(skipped),
                 "failed": 0,
                 "skipped": len(skipped),
                 "variant_scenes": variants_map,
+                "image_quality": quality_report.get("summary", {}),
                 "results": [{"sid": s[0], "status": "skipped"} for s in skipped],
             }
 
@@ -831,12 +1053,15 @@ class SceneImageGenerator:
         if variants_map:
             self._write_variants_json(variants_map)
 
+        quality_report = self._write_image_quality_report(all_tasks)
+
         return {
             "total": len(all_tasks),
             "succeeded": ok + len(skipped),
             "failed": fail,
             "skipped": len(skipped),
             "variant_scenes": variants_map,
+            "image_quality": quality_report.get("summary", {}),
             "results": results + [{"sid": s[0], "variant_index": s[1],
                                     "status": "skipped"} for s in skipped],
         }
@@ -851,6 +1076,30 @@ class SceneImageGenerator:
         if not scenes_path.exists():
             raise FileNotFoundError(f"scenes.json not found: {scenes_path}")
         return json.loads(scenes_path.read_text(encoding="utf-8"))
+
+    def _write_image_quality_report(self, tasks: List[Tuple]) -> Dict[str, Any]:
+        """对已生成/已跳过的图片写入自动质检报告。"""
+        if not self.cfg.get_bool("image_quality_enabled", True):
+            return {}
+        paths = [task[3] for task in tasks]
+        thresholds = ImageQualityThresholds(
+            min_file_size=self.cfg.get_int("image_quality_min_file_size", MIN_IMAGE_SIZE),
+            min_width=self.cfg.get_int("image_quality_min_width", 512),
+            min_height=self.cfg.get_int("image_quality_min_height", 512),
+            min_stddev=self.cfg.get_float("image_quality_min_stddev", 6.0),
+        )
+        report = ImageQualityChecker(
+            str(self.project_dir),
+            thresholds=thresholds,
+        ).validate_paths(paths, write_report=True)
+        summary = report.get("summary", {})
+        print(
+            "  [Quality] 图片质检: "
+            f"{summary.get('passed', 0)}/{summary.get('total', 0)} 通过, "
+            f"{summary.get('failed', 0)} 失败, "
+            f"{summary.get('warnings', 0)} 警告"
+        )
+        return report
 
     def _generate_placeholder_images(self, scenes: List[Dict],
                                       variants_map: Dict[int, int]):
@@ -1188,7 +1437,14 @@ class SceneImageGenerator:
     def _build_scene_prompt(self, desc: str, provider: str = "") -> str:
         """构建场景图片 prompt（MiniMax 要求 <= 1500 字符）"""
         desc_part = desc[:PROMPT_DESC_MAX] if desc else ""
-        subject_part = self._build_subject_anchor_prompt()
+        reference_mode = self._infer_base_reference_mode(
+            self._theme or self._load_theme(),
+            self._song_title,
+            visual_anchors=self._load_visual_anchors(),
+        )
+        subject_part = self._build_subject_anchor_prompt(reference_mode)
+        mood_desc = self._reference_mood_desc(reference_mode)
+        art_style = self._reference_art_style(reference_mode)
         char_part = ""
         if self._char_prompt and self._needs_character_anchor(desc_part):
             char_part = (
@@ -1205,30 +1461,58 @@ class SceneImageGenerator:
                 desc_part,
                 self._visual_bible_prompt,
                 char_part,
-                self._mood_desc,
-                self._art_style,
+                mood_desc,
+                art_style,
                 self._do_not_do,
             ] if p
         ]
         prompt = ", ".join(parts)
         if provider == "pollinations":
-            prompt = self._compact_pollinations_prompt(prompt, subject_part, desc_part)
+            prompt = self._compact_pollinations_prompt(
+                prompt, subject_part, desc_part, mood_desc, art_style
+            )
         if len(prompt) > PROMPT_MAX_LEN:
             prompt = prompt[:PROMPT_MAX_LEN - 20] + ", anime style, 8k"
         return prompt
 
-    def _build_subject_anchor_prompt(self) -> str:
+    def _build_subject_anchor_prompt(self, mode: str = "") -> str:
         """构建强主体锚点，主要给 Pollinations/Flux 这类弱约束模型使用。"""
         theme = self._theme or self._load_theme()
         song_title = self._song_title
-        mode = self._infer_base_reference_mode(
+        mode = mode or self._infer_base_reference_mode(
             theme, song_title, visual_anchors=self._load_visual_anchors()
         )
+        if mode == "family_person":
+            return (
+                f"MAIN SUBJECT MUST BE: {theme}. A mother, grandmother, parent, "
+                "family elder, or multi-generation family presence is the emotional anchor "
+                "in every applicable scene. Do not replace the person with generic scenery."
+            )
         if mode == "nonhuman_subject":
             return (
                 f"MAIN SUBJECT MUST BE: {theme}. The named non-human subject is the protagonist "
                 "in every applicable scene. No human protagonist. Do not replace the subject with scenery."
             )
+        if mode == "botanical_subject":
+            return (
+                f"MAIN SUBJECT MUST BE: {theme}. The named plant or flower species is the visual anchor "
+                "in every applicable scene. Show accurate petals, leaves, vines or stems, color, and growth habit. "
+                "Do not replace it with generic scenery, lanterns, architecture, or people."
+            )
+        if mode == "food_subject":
+            return f"MAIN SUBJECT MUST BE: {theme}. The named food or drink is the visual anchor. Show accurate ingredients, shape, texture, vessel, and table context. Do not replace it with people or generic scenery."
+        if mode == "architecture_place":
+            return f"MAIN SUBJECT MUST BE: {theme}. The named place or architecture dominates. Show structure, materials, entrance, scale, and spatial context. Do not replace it with portraits or generic scenery."
+        if mode == "vehicle_subject":
+            return f"MAIN SUBJECT MUST BE: {theme}. The named vehicle dominates. Show silhouette, material, motion path, and travel context. Do not replace it with a generic road, river, station, or sky."
+        if mode == "weather_nature":
+            return f"MAIN SUBJECT MUST BE: {theme}. The named weather or natural phenomenon dominates. Show atmosphere, particles, light behavior, and visible environmental effects."
+        if mode == "landscape_subject":
+            return f"MAIN SUBJECT MUST BE: {theme}. The named landform or natural place dominates. Show coherent geography, scale, foreground, distance, and terrain texture."
+        if mode == "profession_activity":
+            return f"MAIN SUBJECT MUST BE: {theme}. The named profession or activity drives the image. Show tools, body motion, posture, clothing details, and working context."
+        if mode == "abstract_symbolic":
+            return f"MAIN SUBJECT MUST BE: {theme}. Express the abstract idea through one clear symbolic visual anchor using objects, light, shadow, space, texture, and composition."
         if mode == "cosmic_environment":
             return f"MAIN SUBJECT MUST BE: {theme}. Cosmic space, galaxy, nebula, stars and planets dominate."
         if mode == "relation":
@@ -1240,13 +1524,14 @@ class SceneImageGenerator:
         return f"MAIN SUBJECT MUST BE: {theme}. Keep the image centered on this theme, not a generic background."
 
     def _compact_pollinations_prompt(self, prompt: str, subject_part: str,
-                                     desc_part: str) -> str:
+                                     desc_part: str, mood_desc: str = "",
+                                     art_style: str = "") -> str:
         """Pollinations 对长 prompt 遵循较弱，使用更短且主体前置的版本。"""
         parts = [
             subject_part,
             desc_part[:420] if desc_part else "",
-            self._mood_desc,
-            self._art_style,
+            mood_desc or self._mood_desc,
+            art_style or self._art_style,
             "clear main subject, coherent composition, high quality",
         ]
         compact = ", ".join(p for p in parts if p)

@@ -115,6 +115,10 @@ pip install pyyaml jinja2
 pip install openai-whisper            # 语音转写
 pip install demucs                    # 人声分离（提升对齐精度）
 
+# NVIDIA 显卡环境需要 CUDA 版 PyTorch，安装方式以 PyTorch 官网为准。
+# 安装后可检查：
+python -c "import torch; print(torch.cuda.is_available())"
+
 # 可选依赖（图片生成用）
 pip install Pillow                    # dry_run 占位图生成
 ```
@@ -145,6 +149,15 @@ HTTPS_PROXY=http://127.0.0.1:10809
 ### 运行
 
 ```bash
+# 查看入口帮助
+python -m src.main --help
+
+# 查看完整入口指南：参数、阶段、测试入口、配置文件和产物位置
+python -m src.main --guide
+
+# 查看 theme/style/music-style/mood/language 可参考项
+python -m src.main --options
+
 # 交互模式（默认，含暂停点供人工确认）
 python -m src.main
 
@@ -152,23 +165,46 @@ python -m src.main
 python -m src.main --auto
 
 # 全自动模式（跳过所有暂停点）
-python -m src.main --theme "星空1" --style "国风" --music-style "中国风" --mood "梦幻" --auto
+python -m src.main --theme "星空" --style "国风" --music-style "中国风" --mood "梦幻" --auto
 
 # 交互模式（在暂停点等你输入 1/2/3 等）
-python -m src.main --theme "星空1" --style "国风" --music-style "中国风" --mood "梦幻"
+python -m src.main --theme "星空" --style "国风" --music-style "中国风" --mood "梦幻"
 
 # 只跑部分阶段（断点续传）
 python -m src.main --project <项目路径> --phase produce
-python -m src.main --project "~/mv/我的项目" --phase 5
+python -m src.main --project "~/mv/我的项目" --phase 3
+
+# --phase 阶段别名
+# all / 0      完整流程：Step 0-⑪
+# init / 1     Step 0-②：创意简报、歌词、音乐
+# align / 2    Step ③：歌词对齐、生成 audio/song.srt
+# produce / 3  Step ③.5-⑧：场景分析、主参考图、锚定图、批量场景图、Ken Burns
+# export / 4   Step ⑨-⑪：拼接、合并音频字幕、导出版本、生成报告
 
 # 列出所有项目
 python -m src.main --list
+
+# 只测试主参考图 prompt，不消耗生图
+python -m src.main --theme "小狗的夏日冒险" --style "动漫风" --test-reference prompt
+
+# 只生成 Step ④ 主参考图，只消耗一张图
+python -m src.main --theme "小狗的夏日冒险" --style "动漫风" --test-reference image
 ```
 
 ### 主参考图/锚定图轻量测试
 
 `tools/test_reference_anchors.py` 用来低成本验证主题主体是否锚定正确。
 默认输出到仓库内 `.reference_tests/`，不会污染正式 workspace。
+
+主题主体推断配置在 `config/theme_reference_modes.json`。新增主题类型时，优先修改这个配置文件：
+
+```bash
+# 查看当前所有主体类型和关键词
+python tools/theme_reference_modes.py --list
+
+# 测试某个主题会命中哪个主体类型
+python tools/theme_reference_modes.py --theme "小狗的夏日冒险"
+```
 
 模式说明：
 
@@ -201,6 +237,12 @@ python tools/test_reference_anchors.py --mode batch --case puppy --dry-run
 
 # 批量真实生图：只生成少量测试场景图，不跑音乐/视频
 python tools/test_reference_anchors.py --mode batch --case puppy --provider pollinations --limit-scenes 3 --parallel 1
+
+# 对已有项目图片重新跑自动质检
+python tools/check_image_quality.py --project <项目路径>
+
+# 为已有测试/项目目录生成 HTML 预览页
+python tools/generate_preview.py --project <项目路径>
 ```
 
 ---
@@ -212,12 +254,12 @@ python tools/test_reference_anchors.py --mode batch --case puppy --provider poll
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--theme` | `春天` | MV 主题（如：童年、星空、大海、城市） |
-| `--style` | `动漫风` | 画面风格（12 种可选） |
+| `--style` | `动漫风` | 画面风格（19 种可选，可用 `--options` 查看） |
 | `--music-style` | `流行` | 音乐风格（14 种可选） |
 | `--mood` | `温柔` | 情绪氛围（17 种可选） |
 | `--language` | `中文` | 歌词语言 |
 | `--project` | `""` | 已有项目目录（用于断点续传） |
-| `--phase` | `1` | 开始阶段（1-11） |
+| `--phase` | `all` | 运行阶段：`all/0`、`init/1`、`align/2`、`produce/3`、`export/4` |
 | `--auto` | `False` | 全自动模式，跳过所有暂停点 |
 | `--list` | `False` | 列出 workspace 中所有项目 |
 | `--no-api` | `False` | 跳过真实 API 调用（测试用） |
@@ -225,12 +267,22 @@ python tools/test_reference_anchors.py --mode batch --case puppy --provider poll
 ### 分阶段运行
 
 ```bash
-# 只生成歌词和音乐
-python -m src.main --phase 1
+# 新建项目，只生成创意简报、歌词和音乐
+python -m src.main --theme "春雨" --phase 1
 
-# 从图片生成开始（假设前 4 步已完成）
-python -m src.main --project "~/mv/我的项目" --phase 5
+# 续跑已有项目，从场景分析、生图和 Ken Burns 开始
+python -m src.main --project "~/mv/我的项目" --phase 3
 ```
+
+阶段含义：
+
+| `--phase` | 阶段 | 内容 |
+|-----------|------|------|
+| `all` / `0` | 完整流程 | Step 0-⑪ |
+| `init` / `1` | 创作初始化 | Step 0-②：创意简报、歌词、音乐 |
+| `align` / `2` | 字幕对齐 | Step ③：歌词对齐、生成 `audio/song.srt` |
+| `produce` / `3` | 视觉生产 | Step ③.5-⑧：场景分析、主参考图、锚定图、批量场景图、Ken Burns |
+| `export` / `4` | 合成导出 | Step ⑨-⑪：拼接、合并音频字幕、导出版本、生成报告 |
 
 ---
 
@@ -243,7 +295,7 @@ music-to-mv-v2/
 │   ├── pipeline.py               MVPipeline 11 步状态机编排器
 │   ├── project_manager.py        项目状态管理（原子化步骤追踪）
 │   ├── config_manager.py         多 Provider 配置管理
-│   ├── style_map.py              数据映射层（★ 核心 12 风格/17 情绪/49 主题）
+│   ├── style_map.py              数据映射层（★ 核心 19 风格/17 情绪/49 主题）
 │   ├── interaction.py            交互暂停点管理（3 个用户确认点）
 │   ├── scripts_bridge.py         原版 Shell 脚本桥接层
 │   ├── align.py                  纯 Python 歌词对齐（Demucs+Whisper+两遍匹配）
@@ -285,13 +337,20 @@ music-to-mv-v2/
 
 `style_map.py` 是系统的**核心数据映射层**，集中管理所有风格相关的配置：
 
-### 12 种画面风格
+### 19 种画面风格
 
 | 风格 | 英文描述 | 负面词 |
 |------|---------|--------|
 | 🏮 国风 | Chinese ink painting, calligraphy strokes | photography, 3d render |
 | 🎬 动漫风 | Japanese anime style, cel shading | realistic, photography |
 | 📷 写实摄影风 | Photorealistic, DSLR, natural lighting | cartoon, anime |
+| 📱 手机纪实摄影 | Smartphone snapshot, unedited original photo | studio lighting, glossy retouching |
+| 📹 家庭DV风 | Consumer camcorder home video, candid family memory | cinematic grading, studio lighting |
+| 🍜 美食纪实摄影 | Real kitchen food documentary, steam and ingredients | commercial food styling, perfect plating |
+| 🚶 街头纪实摄影 | Street documentary, available light, candid moment | fashion editorial, staged pose |
+| 📰 新闻纪实摄影 | Photojournalism, factual documentary framing | glamour portrait, advertising image |
+| ⬜ 宝丽来快照风 | Instant film snapshot, faded color, soft flash | perfect digital sharpness, studio lighting |
+| ⚫ 黑白纪实摄影 | Black and white documentary, grayscale texture | color image, glamour lighting |
 | 🎨 水彩插画风 | Watercolor painting, soft wet brushes | sharp lines, digital |
 | 🕹 像素游戏风 | 8-bit pixel art, retro game | smooth, realistic |
 | 🎞 电影感写实风 | Cinematic film grain, anamorphic | flat, digital |
@@ -375,6 +434,16 @@ metadata/llm_calls/
 ├── errors.jsonl             ← 失败记录
 └── versions.json            ← 版本使用追踪
 ```
+
+流程结束后会额外生成执行过程摘要：
+
+```text
+metadata/execution_summary.json   ← 机器可读摘要
+output/execution_summary.json     ← 交付目录副本
+output/llm_report.html            ← HTML 报告，顶部包含执行摘要
+```
+
+摘要会统计总 API 交互次数、成功/失败、超时次数、`finish_reason=length`、reasoning-only 响应、慢请求 Top 和错误原因 Top。
 
 查看统计摘要：
 
@@ -482,7 +551,7 @@ IMAGE_API_PROVIDER=dalle          # 需要 OPENAI_TOKEN
 
 ```bash
 # 指定已有项目目录和起始阶段
-python -m src.main --project "~/mv/我的项目" --phase 5
+python -m src.main --project "~/mv/我的项目" --phase 3
 ```
 
 项目状态保存在 `metadata/info.json` 的 `pipeline` 字段中。
@@ -510,7 +579,7 @@ python -m src.main --project "~/mv/我的项目" --phase 5
 ## 🗺 开发路线图
 
 - [x] 底座层：`ProjectManager` + `ConfigManager`
-- [x] 数据层：`style_map` (12 风格 / 17 情绪 / 49 主题)
+- [x] 数据层：`style_map` (19 风格 / 17 情绪 / 49 主题)
 - [x] LLM 层：多 API 客户端 + 日志 + Prompt 版本管理
 - [x] 编排层：`MVPipeline` 11 步状态机
 - [x] 交互层：3 个暂停点 + 恢复

@@ -73,6 +73,133 @@ STYLES = {
         "api": "photography",
         "negative": "text, watermark, signature, frame, cartoon, illustration, painting, deformed face, blurry",
     },
+    "手机纪实摄影": {
+        "art": (
+            "casual smartphone documentary photo, unedited original photo look, natural indoor ambient light, "
+            "auto white balance, slight sensor noise, ordinary household clutter, imperfect handheld framing, "
+            "everyday life snapshot, realistic phone camera texture, no studio lighting, no cinematic color grading"
+        ),
+        "render": (
+            "smartphone snapshot rendering, unedited phone photo, natural ambient light, "
+            "slight noise, imperfect handheld composition, ordinary lived-in environment"
+        ),
+        "character": (
+            "A real Chinese child photographed casually on a smartphone, natural expression, "
+            "everyday clothes, imperfect framing, unposed home snapshot"
+        ),
+        "api": "photography",
+        "negative": (
+            "text, watermark, signature, frame, cartoon, illustration, painting, "
+            "studio lighting, cinematic lighting, glossy retouching, commercial food photography, "
+            "perfect composition, ultra clean room, heavy color grading, artificial bokeh"
+        ),
+    },
+    "家庭DV风": {
+        "art": (
+            "early 2000s home video still, consumer camcorder look, interlaced softness, mild motion blur, "
+            "warm indoor tungsten light, imperfect exposure, timestamp-like memory feeling without visible text, "
+            "family documentary atmosphere, candid unpolished framing, nostalgic domestic realism"
+        ),
+        "render": (
+            "consumer camcorder home video look, soft low-resolution texture, warm indoor light, "
+            "slight motion blur, candid family framing"
+        ),
+        "character": (
+            "A real Chinese child captured in a family camcorder moment, unposed, "
+            "soft low-resolution home video texture, everyday clothes"
+        ),
+        "api": "photography",
+        "negative": (
+            "text, watermark, signature, frame, cartoon, illustration, painting, "
+            "cinematic grading, studio lighting, sharp commercial photo, polished fashion portrait"
+        ),
+    },
+    "美食纪实摄影": {
+        "art": (
+            "documentary food photography in a real kitchen, natural window light, visible steam, "
+            "honest ingredient texture, used bowls and utensils, lived-in table surface, "
+            "unpolished home cooking atmosphere, realistic color, tactile close details, no commercial styling"
+        ),
+        "render": (
+            "real kitchen food documentary, natural light, steam and ingredient texture, "
+            "used tableware, unpolished home cooking feel"
+        ),
+        "character": None,
+        "api": "photography",
+        "negative": (
+            "text, watermark, signature, frame, cartoon, illustration, painting, "
+            "commercial food styling, glossy advertising photo, perfect plating, studio setup, "
+            "fake steam, over-saturated sauce, sterile clean background"
+        ),
+    },
+    "街头纪实摄影": {
+        "art": (
+            "street documentary photography, available light, candid unposed moment, ordinary people and places, "
+            "slightly imperfect framing, realistic urban texture, natural contrast, handheld perspective, "
+            "human-scale observation, no staged composition, no fashion editorial polish"
+        ),
+        "render": (
+            "street photography, available light, candid moment, handheld framing, "
+            "real urban texture, natural contrast"
+        ),
+        "character": None,
+        "api": "photography",
+        "negative": (
+            "text, watermark, signature, frame, cartoon, illustration, painting, "
+            "fashion editorial, staged pose, studio lighting, glossy retouching, overly cinematic neon"
+        ),
+    },
+    "新闻纪实摄影": {
+        "art": (
+            "photojournalistic documentary image, truthful event coverage, available light, clear factual subject, "
+            "real location context, restrained color, practical framing, no beautifying retouch, "
+            "observational realism, human stakes, editorial documentary tone"
+        ),
+        "render": (
+            "photojournalism style, factual documentary framing, available light, "
+            "real location context, restrained color"
+        ),
+        "character": None,
+        "api": "photography",
+        "negative": (
+            "text, watermark, signature, frame, cartoon, illustration, painting, "
+            "glamour portrait, cinematic fantasy, over-processed color, staged advertising image"
+        ),
+    },
+    "宝丽来快照风": {
+        "art": (
+            "instant film snapshot aesthetic, soft flash falloff, slightly faded color, imperfect exposure, "
+            "close everyday memory, casual centered framing, tactile analog photo feeling, "
+            "gentle nostalgia, mild blur, unpolished personal keepsake mood"
+        ),
+        "render": (
+            "instant film snapshot, soft flash, faded color, imperfect exposure, "
+            "casual memory photo, analog texture"
+        ),
+        "character": None,
+        "api": "retro_film",
+        "negative": (
+            "text, watermark, signature, cartoon, illustration, painting, "
+            "cinematic widescreen, perfect digital sharpness, glossy retouching, commercial studio lighting"
+        ),
+    },
+    "黑白纪实摄影": {
+        "art": (
+            "black and white documentary photography, natural available light, rich grayscale texture, "
+            "honest human detail, tactile surfaces, restrained contrast, candid observation, "
+            "timeless memory mood, no color grading, no staged glamour"
+        ),
+        "render": (
+            "black and white documentary photo, available light, rich grayscale, "
+            "candid observational framing, tactile texture"
+        ),
+        "character": None,
+        "api": "photography",
+        "negative": (
+            "text, watermark, signature, frame, cartoon, illustration, painting, "
+            "color image, glamour lighting, glossy retouching, staged fashion portrait"
+        ),
+    },
     "水彩插画风": {
         "art": (
             "soft hand-painted watercolor, delicate paper texture, gentle color blending, "
@@ -255,6 +382,7 @@ MOOD_DESCRIPTIONS = {
     "忧伤": "melancholic tender atmosphere, soft blue-grey tones, gentle sad expressions, rainy misty",
     "热血": "dynamic energetic atmosphere, vivid red-orange tones, determined expressions, action pose",
     "梦幻": "dreamy ethereal atmosphere, soft glowing light, pastel iridescent tones, magical vibe",
+    "写实": "realistic natural atmosphere, true-to-life lighting, restrained color, documentary texture, believable physical detail",
     "浪漫": "romantic warm atmosphere, soft pink-gold light, gentle intimate expressions, cherry blossoms",
     "怀旧": "nostalgic warm atmosphere, vintage sepia tones, soft glowing memories, golden hour",
     "希望": "hopeful bright atmosphere, warm sunrise light, optimistic expressions, open space",
@@ -283,6 +411,8 @@ THEME_VISUALS = {
     "大海": "vast ocean, rolling waves, white foam, seabirds flying, dramatic sunset horizon, deep blue",
     "森林": "deep mysterious forest, sun rays through trees, mossy ground, wild flowers, gentle stream",
     "花园": "beautiful garden, colorful flowers, butterflies, fountain, stone path, romantic atmosphere",
+    "牵牛花": "morning glory flowers, trumpet-shaped purple-blue petals, heart-shaped green leaves, slender climbing vines, bamboo fence, morning dew",
+    "玫瑰": "realistic rose blossom, layered petals, thorny stem, deep red and muted pink tones, garden leaves, soft natural light",
     "彩虹": "rainbow across the sky, fresh after rain, colorful gradient, bright blue sky, white clouds",
     "落日": "majestic sunset, warm golden red sky, silhouettes against sun, calm peaceful atmosphere",
     "极光": "aurora borealis, green purple dancing lights, starry night, snow reflection, magical atmosphere",

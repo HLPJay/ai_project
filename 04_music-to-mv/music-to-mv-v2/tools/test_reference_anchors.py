@@ -48,6 +48,7 @@ DEFAULT_WORKSPACE = REPO_ROOT / ".reference_tests"
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.project_manager import ProjectManager
+from src.preview_report import PreviewReport
 from src.scene_generator import SceneImageGenerator
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -74,6 +75,14 @@ CASES: tuple[ReferenceCase, ...] = (
         music_style="中国风",
         mood="浪漫",
         note="人物关系主体，检查是否是情侣/关系氛围，而不是空风景",
+    ),
+    ReferenceCase(
+        key="family",
+        theme="妈妈和奶奶",
+        style="写实摄影风",
+        music_style="民谣",
+        mood="温柔",
+        note="亲情人物主体，检查妈妈/奶奶是否是情绪锚点，而不是温柔风景",
     ),
     ReferenceCase(
         key="poem",
@@ -130,6 +139,54 @@ CASES: tuple[ReferenceCase, ...] = (
         music_style="中国风",
         mood="魔幻",
         note="神话幻想，检查神话生物、山海、古老符号和幻想尺度",
+    ),
+    ReferenceCase(
+        key="botanical",
+        theme="牵牛花",
+        style="国风",
+        music_style="中国风",
+        mood="写实",
+        note="植物主体，检查牵牛花花型、叶片、藤蔓是否是主体",
+    ),
+    ReferenceCase(
+        key="food",
+        theme="一碗热汤面",
+        style="写实摄影风",
+        music_style="民谣",
+        mood="温柔",
+        note="食物主体，检查面条、热气、碗和桌面语境是否明确",
+    ),
+    ReferenceCase(
+        key="place",
+        theme="雨中的古桥",
+        style="国风",
+        music_style="中国风",
+        mood="宁静",
+        note="建筑场所主体，检查古桥结构和雨中空间是否明确",
+    ),
+    ReferenceCase(
+        key="weather",
+        theme="冬雪",
+        style="电影感",
+        music_style="氛围",
+        mood="宁静",
+        note="天气自然主体，检查雪、空气、地表影响是否主导画面",
+    ),
+    ReferenceCase(
+        key="vehicle",
+        theme="夜行列车",
+        style="赛博朋克",
+        music_style="电子",
+        mood="孤独",
+        note="交通工具主体，检查列车是否主导而不是普通夜景",
+    ),
+    ReferenceCase(
+        key="abstract",
+        theme="时间的回声",
+        style="电影感",
+        music_style="氛围",
+        mood="怀旧",
+        note="抽象象征主体，检查是否有明确象征锚点而非泛风景",
     ),
 )
 
@@ -234,7 +291,26 @@ def run_case(case: ReferenceCase, mode: str, env: dict[str, str]) -> int:
     ]
     print("命令:", " ".join(f'"{x}"' if " " in x else x for x in cmd), flush=True)
     completed = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env)
+    if completed.returncode == 0 and mode == "image":
+        project = newest_project(Path(env["WORKSPACE_ROOT"]), case.theme)
+        if project:
+            preview = PreviewReport(str(project)).generate()
+            print(f"预览页: {preview}")
     return completed.returncode
+
+
+def newest_project(workspace: Path, theme: str) -> Path | None:
+    """找到指定主题最新测试项目目录。"""
+    if not workspace.exists():
+        return None
+    safe_prefix = ProjectManager._safe_name(theme)
+    candidates = [
+        p for p in workspace.iterdir()
+        if p.is_dir() and p.name.startswith(f"{safe_prefix}_")
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def create_batch_scenes(case: ReferenceCase, limit: int) -> list[dict]:
@@ -386,6 +462,8 @@ def run_batch_case(case: ReferenceCase, args: argparse.Namespace,
         "variant_scenes": result.get("variant_scenes"),
     }, ensure_ascii=False, indent=2))
     print(f"图片目录: {pm.project_dir / 'images'}")
+    preview = PreviewReport(str(pm.project_dir)).generate()
+    print(f"预览页: {preview}")
     return 0
 
 

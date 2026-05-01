@@ -18,6 +18,7 @@ exporter.py — 视频合成与导出模块
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -132,7 +133,7 @@ class MVExporter:
         """
         # 收集所有 KB 片段（按文件名排序）
         pattern = "*_scene_kb.mp4"
-        clips = sorted(self.clips_dir.glob(pattern))
+        clips = sorted(self.clips_dir.glob(pattern), key=self._clip_sort_key)
 
         if not clips:
             return {"status": "failed", "error": "no clips found",
@@ -176,6 +177,38 @@ class MVExporter:
             "output": str(video_raw),
         }
 
+    @staticmethod
+    def _clip_sort_key(path: Path) -> tuple:
+        match = re.search(r"seg(\d+)_", path.name)
+        return (int(match.group(1)) if match else 10**9, path.name)
+
+    def _pad_video_to_audio(self, video_file: Path, audio_file: Path) -> Path:
+        """Clone the final frame if the visual track is shorter than audio."""
+        video_duration = self._get_duration_float(str(video_file))
+        audio_duration = self._get_duration_float(str(audio_file))
+        if video_duration <= 0 or audio_duration <= 0:
+            return video_file
+
+        gap = audio_duration - video_duration
+        if gap <= 0.5:
+            return video_file
+
+        padded = self.temp_dir / "video_raw_padded.mp4"
+        cmd = [
+            self.ffmpeg, "-y",
+            "-i", str(video_file),
+            "-vf", f"tpad=stop_mode=clone:stop_duration={gap:.3f}",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            str(padded),
+        ]
+        print(f"  [WARN] 视频短于音频 {gap:.1f}s，自动延长末帧避免黑屏")
+        success, error = self._run_ffmpeg(cmd, log_tag="⑩ pad video")
+        if success and padded.exists():
+            return padded
+        print(f"  [WARN] 视频补齐失败，继续使用原视频: {error or 'unknown'}")
+        return video_file
+
     # ══════════════════════════════════════════════════════
     # Step ⑩: 合并音视频 + 字幕
     # ══════════════════════════════════════════════════════
@@ -204,6 +237,8 @@ class MVExporter:
             return {"status": "failed", "error": f"video_raw not found: {video_raw}"}
         if not audio_file.exists():
             return {"status": "failed", "error": f"audio not found: {audio_file}"}
+
+        video_raw = self._pad_video_to_audio(video_raw, audio_file)
 
         # 构建 ffmpeg 命令
         cmd = [self.ffmpeg, "-y"]
@@ -551,6 +586,10 @@ class MVExporter:
 
     def _get_duration(self, file_path: str) -> int:
         """获取媒体文件时长（秒）"""
+        return int(self._get_duration_float(file_path))
+
+    def _get_duration_float(self, file_path: str) -> float:
+        """获取媒体文件时长（秒，浮点）"""
         try:
             result = subprocess.run(
                 [self.ffprobe, "-v", "error", "-show_entries",
@@ -558,10 +597,10 @@ class MVExporter:
                 capture_output=True, text=True, timeout=self.ffprobe_timeout
             )
             if result.returncode == 0 and result.stdout.strip():
-                return int(float(result.stdout.strip()))
+                return float(result.stdout.strip())
         except Exception:
             pass
-        return 0
+        return 0.0
 
     def _run_ffmpeg_cwd(self, cmd: List[str], cwd: str,
                         log_tag: str = "ffmpeg") -> Tuple[bool, Optional[str]]:

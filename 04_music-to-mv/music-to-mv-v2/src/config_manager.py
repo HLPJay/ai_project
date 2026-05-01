@@ -72,13 +72,23 @@ class Config:
     image_api_base_delay_sec: float = 2.0
     image_api_timeout_sec: float = 60.0
 
+    scene_desc_api_max_retries: int = 3
+    scene_desc_api_base_delay_sec: float = 2.0
+    scene_desc_api_timeout_sec: float = 120.0
+
+    variant_api_max_retries: int = 3
+    variant_api_base_delay_sec: float = 2.0
+    variant_api_timeout_sec: float = 120.0
+
     download_max_retries: int = 3
     download_base_delay_sec: float = 2.0
     download_timeout_sec: float = 60.0
 
     # Chat completion 输出长度
     scene_desc_max_tokens: int = 4096
+    scene_desc_batch_size: int = 2
     variant_desc_max_tokens: int = 4096
+    variant_desc_batch_size: int = 4
     visual_bible_max_tokens: int = 2048
     creative_brief_max_tokens: int = 2048
 
@@ -91,6 +101,14 @@ class Config:
 
     # 本地处理超时
     align_timeout_sec: int = 600
+    align_asr_enabled: bool = True
+    align_whisper_model: str = "medium"
+    align_whisper_fallback_models: str = "small,base,tiny"
+    align_whisper_device: str = "auto"
+    align_whisper_language: str = "zh"
+    align_demucs_enabled: bool = True
+    align_demucs_device: str = "auto"
+    align_demucs_check_timeout_sec: int = 10
     script_timeout_sec: int = 600
     scene_analysis_timeout_sec: int = 180
     ffmpeg_timeout_sec: int = 600
@@ -103,6 +121,13 @@ class Config:
     kb_pan_x: float = 30.0
     kb_pan_y: float = 18.0
     kb_supersample_scale: int = 2
+
+    # 图片质检
+    image_quality_enabled: bool = True
+    image_quality_min_file_size: int = 1000
+    image_quality_min_width: int = 512
+    image_quality_min_height: int = 512
+    image_quality_min_stddev: float = 6.0
 
 
 class ConfigManager:
@@ -203,17 +228,33 @@ class ConfigManager:
             "IMAGE_API_MAX_RETRIES": "image_api_max_retries",
             "IMAGE_API_BASE_DELAY_SEC": "image_api_base_delay_sec",
             "IMAGE_API_TIMEOUT_SEC": "image_api_timeout_sec",
+            "SCENE_DESC_API_MAX_RETRIES": "scene_desc_api_max_retries",
+            "SCENE_DESC_API_BASE_DELAY_SEC": "scene_desc_api_base_delay_sec",
+            "SCENE_DESC_API_TIMEOUT_SEC": "scene_desc_api_timeout_sec",
+            "VARIANT_API_MAX_RETRIES": "variant_api_max_retries",
+            "VARIANT_API_BASE_DELAY_SEC": "variant_api_base_delay_sec",
+            "VARIANT_API_TIMEOUT_SEC": "variant_api_timeout_sec",
             "DOWNLOAD_MAX_RETRIES": "download_max_retries",
             "DOWNLOAD_BASE_DELAY_SEC": "download_base_delay_sec",
             "DOWNLOAD_TIMEOUT_SEC": "download_timeout_sec",
             "SCENE_DESC_MAX_TOKENS": "scene_desc_max_tokens",
+            "SCENE_DESC_BATCH_SIZE": "scene_desc_batch_size",
             "VARIANT_DESC_MAX_TOKENS": "variant_desc_max_tokens",
+            "VARIANT_DESC_BATCH_SIZE": "variant_desc_batch_size",
             "VISUAL_BIBLE_MAX_TOKENS": "visual_bible_max_tokens",
             "CREATIVE_BRIEF_MAX_TOKENS": "creative_brief_max_tokens",
             "IMAGE_PARALLEL": "image_parallel",
             "LYRICS_STRUCTURE_MODE": "lyrics_structure_mode",
             "LYRICS_STRUCTURE": "lyrics_structure",
             "ALIGN_TIMEOUT_SEC": "align_timeout_sec",
+            "ALIGN_ASR_ENABLED": "align_asr_enabled",
+            "ALIGN_WHISPER_MODEL": "align_whisper_model",
+            "ALIGN_WHISPER_FALLBACK_MODELS": "align_whisper_fallback_models",
+            "ALIGN_WHISPER_DEVICE": "align_whisper_device",
+            "ALIGN_WHISPER_LANGUAGE": "align_whisper_language",
+            "ALIGN_DEMUCS_ENABLED": "align_demucs_enabled",
+            "ALIGN_DEMUCS_DEVICE": "align_demucs_device",
+            "ALIGN_DEMUCS_CHECK_TIMEOUT_SEC": "align_demucs_check_timeout_sec",
             "SCRIPT_TIMEOUT_SEC": "script_timeout_sec",
             "SCENE_ANALYSIS_TIMEOUT_SEC": "scene_analysis_timeout_sec",
             "FFMPEG_TIMEOUT_SEC": "ffmpeg_timeout_sec",
@@ -224,6 +265,11 @@ class ConfigManager:
             "KB_PAN_X": "kb_pan_x",
             "KB_PAN_Y": "kb_pan_y",
             "KB_SUPERSAMPLE_SCALE": "kb_supersample_scale",
+            "IMAGE_QUALITY_ENABLED": "image_quality_enabled",
+            "IMAGE_QUALITY_MIN_FILE_SIZE": "image_quality_min_file_size",
+            "IMAGE_QUALITY_MIN_WIDTH": "image_quality_min_width",
+            "IMAGE_QUALITY_MIN_HEIGHT": "image_quality_min_height",
+            "IMAGE_QUALITY_MIN_STDDEV": "image_quality_min_stddev",
         }
 
         for env_key, config_key in mapping.items():

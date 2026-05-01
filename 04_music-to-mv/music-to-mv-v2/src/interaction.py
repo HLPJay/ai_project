@@ -174,8 +174,11 @@ class UserInteraction:
         return pm.is_awaiting_approval
 
     @staticmethod
-    def format_prompt_for_agent(pm: ProjectManager) -> str:
-        """生成给 Agent 的提示文本"""
+    def format_prompt_for_agent(pm: ProjectManager, cli_mode: bool = False) -> str:
+        """生成暂停点提示文本。
+
+        cli_mode=True 时面向本地终端用户，隐藏 Agent 专用的 handle_choice 提示。
+        """
         pending = pm.pending_approval_info
         if not pending:
             return ""
@@ -199,8 +202,11 @@ class UserInteraction:
                 lines.append(f"  {key}: {desc}")
 
         lines.append("")
-        lines.append("请向用户展示以上信息，等待用户回复。")
-        lines.append("用户做出选择后，调用 UserInteraction.handle_choice() 推进流水线。")
+        if cli_mode:
+            lines.append("请在下方终端输入选项；直接回车使用默认选择。")
+        else:
+            lines.append("请向用户展示以上信息，等待用户回复。")
+            lines.append("用户做出选择后，调用 UserInteraction.handle_choice() 推进流水线。")
         lines.append("=" * 55)
 
         return "\n".join(lines)

@@ -9,6 +9,7 @@ Art Style: {{ style }}
 Music Style: {{ music_style }}
 Visual Style Details: {{ art_style }}
 Music Visual Atmosphere: {{ music_visual }}
+{% if subject_guidance %}Theme Subject Guidance: {{ subject_guidance }}{% endif %}
 Character Policy: {{ character_policy }}
 Visual Mode: {{ visual_mode }}
 Narrative Mode: {{ narrative_mode }}

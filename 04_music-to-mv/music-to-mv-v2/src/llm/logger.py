@@ -91,6 +91,7 @@ class LLMLogger:
                 "latency_ms": record.latency_ms,
                 "cost_usd": record.cost_usd,
                 "status": record.status,
+                "error": record.error,
                 "response_file": response_file,
                 "evaluation": record.evaluation,
                 "extra": record.extra,
@@ -235,6 +236,8 @@ class LLMLogger:
             "tokens": record.tokens,
             "latency_ms": record.latency_ms,
             "cost_usd": record.cost_usd,
+            "status": record.status,
+            "error": record.error,
         }
 
         try:

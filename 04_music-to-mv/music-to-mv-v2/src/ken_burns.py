@@ -296,6 +296,7 @@ class KenBurnsGenerator:
         """
         proj = Path(project_dir)
         scenes_path = proj / "metadata" / "scenes.json"
+        info_path = proj / "metadata" / "info.json"
         variants_path = proj / "metadata" / "variants.json"
         images_dir = proj / "images"
         clips_dir = proj / "clips"
@@ -303,6 +304,14 @@ class KenBurnsGenerator:
 
         # 读取场景配置
         scenes = json.loads(scenes_path.read_text(encoding="utf-8"))
+        scenes = sorted(scenes, key=lambda row: int(row.get("id", 0)))
+        audio_duration = 0.0
+        if info_path.exists():
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+                audio_duration = float(info.get("audio_duration_sec", 0) or 0)
+            except Exception:
+                audio_duration = 0.0
 
         # 读取变体配置
         variant_scenes: Dict[int, int] = {}
@@ -327,9 +336,9 @@ class KenBurnsGenerator:
         results = []
         skipped = []
 
-        for s in scenes:
+        for idx, s in enumerate(scenes):
             sid = s["id"]
-            dur = s.get("duration", 10)
+            dur = self._timeline_duration(scenes, idx, audio_duration)
             n_variants = variant_scenes.get(sid, 1)
 
             # 收集图片路径
@@ -387,6 +396,25 @@ class KenBurnsGenerator:
             "results": results,
         }
 
+    @staticmethod
+    def _timeline_duration(scenes: List[Dict[str, Any]], idx: int,
+                           audio_duration: float = 0.0) -> float:
+        """Compute visual duration that also covers instrumental gaps."""
+        scene = scenes[idx]
+        start = float(scene.get("start", 0) or 0)
+        if idx == 0:
+            start = 0.0
+
+        if idx + 1 < len(scenes):
+            end = float(scenes[idx + 1].get("start", 0) or 0)
+        elif audio_duration > start:
+            end = audio_duration
+        else:
+            end = float(scene.get("end", 0) or 0)
+
+        fallback = float(scene.get("duration", 10) or 10)
+        return round(max(1.0, end - start if end > start else fallback), 2)
+
     # ══════════════════════════════════════════════════════
     # 内部方法
     # ══════════════════════════════════════════════════════
@@ -415,14 +443,17 @@ class KenBurnsGenerator:
             filter_parts.append(f"[{i}:v]fps={self.fps},scale=1280:720[v{i}]")
 
         offset = 0
+        prev_label = "v0"
         for i in range(1, n):
             offset += dur_per_clip - fade_duration
+            out_label = f"vx{i}"
             filter_parts.append(
-                f"[v{i-1}][v{i}]xfade=transition=fade:"
-                f"duration={fade_duration}:offset={offset}[vx{i}]"
+                f"[{prev_label}][v{i}]xfade=transition=fade:"
+                f"duration={fade_duration}:offset={offset}[{out_label}]"
             )
+            prev_label = out_label
 
-        last_label = f"[vx{n-1}]"
+        last_label = f"[{prev_label}]"
 
         cmd += [
             "-filter_complex", ";".join(filter_parts),
