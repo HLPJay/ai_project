@@ -213,7 +213,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["minimax", "pollinations", "alibaba", "dall-e"],
+        choices=["minimax", "pollinations", "alibaba", "dall-e", "comfyui"],
         help="临时覆盖 IMAGE_API_PROVIDER，仅对子进程生效",
     )
     parser.add_argument(

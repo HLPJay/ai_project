@@ -5,22 +5,23 @@
   "modes": [
     {
       "mode": "family_person",
-      "priority": 5,
+      "priority": 8,
       "description": "亲情人物、父母、祖辈、家人和家庭记忆主题",
       "keywords": [
         "妈妈", "母亲", "母爱", "娘", "奶奶", "外婆", "祖母", "姥姥",
         "爷爷", "外公", "祖父", "爸爸", "父亲", "父爱",
-        "父母", "亲情", "家人", "家庭", "老家", "陪伴", "牵挂",
+        "父母", "亲情", "家人", "家庭", "老家", "牵挂",
         "family", "mother", "mom", "grandmother", "grandma", "father",
         "parent", "parents", "elder", "home memory"
       ]
     },
     {
       "mode": "relation",
-      "priority": 10,
+      "priority": 4,
       "description": "人物关系、爱情、离别、重逢等主题",
       "keywords": [
         "爱情", "恋爱", "相爱", "爱人", "情侣", "恋人", "情人",
+        "女朋友", "女友", "男朋友", "男友", "伴侣", "对象",
         "思念", "想你", "等你", "离别", "重逢", "告白", "心动",
         "拥抱", "牵手", "誓言", "婚礼",
         "love", "lover", "romance", "romantic", "couple", "kiss", "embrace"

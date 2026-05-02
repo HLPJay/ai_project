@@ -72,7 +72,8 @@ class MVPipeline:
                 "alibaba": ("alibaba_token", "ALIBABA_TOKEN（图片生成）"),
                 "dall-e":  ("openai_token",  "OPENAI_TOKEN（图片生成）"),
             }
-            if provider in token_map:
+            token_map["comfyui"] = ("", "本地 ComfyUI（无需 Token）")
+            if provider in token_map and token_map[provider][0]:
                 key, label = token_map[provider]
                 if not self.cfg.get(key):
                     missing.append(label)

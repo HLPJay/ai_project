@@ -9,7 +9,7 @@ PyYAML>=6.0              # 读取 prompts/registry.yaml 配置
 # Jinja2 增强的模板渲染（PromptRegistry 内置引擎也可工作）
 jinja2>=3.0
 
-# 歌词对齐（不装则回退到基础均匀时间戳 SRT，或使用 manual SRT）
+# 歌词对齐（不装则回退到基础均匀时间戳 SRT，或使用 manual SRT） 可以优化为faster-whisper
 openai-whisper            # 语音转写，用于歌词时间轴对齐
 
 # 人声分离（提升对齐精度）

@@ -22,6 +22,7 @@ import os
 import time
 import threading
 import urllib.parse
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
@@ -266,6 +267,8 @@ class LLMClient:
             return self._call_pollinations_image(prompt, output_path, negative_prompt, seed, prompt_key)
         elif provider == "dall-e":
             return self._call_dalle_image(prompt, output_path, prompt_key)
+        elif provider == "comfyui":
+            return self._call_comfyui_image(prompt, output_path, negative_prompt, seed, prompt_key)
         else:
             raise ValueError(f"Unknown image provider: {provider}")
 
@@ -400,6 +403,191 @@ class LLMClient:
         file_size = os.path.getsize(output_path)
         self._log_image_call(prompt_key, f"DALL-E-{model}", prompt, output_path, file_size)
         return output_path
+
+    def _call_comfyui_image(self, prompt: str, output_path: str,
+                            negative_prompt: str = "", seed: int = 0,
+                            prompt_key: str = "image_generation") -> str:
+        """调用本地 ComfyUI API。需要 ComfyUI 已启动并监听 IMAGE_API_URL_COMFYUI。"""
+        from src.config_manager import ConfigManager
+        cfg = ConfigManager()
+
+        base_url = str(cfg.get("image_api_url_comfyui", "http://127.0.0.1:8188")).rstrip("/")
+        checkpoint = cfg.get("image_model_comfyui", "")
+        workflow = self._build_comfyui_workflow(prompt, negative_prompt, seed, checkpoint, cfg)
+        client_id = f"music-to-mv-{uuid.uuid4()}"
+        timeout = cfg.get_float("comfyui_timeout_sec", cfg.get_float("image_api_timeout_sec", 300.0))
+        poll_interval = max(0.2, cfg.get_float("comfyui_poll_interval_sec", 1.0))
+
+        payload = json.dumps(
+            {"prompt": workflow, "client_id": client_id},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        model_name = f"ComfyUI-{checkpoint or 'workflow'}"
+        start = time.time()
+
+        prompt_resp = self._call_raw_api(
+            url=f"{base_url}/prompt",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            prompt_key=prompt_key,
+            model=model_name,
+            prompt_text=prompt,
+            retry_config=RetryConfig(
+                max_retries=cfg.get_int("image_api_max_retries", 3),
+                base_delay=cfg.get_float("image_api_base_delay_sec", 2.0),
+                request_timeout=min(30.0, timeout),
+            ),
+        )
+        prompt_id = prompt_resp.get("prompt_id")
+        if not prompt_id:
+            raise ValueError(f"ComfyUI 未返回 prompt_id: {prompt_resp}")
+
+        history = self._wait_comfyui_history(base_url, prompt_id, timeout, poll_interval)
+        image_info = self._first_comfyui_image(history, prompt_id)
+        if not image_info:
+            raise ValueError(f"ComfyUI 任务完成但没有找到输出图片: prompt_id={prompt_id}")
+
+        params = urllib.parse.urlencode({
+            "filename": image_info.get("filename", ""),
+            "subfolder": image_info.get("subfolder", ""),
+            "type": image_info.get("type", "output"),
+        })
+        self._download_file(
+            f"{base_url}/view?{params}",
+            output_path,
+            RetryConfig(max_retries=3, base_delay=1.0, request_timeout=60.0),
+        )
+
+        file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        self._log_image_call(prompt_key, model_name, prompt, output_path, file_size)
+        if self._api_log_enabled():
+            elapsed_ms = (time.time() - start) * 1000
+            print(
+                f"  [API] comfyui image saved key={prompt_key} "
+                f"latency={elapsed_ms:.0f}ms file_size={file_size}"
+            )
+        return output_path
+
+    def _build_comfyui_workflow(self, prompt: str, negative_prompt: str,
+                                seed: int, checkpoint: str, cfg) -> Dict[str, Any]:
+        workflow_path = str(cfg.get("comfyui_workflow", "") or "").strip()
+        if workflow_path:
+            path = Path(workflow_path).expanduser()
+            if not path.is_absolute():
+                path = Path.cwd() / path
+            workflow = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            if not checkpoint:
+                raise ValueError(
+                    "使用 IMAGE_API_PROVIDER=comfyui 时，请设置 IMAGE_MODEL_COMFYUI 为 ComfyUI checkpoint 文件名，"
+                    "例如 juggernautXL_v9Rundiffusionphoto2.safetensors；或设置 COMFYUI_WORKFLOW。"
+                )
+            workflow = self._default_comfyui_workflow()
+
+        values = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt or "low quality, blurry, distorted, watermark, text, logo",
+            "seed": seed if seed and seed > 0 else int(time.time() * 1000) % 2147483647,
+            "checkpoint": checkpoint,
+            "width": cfg.get_int("comfyui_width", 1280),
+            "height": cfg.get_int("comfyui_height", 720),
+            "steps": cfg.get_int("comfyui_steps", 28),
+            "cfg": cfg.get_float("comfyui_cfg", 4.5),
+            "sampler": cfg.get("comfyui_sampler", "dpmpp_2m"),
+            "scheduler": cfg.get("comfyui_scheduler", "karras"),
+        }
+        return self._replace_comfyui_placeholders(workflow, values)
+
+    @staticmethod
+    def _replace_comfyui_placeholders(value: Any, values: Dict[str, Any]) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: LLMClient._replace_comfyui_placeholders(item, values)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [LLMClient._replace_comfyui_placeholders(item, values) for item in value]
+        if isinstance(value, str):
+            if value.startswith("{") and value.endswith("}") and value[1:-1] in values:
+                return values[value[1:-1]]
+            replaced = value
+            for key, item in values.items():
+                replaced = replaced.replace("{" + key + "}", str(item))
+            return replaced
+        return value
+
+    @staticmethod
+    def _default_comfyui_workflow() -> Dict[str, Any]:
+        return {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": "{seed}",
+                    "steps": "{steps}",
+                    "cfg": "{cfg}",
+                    "sampler_name": "{sampler}",
+                    "scheduler": "{scheduler}",
+                    "denoise": 1,
+                    "model": ["4", 0],
+                    "positive": ["6", 0],
+                    "negative": ["7", 0],
+                    "latent_image": ["5", 0],
+                },
+            },
+            "4": {
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": "{checkpoint}"},
+            },
+            "5": {
+                "class_type": "EmptyLatentImage",
+                "inputs": {"width": "{width}", "height": "{height}", "batch_size": 1},
+            },
+            "6": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": "{prompt}", "clip": ["4", 1]},
+            },
+            "7": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": "{negative_prompt}", "clip": ["4", 1]},
+            },
+            "8": {
+                "class_type": "VAEDecode",
+                "inputs": {"samples": ["3", 0], "vae": ["4", 2]},
+            },
+            "9": {
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": "music_to_mv", "images": ["8", 0]},
+            },
+        }
+
+    def _wait_comfyui_history(self, base_url: str, prompt_id: str,
+                              timeout: float, poll_interval: float) -> Dict[str, Any]:
+        deadline = time.time() + timeout
+        last_error = None
+        while time.time() < deadline:
+            try:
+                with urllib_request.urlopen(
+                    f"{base_url}/history/{urllib.parse.quote(prompt_id)}",
+                    timeout=10,
+                ) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                if data.get(prompt_id):
+                    return data
+            except Exception as exc:
+                last_error = exc
+            time.sleep(poll_interval)
+        if last_error:
+            raise TimeoutError(f"等待 ComfyUI 输出超时: {last_error}")
+        raise TimeoutError(f"等待 ComfyUI 输出超时: prompt_id={prompt_id}")
+
+    @staticmethod
+    def _first_comfyui_image(history: Dict[str, Any], prompt_id: str) -> Optional[Dict[str, Any]]:
+        outputs = (history.get(prompt_id) or {}).get("outputs", {})
+        for output in outputs.values():
+            images = output.get("images") or []
+            if images:
+                return images[0]
+        return None
 
     # ── 下载辅助 ─────────────────────────────────────────
 

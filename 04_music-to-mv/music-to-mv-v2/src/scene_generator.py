@@ -615,22 +615,23 @@ class SceneImageGenerator:
         family_person_keywords = (
             "妈妈", "母亲", "母爱", "娘", "奶奶", "外婆", "祖母", "姥姥",
             "爷爷", "外公", "祖父", "爸爸", "父亲", "父爱", "父母",
-            "亲情", "家人", "家庭", "老家", "陪伴", "牵挂",
+            "亲情", "家人", "家庭", "老家", "牵挂",
             "family", "mother", "mom", "grandmother", "grandma", "father",
             "parent", "parents", "elder", "home memory",
         )
         text = primary_text
-        if any(k in text for k in family_person_keywords):
-            return "family_person"
-
         relation_keywords = (
             "爱情", "恋爱", "相爱", "爱人", "情侣", "恋人", "情人",
+            "女朋友", "女友", "男朋友", "男友", "伴侣", "对象",
             "思念", "想你", "等你", "离别", "重逢", "告白", "心动",
             "拥抱", "牵手", "誓言", "婚礼", "love", "lover", "romance",
             "romantic", "couple", "kiss", "embrace",
         )
         if any(k in text for k in relation_keywords):
             return "relation"
+
+        if any(k in text for k in family_person_keywords):
+            return "family_person"
 
         human_action_keywords = (
             "战争", "战场", "士兵", "军队", "英雄", "战火", "冲锋",
@@ -1446,7 +1447,12 @@ class SceneImageGenerator:
         mood_desc = self._reference_mood_desc(reference_mode)
         art_style = self._reference_art_style(reference_mode)
         char_part = ""
-        if self._char_prompt and self._needs_character_anchor(desc_part):
+        character_anchor_modes = {"relation", "family_person", "human_action"}
+        if (
+            reference_mode in character_anchor_modes
+            and self._char_prompt
+            and self._needs_character_anchor(desc_part)
+        ):
             char_part = (
                 "maintain recurring subject continuity when a human appears, "
                 + self._char_prompt[:PROMPT_CHAR_MAX]
@@ -1472,8 +1478,19 @@ class SceneImageGenerator:
                 prompt, subject_part, desc_part, mood_desc, art_style
             )
         if len(prompt) > PROMPT_MAX_LEN:
-            prompt = prompt[:PROMPT_MAX_LEN - 20] + ", anime style, 8k"
+            tail = self._prompt_overflow_tail()
+            prompt = prompt[:PROMPT_MAX_LEN - len(tail) - 2] + ", " + tail
         return prompt
+
+    def _prompt_overflow_tail(self) -> str:
+        style_text = f"{self._style} {self._art_style}".lower()
+        if any(k in style_text for k in ("电影", "cinematic", "film", "35mm")):
+            return "cinematic film still, realistic lighting, 8k"
+        if any(k in style_text for k in ("摄影", "photo", "realistic")):
+            return "realistic photography, natural light, 8k"
+        if any(k in style_text for k in ("动漫", "anime")):
+            return "anime style, 8k"
+        return "high quality, coherent style, 8k"
 
     def _build_subject_anchor_prompt(self, mode: str = "") -> str:
         """构建强主体锚点，主要给 Pollinations/Flux 这类弱约束模型使用。"""
@@ -1516,7 +1533,11 @@ class SceneImageGenerator:
         if mode == "cosmic_environment":
             return f"MAIN SUBJECT MUST BE: {theme}. Cosmic space, galaxy, nebula, stars and planets dominate."
         if mode == "relation":
-            return f"MAIN SUBJECT MUST BE: {theme}. A two-person relationship or couple presence drives the image."
+            return (
+                f"MAIN SUBJECT MUST BE: {theme}. Treat this as an adult romantic partner or couple care scene. "
+                "Use non-sexual tenderness, shared domestic space, gentle hands, basin, towel, water, tired posture, "
+                "and emotional reciprocity. Do not turn it into a child, parent, grandparent, or generic family elder."
+            )
         if mode == "human_action":
             return f"MAIN SUBJECT MUST BE: {theme}. Human action, group stakes, conflict or aftermath drives the image."
         if mode == "poetic_imagery":

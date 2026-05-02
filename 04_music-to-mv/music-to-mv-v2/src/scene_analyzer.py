@@ -655,7 +655,8 @@ class SceneAnalyzer:
             return merged
 
         try:
-            token = cfg.get("minimax_token", "")
+            llm_cfg = self._scene_prompt_llm_config(cfg)
+            token = llm_cfg["token"]
             if not token:
                 return {}
 
@@ -735,14 +736,14 @@ class SceneAnalyzer:
                     f'Format: [{{"id": 1, "desc": "scene visual description", "visual_focus": "environment", "shot_type": "wide", "character_needed": false, "symbolic_objects": ["wind", "station"], "motion_hint": "slow drift"}}, ...]'
                 )
 
-            api_url = "https://api.minimaxi.com/v1/chat/completions"
-            payload = json.dumps({
-                "model": cfg.get("llm_model", "MiniMax-M2.7"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": cfg.get_int("scene_desc_max_tokens", 4096),
-                "temperature": 0.2,
-                "reasoning_split": True,
-            }).encode("utf-8")
+            payload = json.dumps(self._scene_prompt_payload(
+                cfg=cfg,
+                model=llm_cfg["model"],
+                prompt=prompt,
+                max_tokens=cfg.get_int("scene_desc_max_tokens", 4096),
+                temperature=0.2,
+                provider=llm_cfg["provider"],
+            ), ensure_ascii=False).encode("utf-8")
 
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -750,9 +751,9 @@ class SceneAnalyzer:
             }
 
             resp_data = self.client._call_raw_api(
-                api_url, payload, headers,
+                llm_cfg["api_url"], payload, headers,
                 prompt_key="scene_desc_batch",
-                model=cfg.get("llm_model", "MiniMax-M2.7"),
+                model=llm_cfg["model"],
                 prompt_text=prompt,
                 retry_config=RetryConfig.for_profile("scene_desc"),
             )
@@ -765,7 +766,7 @@ class SceneAnalyzer:
                     compact_ret = self._call_llm_compact_descs(
                         scenes=scenes,
                         cfg=cfg,
-                        token=token,
+                        llm_cfg=llm_cfg,
                         art_style=art_style,
                         music_visual=music_visual,
                         subject_guidance=subject_guidance,
@@ -799,7 +800,7 @@ class SceneAnalyzer:
         self,
         scenes: List[Dict],
         cfg: ConfigManager,
-        token: str,
+        llm_cfg: Dict[str, str],
         art_style: str,
         music_visual: str,
         subject_guidance: str,
@@ -827,22 +828,22 @@ class SceneAnalyzer:
         )
 
         try:
-            api_url = "https://api.minimaxi.com/v1/chat/completions"
-            payload = json.dumps({
-                "model": cfg.get("llm_model", "MiniMax-M2.7"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": min(cfg.get_int("scene_desc_max_tokens", 4096), 2048),
-                "temperature": 0.1,
-                "reasoning_split": True,
-            }).encode("utf-8")
+            payload = json.dumps(self._scene_prompt_payload(
+                cfg=cfg,
+                model=llm_cfg["model"],
+                prompt=prompt,
+                max_tokens=min(cfg.get_int("scene_desc_max_tokens", 4096), 2048),
+                temperature=0.1,
+                provider=llm_cfg["provider"],
+            ), ensure_ascii=False).encode("utf-8")
             headers = {
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {llm_cfg['token']}",
                 "Content-Type": "application/json",
             }
             resp_data = self.client._call_raw_api(
-                api_url, payload, headers,
+                llm_cfg["api_url"], payload, headers,
                 prompt_key="scene_desc_batch_compact",
-                model=cfg.get("llm_model", "MiniMax-M2.7"),
+                model=llm_cfg["model"],
                 prompt_text=prompt,
                 retry_config=RetryConfig.for_profile("scene_desc"),
             )
@@ -890,7 +891,8 @@ class SceneAnalyzer:
             return merged
 
         try:
-            token = cfg.get("minimax_token", "")
+            llm_cfg = self._scene_prompt_llm_config(cfg)
+            token = llm_cfg["token"]
             if not token:
                 return {}
 
@@ -958,14 +960,14 @@ class SceneAnalyzer:
                     f'[{{"scene_id": 1, "desc": "..."}}, ...]'
                 )
 
-            api_url = "https://api.minimaxi.com/v1/chat/completions"
-            payload = json.dumps({
-                "model": cfg.get("llm_model", "MiniMax-M2.7"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": cfg.get_int("variant_desc_max_tokens", 4096),
-                "temperature": 0.2,
-                "reasoning_split": True,
-            }).encode("utf-8")
+            payload = json.dumps(self._scene_prompt_payload(
+                cfg=cfg,
+                model=llm_cfg["model"],
+                prompt=prompt,
+                max_tokens=cfg.get_int("variant_desc_max_tokens", 4096),
+                temperature=0.2,
+                provider=llm_cfg["provider"],
+            ), ensure_ascii=False).encode("utf-8")
 
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -973,9 +975,9 @@ class SceneAnalyzer:
             }
 
             resp_data = self.client._call_raw_api(
-                api_url, payload, headers,
+                llm_cfg["api_url"], payload, headers,
                 prompt_key="variant_desc_batch",
-                model=cfg.get("llm_model", "MiniMax-M2.7"),
+                model=llm_cfg["model"],
                 prompt_text=prompt,
                 retry_config=RetryConfig.for_profile("variant"),
             )
@@ -988,7 +990,7 @@ class SceneAnalyzer:
                     compact_variants = self._call_llm_compact_variants(
                         var_requests=var_requests,
                         cfg=cfg,
-                        token=token,
+                        llm_cfg=llm_cfg,
                     )
                     if compact_variants:
                         return compact_variants
@@ -1014,7 +1016,7 @@ class SceneAnalyzer:
         self,
         var_requests: List[Dict],
         cfg: ConfigManager,
-        token: str,
+        llm_cfg: Dict[str, str],
     ) -> Dict[int, List[str]]:
         """变体描述失败后的极简重试，减少 reasoning 和长 prompt 造成的超时。"""
         if not var_requests:
@@ -1043,22 +1045,22 @@ class SceneAnalyzer:
         )
 
         try:
-            api_url = "https://api.minimaxi.com/v1/chat/completions"
-            payload = json.dumps({
-                "model": cfg.get("llm_model", "MiniMax-M2.7"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": min(cfg.get_int("variant_desc_max_tokens", 4096), 2048),
-                "temperature": 0.1,
-                "reasoning_split": True,
-            }).encode("utf-8")
+            payload = json.dumps(self._scene_prompt_payload(
+                cfg=cfg,
+                model=llm_cfg["model"],
+                prompt=prompt,
+                max_tokens=min(cfg.get_int("variant_desc_max_tokens", 4096), 2048),
+                temperature=0.1,
+                provider=llm_cfg["provider"],
+            ), ensure_ascii=False).encode("utf-8")
             headers = {
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {llm_cfg['token']}",
                 "Content-Type": "application/json",
             }
             resp_data = self.client._call_raw_api(
-                api_url, payload, headers,
+                llm_cfg["api_url"], payload, headers,
                 prompt_key="variant_desc_batch_compact",
-                model=cfg.get("llm_model", "MiniMax-M2.7"),
+                model=llm_cfg["model"],
                 prompt_text=prompt,
                 retry_config=RetryConfig.for_profile("variant"),
             )
@@ -1082,6 +1084,48 @@ class SceneAnalyzer:
         except Exception as e:
             print(f"  [LLM batch variants] 极简重试失败: {e}")
             return {}
+
+    def _scene_prompt_llm_config(self, cfg: ConfigManager) -> Dict[str, str]:
+        """Return chat-completions config for scene/variant/visual-bible prompt generation."""
+        provider = str(cfg.get("scene_prompt_provider", "minimax") or "minimax").strip().lower()
+        if provider in ("alibaba_qwen", "dashscope", "qwen"):
+            token = cfg.get("dashscope_api_key", "") or cfg.get("alibaba_token", "")
+            return {
+                "provider": "alibaba_qwen",
+                "token": token,
+                "api_url": cfg.get(
+                    "scene_prompt_api_url",
+                    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                ),
+                "model": cfg.get("scene_prompt_model", "") or "qwen-plus-2025-07-28",
+            }
+        return {
+            "provider": "minimax",
+            "token": cfg.get("minimax_token", ""),
+            "api_url": "https://api.minimaxi.com/v1/chat/completions",
+            "model": cfg.get("llm_model", "MiniMax-M2.7"),
+        }
+
+    @staticmethod
+    def _scene_prompt_payload(
+        cfg: ConfigManager,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        provider: str,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if provider == "minimax":
+            payload["reasoning_split"] = True
+        elif cfg.get_bool("scene_prompt_disable_thinking", True):
+            payload["enable_thinking"] = False
+        return payload
 
     def _generate_local_desc(self, scene: Dict) -> str:
         """本地 fallback 场景描述"""
@@ -1451,6 +1495,10 @@ class SceneAnalyzer:
             guidance_parts.append(
                 f"FOOD ANCHOR: {theme}. Keep the named food clearly visible: noodles, chili oil, hot oil sheen, steam, bowl, table, stove, ingredients, warmth, and sensory realism. Do not let portraits or scenery replace the food."
             )
+        if "relation" in all_modes:
+            guidance_parts.append(
+                f"RELATIONSHIP SUBJECT: {theme}. Treat this as an adult couple or romantic partner care scene when applicable. Use non-sexual tenderness, shared domestic space, gentle hands, partial silhouettes, basin, towel, water, tired posture, and emotional reciprocity. Do not turn the subject into a child, parent, grandparent, or generic family elder."
+            )
         if guidance_parts:
             return " ".join(guidance_parts)
 
@@ -1529,7 +1577,8 @@ class SceneAnalyzer:
 
     def _call_llm_visual_bible(self, scenes: List[Dict]) -> Optional[Dict[str, Any]]:
         try:
-            token = self.cfg.get("minimax_token", "")
+            llm_cfg = self._scene_prompt_llm_config(self.cfg)
+            token = llm_cfg["token"]
             if not token:
                 return None
 
@@ -1574,21 +1623,23 @@ class SceneAnalyzer:
                     "Start your answer with `{` and end with `}`.\n"
                 )
 
-            api_url = "https://api.minimaxi.com/v1/chat/completions"
-            payload = json.dumps({
-                "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": self.cfg.get_int("visual_bible_max_tokens", 2048),
-            }).encode("utf-8")
+            payload = json.dumps(self._scene_prompt_payload(
+                cfg=self.cfg,
+                model=llm_cfg["model"],
+                prompt=prompt,
+                max_tokens=self.cfg.get_int("visual_bible_max_tokens", 2048),
+                temperature=0.2,
+                provider=llm_cfg["provider"],
+            ), ensure_ascii=False).encode("utf-8")
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             }
 
             resp_data = self.client._call_raw_api(
-                api_url, payload, headers,
+                llm_cfg["api_url"], payload, headers,
                 prompt_key="visual_bible",
-                model=self.cfg.get("llm_model", "MiniMax-M2.7"),
+                model=llm_cfg["model"],
                 prompt_text=prompt,
             )
             raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")

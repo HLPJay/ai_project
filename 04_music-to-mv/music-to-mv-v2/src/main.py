@@ -147,7 +147,7 @@ def _cli_guide_text(short: bool = False) -> str:
   prompts/registry.yaml        prompt 版本注册表
 
 关键配置:
-  IMAGE_API_PROVIDER           minimax / pollinations / alibaba / dall-e
+  IMAGE_API_PROVIDER           minimax / pollinations / alibaba / dall-e / comfyui
   IMAGE_MODEL_POLLINATIONS     仅 provider=pollinations 时生效
   IMAGE_PARALLEL               批量生图并发
   API_LOG_ENABLED              是否打印 API 请求摘要
@@ -393,9 +393,9 @@ def _test_reference(args, cfg: ConfigManager):
 
     provider = cfg.get("image_api_provider", "minimax")
     token = cfg.get_image_token()
-    if provider != "pollinations" and not token:
+    if provider not in ("pollinations", "comfyui") and not token:
         print(f"\n❌ 当前 IMAGE_API_PROVIDER={provider} 需要对应 token，无法生成图片。")
-        print("   如果只想免费测试，可设置 IMAGE_API_PROVIDER=pollinations。")
+        print("   如果只想免费/本地测试，可设置 IMAGE_API_PROVIDER=pollinations 或 comfyui。")
         sys.exit(1)
 
     ok = gen.generate_base_character(theme=args.theme, song_title=args.theme)

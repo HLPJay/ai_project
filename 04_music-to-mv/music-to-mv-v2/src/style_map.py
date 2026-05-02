@@ -366,6 +366,20 @@ _DEFAULT_NEGATIVE = (
     "extra limbs, bad anatomy, disfigured, mutation"
 )
 
+STYLE_ALIASES = {
+    "电影感": "电影感写实风",
+    "电影风": "电影感写实风",
+    "电影写实": "电影感写实风",
+    "电影感写实": "电影感写实风",
+    "dalle": "dall-e",
+}
+
+
+def normalize_style_name(style_name: str) -> str:
+    """Normalize user-facing aliases to canonical style keys."""
+    name = (style_name or "").strip()
+    return STYLE_ALIASES.get(name, name)
+
 # 向后兼容别名（供需要直接访问旧字典的代码使用）
 ART_STYLES = {k: v["art"] for k, v in STYLES.items() if v["art"]}
 STYLE_RENDER_TEMPLATES = {k: v["render"] for k, v in STYLES.items() if v["render"]}
@@ -510,19 +524,38 @@ NEGATIVE_PROMPTS = {
 
 def get_art_style(style_name: str) -> str:
     """获取指定风格的英文美术描述"""
-    s = STYLES.get(style_name) or STYLES[_DEFAULT_STYLE]
+    s = STYLES.get(normalize_style_name(style_name)) or STYLES[_DEFAULT_STYLE]
     return s["art"] or STYLES[_DEFAULT_STYLE]["art"]
 
 
 def get_render_template(style_name: str) -> str:
     """获取指定风格的渲染模板"""
-    s = STYLES.get(style_name) or STYLES[_DEFAULT_STYLE]
+    s = STYLES.get(normalize_style_name(style_name)) or STYLES[_DEFAULT_STYLE]
     return s["render"] or STYLES[_DEFAULT_STYLE]["render"]
 
 
 def get_mood_desc(mood_name: str) -> str:
     """获取指定情绪的英文描述"""
-    return MOOD_DESCRIPTIONS.get(mood_name, MOOD_DESCRIPTIONS.get("欢快", ""))
+    mood = (mood_name or "").strip()
+    if mood in MOOD_DESCRIPTIONS:
+        return MOOD_DESCRIPTIONS[mood]
+
+    parts = []
+    if any(k in mood for k in ("深情", "爱恋", "爱意", "亲密")):
+        parts.append("intimate emotional tenderness, restrained romantic warmth")
+    if "温柔" in mood:
+        parts.append("soft warm atmosphere, gentle pastel tones, peaceful calm")
+    if any(k in mood for k in ("治愈", "疗愈")):
+        parts.append("healing quiet atmosphere, reassuring warmth")
+    if any(k in mood for k in ("忧伤", "悲伤", "伤感")):
+        parts.append("restrained melancholy, muted tones, quiet emotional weight")
+    if any(k in mood for k in ("坚韧", "倔强", "不屈")):
+        parts.append("subtle resilience, strong quiet posture, hopeful endurance")
+    if any(k in mood for k in ("浪漫", "甜蜜")):
+        parts.append("romantic softness, tender shared intimacy")
+    if parts:
+        return ", ".join(dict.fromkeys(parts))
+    return MOOD_DESCRIPTIONS.get("温柔", "")
 
 
 def get_theme_visual(theme: str) -> str:
@@ -532,10 +565,10 @@ def get_theme_visual(theme: str) -> str:
 
 def get_char_prompt(style_name: str) -> str:
     """获取指定风格的角色描述"""
-    s = STYLES.get(style_name)
+    s = STYLES.get(normalize_style_name(style_name))
     if s and s["character"]:
         return s["character"]
-    return _DEFAULT_CHARACTER
+    return ""
 
 
 def get_music_style_desc(music_style: str) -> str:
@@ -595,14 +628,41 @@ def get_fallback_desc(name: str, char_prompt: str, theme: str,
 
 def get_api_style(style_name: str) -> str:
     """获取指定风格对应的 MiniMax API style 参数"""
-    s = STYLES.get(style_name)
+    s = STYLES.get(normalize_style_name(style_name))
     return (s["api"] if s else None) or ""
 
 
 def get_negative_prompt(style_name: str) -> str:
     """获取指定风格的 negative prompt"""
-    s = STYLES.get(style_name)
+    s = STYLES.get(normalize_style_name(style_name))
     return (s["negative"] if s else None) or _DEFAULT_NEGATIVE
+
+
+def _contextual_character_prompt(theme: str) -> str:
+    text = theme or ""
+    if any(k in text for k in ("女朋友", "女友")):
+        return (
+            "An adult Chinese couple in a tender non-sexual care scene, "
+            "the girlfriend is an adult woman, tired but peaceful, "
+            "her partner appears through gentle hands or partial silhouette"
+        )
+    if any(k in text for k in ("男朋友", "男友")):
+        return (
+            "An adult Chinese couple in a tender non-sexual care scene, "
+            "the boyfriend is an adult man, tired but peaceful, "
+            "his partner appears through gentle hands or partial silhouette"
+        )
+    if any(k in text for k in ("情侣", "恋人", "爱人", "伴侣", "对象", "爱情", "恋爱")):
+        return (
+            "An adult Chinese couple, quiet romantic intimacy, shared domestic space, "
+            "natural body language, non-sexual tenderness, subtle partial framing"
+        )
+    if any(k in text for k in ("妈妈", "母亲", "奶奶", "外婆", "爷爷", "父亲", "爸爸", "家人", "亲情")):
+        return (
+            "An adult Chinese family member or elder, warm lived-in domestic presence, "
+            "natural expression, hands, clothing texture, gentle realistic posture"
+        )
+    return ""
 
 
 def build_char_prompt(style_name: str, theme: str, song_title: str = "",
@@ -611,7 +671,9 @@ def build_char_prompt(style_name: str, theme: str, song_title: str = "",
 
     将角色描述 + 风格 + 主题 + 情绪组合为最终的图片 prompt
     """
-    char_desc = get_char_prompt(style_name)
+    char_desc = _contextual_character_prompt(theme) or get_char_prompt(style_name)
+    if not char_desc:
+        char_desc = "An adult Chinese protagonist, natural expression, realistic everyday presence"
     art_style = get_art_style(style_name)
     mood_desc = get_mood_desc(mood) if mood else ""
     theme_visual = get_theme_visual(theme)

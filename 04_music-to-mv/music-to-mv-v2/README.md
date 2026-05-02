@@ -138,7 +138,7 @@ cp .env.example .env
 MINIMAX_TOKEN=sk-xxx...              # MiniMax API Token（申请: https://minimaxi.com）
 
 # 🟡 可选（默认使用 MiniMax）
-IMAGE_API_PROVIDER=minimax           # minimax | pollinations | alibaba | dalle
+IMAGE_API_PROVIDER=minimax           # minimax | pollinations | alibaba | dall-e | comfyui
 LLM_MODEL=MiniMax-M2.7
 
 # 🟢 代理设置（如需）
@@ -383,12 +383,27 @@ music-to-mv-v2/
 | **Pollinations** | ✅ 免费 | ❌ | ❌ | 无需 Token，适合测试 |
 | **Alibaba（通义万相）** | ✅ | ❌ | ❌ | 中文理解能力强 |
 | **DALL-E（OpenAI）** | ✅ | ❌ | ❌ | 质量最高，需翻墙 |
+| **ComfyUI（本地）** | ✅ 本地模型 | ❌ | ❌ | 无 Token，适合批量生图和固定风格 |
 
 切换方式（环境变量）：
 
 ```ini
 IMAGE_API_PROVIDER=minimax        # 当前使用的图片 Provider
-IMAGE_PROVIDER_LIST=minimax,pollinations,alibaba  # 多 Provider 轮换
+IMAGE_PROVIDER_LIST=minimax,pollinations,alibaba,comfyui  # 多 Provider 轮换
+```
+
+ComfyUI 本地测试：
+
+```powershell
+python tools/test_comfyui_api.py --list-checkpoints
+python tools/test_comfyui_api.py --generate --checkpoint "juggernautXL_ragnarokBy.safetensors"
+```
+
+单独测试歌词分段/分镜图片提示词模型：
+
+```powershell
+$env:DASHSCOPE_API_KEY="sk-xxx"
+python tools/test_scene_prompt_provider.py --provider alibaba_qwen --model qwen-plus-2025-07-28
 ```
 
 ---
@@ -540,7 +555,11 @@ IMAGE_API_PROVIDER=pollinations   # 免费无需 Token
 # 或
 IMAGE_API_PROVIDER=alibaba        # 需要 ALIBABA_TOKEN
 # 或
-IMAGE_API_PROVIDER=dalle          # 需要 OPENAI_TOKEN
+IMAGE_API_PROVIDER=dall-e         # 需要 OPENAI_TOKEN
+# 或
+IMAGE_API_PROVIDER=comfyui        # 本地 ComfyUI，无需 Token
+IMAGE_API_URL_COMFYUI=http://127.0.0.1:8188
+IMAGE_MODEL_COMFYUI=juggernautXL_ragnarokBy.safetensors
 ```
 
 ### Q: 提示 `PromptRegistry 渲染失败` 怎么办？

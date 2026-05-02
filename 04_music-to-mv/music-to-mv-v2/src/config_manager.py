@@ -37,9 +37,28 @@ class Config:
     image_api_url_dalle: str = "https://api.openai.com/v1/images/generations"
     image_model_dalle: str = "dall-e-3"
 
+    image_api_url_comfyui: str = "http://127.0.0.1:8188"
+    image_model_comfyui: str = ""
+    comfyui_workflow: str = ""
+    comfyui_width: int = 1280
+    comfyui_height: int = 720
+    comfyui_steps: int = 28
+    comfyui_cfg: float = 4.5
+    comfyui_sampler: str = "dpmpp_2m"
+    comfyui_scheduler: str = "karras"
+    comfyui_timeout_sec: int = 300
+    comfyui_poll_interval_sec: float = 1.0
+
     # 其他 API Keys
     alibaba_token: str = ""
     openai_token: str = ""
+    dashscope_api_key: str = ""
+
+    # 场景分镜 prompt 生成模型。默认沿用 MiniMax；可切到 alibaba_qwen 单独测试。
+    scene_prompt_provider: str = "minimax"
+    scene_prompt_model: str = ""
+    scene_prompt_api_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    scene_prompt_disable_thinking: bool = True
 
     # Telegram
     telegram_bot_token: str = ""
@@ -205,8 +224,24 @@ class ConfigManager:
             "IMAGE_MODEL_ALIBABA": "image_model_alibaba",
             "IMAGE_API_URL_DALLE": "image_api_url_dalle",
             "IMAGE_MODEL_DALLE": "image_model_dalle",
+            "IMAGE_API_URL_COMFYUI": "image_api_url_comfyui",
+            "IMAGE_MODEL_COMFYUI": "image_model_comfyui",
+            "COMFYUI_WORKFLOW": "comfyui_workflow",
+            "COMFYUI_WIDTH": "comfyui_width",
+            "COMFYUI_HEIGHT": "comfyui_height",
+            "COMFYUI_STEPS": "comfyui_steps",
+            "COMFYUI_CFG": "comfyui_cfg",
+            "COMFYUI_SAMPLER": "comfyui_sampler",
+            "COMFYUI_SCHEDULER": "comfyui_scheduler",
+            "COMFYUI_TIMEOUT_SEC": "comfyui_timeout_sec",
+            "COMFYUI_POLL_INTERVAL_SEC": "comfyui_poll_interval_sec",
             "ALIBABA_TOKEN": "alibaba_token",
             "OPENAI_TOKEN": "openai_token",
+            "DASHSCOPE_API_KEY": "dashscope_api_key",
+            "SCENE_PROMPT_PROVIDER": "scene_prompt_provider",
+            "SCENE_PROMPT_MODEL": "scene_prompt_model",
+            "SCENE_PROMPT_API_URL": "scene_prompt_api_url",
+            "SCENE_PROMPT_DISABLE_THINKING": "scene_prompt_disable_thinking",
             "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
             "TELEGRAM_CHAT_ID": "telegram_chat_id",
             "WORKSPACE_ROOT": "workspace_root",
@@ -336,6 +371,7 @@ class ConfigManager:
             "pollinations": self._config.image_api_url_pollinations,
             "alibaba": self._config.image_api_url_alibaba,
             "dall-e": self._config.image_api_url_dalle,
+            "comfyui": self._config.image_api_url_comfyui,
         }
         return mapping.get(provider, self._config.image_api_url_minimax)
 
@@ -347,6 +383,7 @@ class ConfigManager:
             "pollinations": self._config.image_model_pollinations,
             "alibaba": self._config.image_model_alibaba,
             "dall-e": self._config.image_model_dalle,
+            "comfyui": self._config.image_model_comfyui,
         }
         return mapping.get(provider, self._config.image_model_minimax)
 
@@ -358,6 +395,7 @@ class ConfigManager:
             "alibaba": self._config.alibaba_token,
             "dall-e": self._config.openai_token,
             "pollinations": "",  # 免费，无需 token
+            "comfyui": "",  # 本地 ComfyUI，无需 token
         }
         return mapping.get(provider, "")
 

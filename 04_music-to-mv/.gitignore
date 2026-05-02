@@ -1,5 +1,6 @@
 # 敏感文件
 .env
+.venv
 .env.local
 .env.production
 
