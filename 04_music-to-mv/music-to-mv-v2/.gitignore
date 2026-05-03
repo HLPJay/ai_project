@@ -29,3 +29,6 @@ temp/
 .reference_tests/
 .ref_tests/
 .codex_tmp/
+
+# Claude Code 本地配置
+.claude/
