@@ -4,7 +4,10 @@
       "Bash(git checkout *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "Bash(python test_quick_wins.py)",
+      "Bash(git commit -m 'test: 添加 Quick Wins A/B/C 单元测试 *)",
+      "Bash(python -m py_compile src/scene_analyzer.py src/scene_generator.py src/style_map.py)"
     ]
   }
 }
