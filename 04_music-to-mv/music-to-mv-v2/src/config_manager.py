@@ -14,12 +14,19 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     """配置数据类"""
-    # MiniMax
+    # === MiniMax Token 拆分（向后兼容） ===
+    # 旧配置（保留向后兼容）
     minimax_token: str = ""
     minimax_api_host: str = "https://api.minimaxi.com"
 
+    # 新配置（拆分专用 Token）
+    minimax_token_llm: str = ""           # LLM 专用（Plus 极速版，月度）
+    minimax_api_host_llm: str = "https://api.minimaxi.com"
+    minimax_token_image: str = ""         # 图片生成专用（按量计费）
+    minimax_api_host_image: str = "https://api.minimaxi.com"
+
     # LLM
-    llm_model: str = "MiniMax-M2.7"
+    llm_model: str = "MiniMax-M2.7-highspeed"
 
     # Image Provider
     image_api_provider: str = "minimax"
@@ -212,8 +219,14 @@ class ConfigManager:
     def _load_env_vars(self):
         """从环境变量（优先）或 .env 文件加载配置"""
         mapping = {
+            # 旧配置（向后兼容）
             "MINIMAX_TOKEN": "minimax_token",
             "MINIMAX_API_HOST": "minimax_api_host",
+            # 新配置（Token 拆分）
+            "MINIMAX_TOKEN_LLM": "minimax_token_llm",
+            "MINIMAX_API_HOST_LLM": "minimax_api_host_llm",
+            "MINIMAX_TOKEN_IMAGE": "minimax_token_image",
+            "MINIMAX_API_HOST_IMAGE": "minimax_api_host_image",
             "LLM_MODEL": "llm_model",
             "IMAGE_API_PROVIDER": "image_api_provider",
             "IMAGE_API_URL_MINIMAX": "image_api_url_minimax",
@@ -387,17 +400,57 @@ class ConfigManager:
         }
         return mapping.get(provider, self._config.image_model_minimax)
 
+    def get_llm_token(self) -> str:
+        """获取 LLM 专用 Token（支持拆分架构）
+
+        优先级：
+        1. MINIMAX_TOKEN_LLM (新的拆分 Token)
+        2. MINIMAX_TOKEN (兼容旧配置)
+        """
+        if self._config.minimax_token_llm:
+            return self._config.minimax_token_llm
+        return self._config.minimax_token
+
+    def get_llm_api_host(self) -> str:
+        """获取 LLM 专用 API Host"""
+        if self._config.minimax_token_llm:
+            return self._config.minimax_api_host_llm
+        return self._config.minimax_api_host
+
     def get_image_token(self) -> str:
-        """获取当前 provider 的 API Token"""
+        """获取图片生成 Token（支持拆分架构）
+
+        优先级：
+        1. MINIMAX_TOKEN_IMAGE (新的拆分 Token)
+        2. provider 特定的 Token
+        3. 回退到旧 MINIMAX_TOKEN
+        """
         provider = self._config.image_api_provider
+
+        # 先检查拆分 Token
+        if provider == "minimax" and self._config.minimax_token_image:
+            return self._config.minimax_token_image
+
+        # 再检查 provider 特定 Token
         mapping = {
-            "minimax": self._config.minimax_token,
+            "minimax": self._config.minimax_token,  # 回退到旧 token
             "alibaba": self._config.alibaba_token,
             "dall-e": self._config.openai_token,
             "pollinations": "",  # 免费，无需 token
             "comfyui": "",  # 本地 ComfyUI，无需 token
         }
         return mapping.get(provider, "")
+
+    def get_image_api_host(self) -> str:
+        """获取图片生成 API Host（支持拆分架构）"""
+        provider = self._config.image_api_provider
+
+        # 拆分 Token 时使用拆分 Host
+        if provider == "minimax" and self._config.minimax_token_image:
+            return self._config.minimax_api_host_image
+
+        # 默认使用 minimax host
+        return self._config.image_api_url_minimax
 
     def to_dict(self) -> Dict:
         """导出为字典"""

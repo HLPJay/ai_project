@@ -141,15 +141,22 @@ class LLMClient:
                          system_prompt: str = None, max_tokens: int = 4096,
                          temperature: float = 0.7, retry_config: RetryConfig = None,
                          prompt_key: str = "llm_call") -> str:
-        """调用 MiniMax LLM（OpenAI 兼容接口），返回文本内容"""
+        """调用 MiniMax LLM（OpenAI 兼容接口），返回文本内容
+
+        支持 Token 拆分架构：
+        - 优先使用 MINIMAX_TOKEN_LLM (专用 LLM Token)
+        - 回退到 MINIMAX_TOKEN (兼容旧配置)
+        """
         from src.config_manager import ConfigManager
         cfg = ConfigManager()
 
-        token = cfg.get("minimax_token", "")
+        # 使用拆分后的 LLM Token
+        token = cfg.get_llm_token()
         if not token:
-            raise ValueError("MINIMAX_TOKEN 未设置")
+            raise ValueError("MINIMAX_TOKEN_LLM 或 MINIMAX_TOKEN 未设置")
 
-        api_url = "https://api.minimaxi.com/v1/chat/completions"
+        api_host = cfg.get_llm_api_host()
+        api_url = f"{api_host}/v1/chat/completions"
 
         messages = []
         if system_prompt:
@@ -175,12 +182,16 @@ class LLMClient:
 
     def call_minimax_lyrics(self, prompt: str, model: str = "MiniMax-M2.7",
                             retry_config: RetryConfig = None) -> Dict:
-        """调用 MiniMax 歌词生成 API"""
+        """调用 MiniMax 歌词生成 API
+
+        支持 Token 拆分架构：使用专用 LLM Token
+        """
         from src.config_manager import ConfigManager
         cfg = ConfigManager()
-        token = cfg.get("minimax_token", "")
+        token = cfg.get_llm_token()
 
-        api_url = "https://api.minimaxi.com/v1/lyrics_generation"
+        api_host = cfg.get_llm_api_host()
+        api_url = f"{api_host}/v1/lyrics_generation"
 
         payload = json.dumps({
             "mode": "write_full_song",
@@ -212,12 +223,16 @@ class LLMClient:
     def call_minimax_music(self, prompt: str, lyrics: str,
                            model: str = "music-2.6",
                            retry_config: RetryConfig = None) -> Dict:
-        """调用 MiniMax 音乐生成 API"""
+        """调用 MiniMax 音乐生成 API
+
+        支持 Token 拆分架构：使用专用 LLM Token
+        """
         from src.config_manager import ConfigManager
         cfg = ConfigManager()
-        token = cfg.get("minimax_token", "")
+        token = cfg.get_llm_token()
 
-        api_url = "https://api.minimaxi.com/v1/music_generation"
+        api_host = cfg.get_llm_api_host()
+        api_url = f"{api_host}/v1/music_generation"
 
         payload = json.dumps({
             "model": model,
@@ -275,10 +290,15 @@ class LLMClient:
     def _call_minimax_image(self, prompt: str, output_path: str,
                             style: str = "", negative_prompt: str = "",
                             seed: int = 0, prompt_key: str = "image_generation") -> str:
-        """调用 MiniMax 图片生成 API"""
+        """调用 MiniMax 图片生成 API
+
+        支持 Token 拆分架构：
+        - 优先使用 MINIMAX_TOKEN_IMAGE (专用图片 Token)
+        - 回退到 MINIMAX_TOKEN (兼容旧配置)
+        """
         from src.config_manager import ConfigManager
         cfg = ConfigManager()
-        token = cfg.get("minimax_token", "")
+        token = cfg.get_image_token()
         api_url = cfg.get_image_api_url()
         model = cfg.get_image_model()
 

@@ -8,7 +8,21 @@
       "Bash(python test_quick_wins.py)",
       "Bash(git commit -m 'test: 添加 Quick Wins A/B/C 单元测试 *)",
       "Bash(python -m py_compile src/scene_analyzer.py src/scene_generator.py src/style_map.py)",
-      "Bash(python -m py_compile src/scene_analyzer.py src/scene_generator.py)"
+      "Bash(python -m py_compile src/scene_analyzer.py src/scene_generator.py)",
+      "Bash(git commit -m 'docs: 添加 Prompt 优化完成进度报告 *)",
+      "Bash(python test_optimizations_integration.py)",
+      "Bash(git commit -m 'test: 集成测试 - 验证所有 Prompt 优化 *)",
+      "Bash(git commit -m 'docs: 添加后续步骤与行动方案指南 *)",
+      "Bash(git stash *)",
+      "Bash(git merge *)",
+      "Bash(git commit *)",
+      "Bash(python -m src.main --theme \"夏日回忆\" --mood \"怀旧\" --dry_run)",
+      "Bash(python -m src.main --help)",
+      "Bash(python -m src.main --theme \"夏日回忆\" --style \"动漫风\" --mood \"怀旧\" --test-reference prompt)",
+      "Bash(timeout 300 python -m src.main --theme \"夏日回忆\" --style \"动漫风\" --mood \"怀旧\" --auto)",
+      "Bash(tee test_mv_output.log)",
+      "Bash(python -m src.main --list)",
+      "Bash(python -m pytest test_optimizations_integration.py -v)"
     ]
   }
 }
