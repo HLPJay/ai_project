@@ -236,6 +236,9 @@ class SceneAnalyzer:
         # 5. 生成 desc（策略：LLM batch → local fallback）
         desc_source = self._generate_scene_descs(scenes)
 
+        # P2.1: Map emotional arc to visual attributes
+        self._populate_scene_emotions(scenes)
+
         for s in scenes:
             self._populate_scene_semantics(s)
 
@@ -1130,6 +1133,91 @@ class SceneAnalyzer:
         elif cfg.get_bool("scene_prompt_disable_thinking", True):
             payload["enable_thinking"] = False
         return payload
+
+    def _populate_scene_emotions(self, scenes: List[Dict]) -> None:
+        """P2.1: Map emotional arc to visual attributes for each scene
+
+        Analyzes emotional intensity from lyrics and maps to visual properties:
+        - High emotion → high contrast, vibrant colors, dynamic composition
+        - Low emotion → soft, monochrome, static composition
+        """
+        if not scenes:
+            return
+
+        # Estimate emotional arc from narrative phase
+        for i, scene in enumerate(scenes):
+            narrative_phase = scene.get("narrative_phase", "")
+            text_preview = scene.get("text_preview", "").lower()
+
+            # Detect emotion keywords
+            emotion_strength = 0.5  # default neutral
+
+            # Check for sad/melancholic emotions
+            if any(word in text_preview for word in ["悲", "伤", "痛", "失", "别", "泪"]):
+                emotion_strength = 0.3
+                emotion = "melancholic"
+            # Check for happy/energetic emotions
+            elif any(word in text_preview for word in ["快", "开", "欢", "喜", "爱", "梦"]):
+                emotion_strength = 0.8
+                emotion = "joyful"
+            # Check for angry/intense emotions
+            elif any(word in text_preview for word in ["怨", "恨", "怒", "烈", "火"]):
+                emotion_strength = 0.9
+                emotion = "intense"
+            # Check for nostalgic/reflective emotions
+            elif any(word in text_preview for word in ["回忆", "曾经", "从前", "静", "思"]):
+                emotion_strength = 0.4
+                emotion = "nostalgic"
+            else:
+                emotion_strength = 0.5
+                emotion = "neutral"
+
+            # Boost emotion at chorus peaks
+            if narrative_phase == "chorus_peak":
+                emotion_strength = min(1.0, emotion_strength + 0.2)
+
+            # Reduce emotion at intros/outros
+            if narrative_phase in ("intro", "outro"):
+                emotion_strength = max(0.2, emotion_strength - 0.2)
+
+            scene["emotion_strength"] = emotion_strength
+            scene["emotion"] = emotion
+
+            # Map to visual attributes (used in prompt generation)
+            visual_hints = self._map_emotion_to_visual(emotion_strength, emotion)
+            if "visual_hints" not in scene or not scene["visual_hints"]:
+                scene["visual_hints"] = visual_hints
+
+    def _map_emotion_to_visual(self, emotion_strength: float, emotion_type: str) -> str:
+        """Map emotional intensity to visual properties for image generation
+
+        Args:
+            emotion_strength: 0.0-1.0, higher = more intense
+            emotion_type: melancholic, joyful, intense, nostalgic, neutral
+        """
+        hints = []
+
+        # Visual intensity based on emotion_strength
+        if emotion_strength < 0.3:
+            hints.append("soft diffused lighting, desaturated colors, gentle composition")
+        elif emotion_strength < 0.6:
+            hints.append("warm natural lighting, balanced color palette, calm composition")
+        elif emotion_strength < 0.8:
+            hints.append("contrasty lighting, vibrant colors, dynamic composition")
+        else:
+            hints.append("high contrast bold lighting, saturated colors, dramatic composition")
+
+        # Specific emotional color/mood hints
+        if emotion_type == "melancholic":
+            hints.append("cool tones, muted greens and blues, nostalgic atmosphere")
+        elif emotion_type == "joyful":
+            hints.append("warm tones, bright yellows and oranges, uplifting atmosphere")
+        elif emotion_type == "intense":
+            hints.append("bold reds and oranges, sharp shadows, energetic atmosphere")
+        elif emotion_type == "nostalgic":
+            hints.append("warm golds and sepia tones, soft focus, dreamy atmosphere")
+
+        return ", ".join(hints)
 
     def _generate_local_desc(self, scene: Dict, prev_scene: Dict = None, next_scene: Dict = None) -> str:
         """本地 fallback 场景描述，根据 visual_focus 类型化，支持上下文感知

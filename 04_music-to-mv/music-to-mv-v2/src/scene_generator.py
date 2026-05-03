@@ -1441,6 +1441,103 @@ class SceneImageGenerator:
             return extra_text
         return f"{desc}, {extra_text}"
 
+    def _get_focus_clarity_hint(self, scene_id: int = None) -> str:
+        """P2.3: Generate focus clarity constraints based on shot type
+
+        Specifies focal point, depth of field, and focus distance for clarity.
+        """
+        if not scene_id or not hasattr(self, '_scene_shot_types'):
+            return ""
+
+        shot_type = self._scene_shot_types.get(scene_id, "wide")
+
+        focus_hints = []
+
+        if shot_type == "close_detail":
+            focus_hints = [
+                "sharp focus on main subject, background in soft blur (bokeh)",
+                "shallow depth of field (DOF ~1-2 meters)",
+                "strong focal point contrast"
+            ]
+        elif shot_type == "establishing":
+            focus_hints = [
+                "deep focus from foreground through background",
+                "moderate DOF (10+ meters), full environmental clarity",
+                "distributed focal interest across frame"
+            ]
+        elif shot_type == "empty_space":
+            focus_hints = [
+                "soft overall focus, no single focal point",
+                "wide DOF, minimal focus hierarchy",
+                "atmosphere and space more important than subject clarity"
+            ]
+        elif shot_type == "symbolic_insert":
+            focus_hints = [
+                "sharp focus on symbolic object/element",
+                "strong background blur to isolate subject",
+                "dramatic lighting to define focal subject"
+            ]
+        else:  # wide/mixed
+            focus_hints = [
+                "balanced focus distribution",
+                "moderate DOF for environmental context",
+                "clear subject presence without harsh isolation"
+            ]
+
+        return ", ".join(focus_hints) if focus_hints else ""
+
+    def _get_dynamic_palette_hint(self, scene_id: int = None) -> str:
+        """P2.2: Generate dynamic palette hint based on scene's emotional arc
+
+        Returns color palette guidance that varies with narrative phase and emotion.
+        """
+        if not scene_id or not hasattr(self, '_scene_info'):
+            return ""
+
+        scene = self._scene_info.get(scene_id)
+        if not scene:
+            return ""
+
+        emotion_strength = scene.get("emotion_strength", 0.5)
+        emotion = scene.get("emotion", "neutral")
+        narrative_phase = scene.get("narrative_phase", "")
+
+        palette_hints = []
+
+        # Base palette from visual_bible if available
+        if self._visual_bible and self._visual_bible.get("palette"):
+            base_palette = self._visual_bible["palette"]
+            if isinstance(base_palette, list):
+                palette_hints.append("maintain base palette: " + ", ".join(str(p) for p in base_palette[:3]))
+
+        # Dynamic adjustment based on emotion and narrative
+        if emotion == "melancholic":
+            if emotion_strength < 0.4:
+                palette_hints.append("shift towards cool teals and faded golds")
+        elif emotion == "joyful":
+            if emotion_strength > 0.7:
+                palette_hints.append("intensify warm yellows and bright oranges")
+        elif emotion == "intense":
+            palette_hints.append("emphasize bold reds and deep purples")
+        elif emotion == "nostalgic":
+            palette_hints.append("use vintage sepia and warm golden tones")
+
+        # Chorus peaks: slightly boost saturation
+        if narrative_phase == "chorus_peak":
+            palette_hints.append("increase color saturation by 10-15% compared to verses")
+
+        # Avoid jarring color shifts from previous scene
+        if hasattr(self, '_scene_info'):
+            prev_id = scene_id - 1
+            if prev_id in self._scene_info:
+                prev_emotion = self._scene_info[prev_id].get("emotion", "neutral")
+                if prev_emotion != emotion:
+                    palette_hints.append("gradually transition from previous scene's color tone")
+
+        if palette_hints:
+            return ", ".join(palette_hints)
+        return ""
+
     def _enhance_character_prompt_for_scene(self, scene_id: int = None) -> str:
         """P1.2: Enhance character prompt based on scene context
 
@@ -1565,13 +1662,21 @@ class SceneImageGenerator:
         # Quick Win C: Dynamic prohibition list based on previous shot_types
         dynamic_do_not_do = self._build_dynamic_do_not_do(scene_id)
 
+        # P2.2: Dynamic palette injection based on emotional arc
+        dynamic_palette = self._get_dynamic_palette_hint(scene_id)
+
+        # P2.3: Focus clarity enhancement based on shot type
+        focus_clarity = self._get_focus_clarity_hint(scene_id)
+
         parts = [
             p for p in [
                 subject_part,
                 desc_part,
                 self._visual_bible_prompt,
+                dynamic_palette,  # Insert dynamic palette before character
                 char_part,
                 mood_desc,
+                focus_clarity,  # Insert focus hints before art style
                 art_style,
                 dynamic_do_not_do or self._do_not_do,
             ] if p
