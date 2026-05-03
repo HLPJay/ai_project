@@ -508,9 +508,12 @@ class DemucsVocalSeparator:
                 str(audio_path),
             ]
             print(f"  -> run: {' '.join(cmd)}", flush=True)
+            # 用 errors='replace' 避免 Demucs 进度条（GBK/cp936 编码的特殊字符）
+            # 在子线程里抛 UnicodeDecodeError（虽然不致命但日志很乱）
             result = subprocess.run(
                 cmd,
                 capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=timeout,
             )
             log_path.write_text(
