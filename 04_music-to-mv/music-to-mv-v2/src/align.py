@@ -454,13 +454,19 @@ class LyricsAligner:
         _, clean_lyrics = parse_lyrics(str(lyrics_path))
         asr_segments = whisper_result.get("segments", [])
 
+        # 获取音频总时长（从最后一个ASR段的end时间）
+        audio_duration = 0.0
+        if asr_segments:
+            audio_duration = max(seg.get("end", 0.0) for seg in asr_segments)
+
         print(f"  [..] 对齐中: {len(clean_lyrics)} 行歌词 ↔ "
               f"{len(asr_segments)} 段 ASR...")
+        print(f"  [..] 音频时长: {audio_duration:.1f}s")
 
         alignments = self._align(
             clean_lyrics, asr_segments
         )
-        self._repair_alignment_timeline(alignments)
+        self._repair_alignment_timeline(alignments, audio_duration=audio_duration)
 
         # ④ 生成 SRT
         srt_content = self._generate_srt(alignments, clean_lyrics)
@@ -552,25 +558,39 @@ class LyricsAligner:
                 asr_assigned[i] = True
                 lyric_idx = best_li + 1
 
-        # ── 第二遍：补漏 ──
-        unassigned_asr = [
-            (i, asr_entries[i][0], asr_entries[i][1], asr_entries[i][2])
-            for i in range(N) if not asr_assigned[i]
-        ]
-
+        # ── 第二遍：补漏（包括已分配的ASR段用于多行匹配） ──
         for j in range(M):
             if lyric_assigned[j]:
                 continue
+
             best_score = 0
             best_entry = None
-            for asr_i, start, end, text in unassigned_asr:
-                if asr_assigned[asr_i]:
+
+            # 首先在未分配的ASR段中查找
+            for i in range(N):
+                if asr_assigned[i]:
                     continue
+                start, end, text = asr_entries[i]
                 s = SimilarityScorer.score_pair(text, lyrics[j])
                 if s > best_score:
                     best_score = s
-                    best_entry = (asr_i, start, end)
-            if best_score >= self.threshold_2 and best_entry:
+                    best_entry = (i, start, end)
+
+            # 如果未找到，对于最后几行，允许匹配到已分配的ASR段
+            # （处理"一个ASR段包含多行歌词"的情况）
+            if j >= M - 3 and (best_score < 0.15 or best_entry is None):
+                for i in range(N):
+                    start, end, text = asr_entries[i]
+                    s = SimilarityScorer.score_pair(text, lyrics[j])
+                    if s > best_score:
+                        best_score = s
+                        best_entry = (i, start, end)
+
+            # 宽松阈值：对最后几行的歌词降低门槛
+            threshold = self.threshold_2
+            if j >= M - 3:  # 最后三行更容易匹配
+                threshold = max(self.threshold_2 * 0.5, 0.10)
+            if best_score >= threshold and best_entry:
                 asr_i, start, end = best_entry
                 if j in align_map:
                     a = align_map[j]
@@ -578,7 +598,9 @@ class LyricsAligner:
                 else:
                     align_map[j] = (start, end, best_score, 1)
                 lyric_assigned[j] = True
-                asr_assigned[asr_i] = True
+                # 仅在匹配到未分配的ASR时标记为已分配
+                if not asr_assigned[asr_i]:
+                    asr_assigned[asr_i] = True
 
         # ── 后处理修正 ──
         # 修正1: 第一行未匹配 → 分配第一个有效 ASR 时间
@@ -590,7 +612,21 @@ class LyricsAligner:
                     print(f"      [post] 第1行分配到首个ASR ({start:.1f}s)")
                     break
 
-        # 修正2: 插值填充跳行
+        # 修正2: 处理多个歌词行在同一ASR段的情况
+        # 如果有相邻的歌词都匹配到同一ASR段，按比例分割时间
+        for j in range(M - 1):
+            if lyric_assigned[j] and lyric_assigned[j + 1]:
+                a_j = align_map[j]
+                a_j_next = align_map[j + 1]
+                # 如果两行分配到完全相同的时间段，则分割
+                if abs(a_j[0] - a_j_next[0]) < 0.01 and abs(a_j[1] - a_j_next[1]) < 0.01:
+                    duration = a_j[1] - a_j[0]
+                    mid_point = a_j[0] + duration / 2
+                    align_map[j] = (a_j[0], mid_point, a_j[2], a_j[3])
+                    align_map[j + 1] = (mid_point, a_j[1], a_j_next[2], a_j_next[3])
+                    print(f"      [post] 行 {j+1} 和 {j+2} 共享ASR段，已分割时间")
+
+        # 修正3: 插值填充跳行
         for j in range(1, M):
             if not lyric_assigned[j]:
                 prev_li = -1
@@ -614,6 +650,16 @@ class LyricsAligner:
                     fill_end = fill_start + (prev_end - prev_start)
                     align_map[j] = (fill_start, fill_end, 0.0, 0)
                     lyric_assigned[j] = True
+                # 如果是最后一行且仍未匹配，尝试使用最后一个已匹配行的时间
+                elif j == M - 1 and prev_li >= 0:
+                    prev_start, prev_end = (
+                        align_map[prev_li][0], align_map[prev_li][1]
+                    )
+                    duration = prev_end - prev_start
+                    # 在最后一行分配一段合理的时间
+                    align_map[j] = (prev_end, prev_end + duration, 0.0, 0)
+                    lyric_assigned[j] = True
+                    print(f"      [post] 最后一行 {j+1} 使用插值分配 ({prev_end:.1f}s-{prev_end + duration:.1f}s)")
 
         # ── 填入结果 ──
         for i in range(M):
@@ -630,7 +676,8 @@ class LyricsAligner:
     def _repair_alignment_timeline(alignments: List[Dict],
                                    min_gap: float = 0.05,
                                    min_duration: float = 0.6,
-                                   fallback_duration: float = 2.0) -> None:
+                                   fallback_duration: float = 2.0,
+                                   audio_duration: float = 0.0) -> None:
         """Ensure SRT entries follow lyric order on a monotonic timeline.
 
         Whisper matching can occasionally attach a later lyric line to an
@@ -638,6 +685,10 @@ class LyricsAligner:
         render by timestamp, so non-monotonic or overlapping entries make
         multi-line captions appear out of order. Keep lyric order authoritative
         and repair timestamps in place.
+
+        参数:
+            alignments: 对齐结果列表
+            audio_duration: 音频总时长（秒），用于扩展最后一行到音频末尾
         """
         matched = [a for a in alignments if a.get("matched")]
         if not matched:
@@ -673,6 +724,16 @@ class LyricsAligner:
             if cur["end"] <= cur["start"]:
                 cur["end"] = cur["start"] + fallback_duration
                 cur["interpolated"] = True
+                repaired += 1
+
+        # 扩展最后一行到音频末尾
+        if matched and audio_duration > 0:
+            last = matched[-1]
+            last_end = float(last.get("end", 0.0) or 0.0)
+            if last_end < audio_duration - 1.0:
+                last["end"] = audio_duration
+                last["interpolated"] = True
+                print(f"      [post] 扩展最后一行到音频末尾 ({audio_duration:.1f}s)")
                 repaired += 1
 
         if repaired:

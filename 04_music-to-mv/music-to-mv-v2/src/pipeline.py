@@ -304,6 +304,28 @@ class MVPipeline:
                 self.pm.set("song_structure_name", structure.name)
                 self.pm.set("song_structure", structure.sequence)
                 self.pm.set("song_structure_notes", structure.notes)
+
+            # 根据情绪判断歌词长度要求（动态）
+            mood_text = (self.pm.mood or "").lower()
+            music_style_text = (self.pm.music_style or "").lower()
+
+            is_fast = any(k in mood_text or k in music_style_text
+                         for k in ("欢快", "energetic", "激烈", "摇滚", "rock",
+                                  "热血", "燃", "爆发", "happy", "upbeat"))
+
+            is_slow = any(k in mood_text or k in music_style_text
+                         for k in ("舒缓", "抒情", "温暖", "温柔", "ballad",
+                                  "故事", "回忆", "怀旧", "sad", "gentle",
+                                  "梦幻", "空灵", "缥缈", "诗意", "悠扬",
+                                  "dreamy", "ethereal", "poetic", "melancholic"))
+
+            if is_fast:
+                lyrics_length_req = "段落数：8-10 个段落；每段 3-5 句；总歌词 30-40 行，适配歌曲时长 120-150 秒"
+            elif is_slow:
+                lyrics_length_req = "段落数：12-16 个段落；每段 3-4 句；总歌词 50-70 行，适配歌曲时长 180-240 秒"
+            else:
+                lyrics_length_req = "段落数：10-12 个段落；每段 3-4 句；总歌词 40-55 行，适配歌曲时长 150-200 秒"
+
             prompt = self.registry.render("lyrics.generation", {
                 "theme": self.pm.theme,
                 "style": self.pm.style,
@@ -313,6 +335,7 @@ class MVPipeline:
                 "reference": self.pm.get("reference", ""),
                 "song_structure": self.pm.get("song_structure", structure.sequence),
                 "structure_notes": self.pm.get("song_structure_notes", structure.notes),
+                "lyrics_length_requirement": lyrics_length_req,
             })
         except KeyError:
             prompt = self._build_lyrics_prompt_fallback()
@@ -754,8 +777,36 @@ class MVPipeline:
         return 0
 
     def _build_lyrics_prompt_fallback(self) -> str:
-        """Fallback 歌词 prompt 构造"""
+        """Fallback 歌词 prompt 构造（方案 B：根据情绪设置歌词长度）"""
         structure = self._select_song_structure()
+
+        # 根据情绪/风格判断歌词目标长度
+        mood_text = (self.pm.mood or "").lower()
+        music_style_text = (self.pm.music_style or "").lower()
+
+        # 快节奏、高能情绪 → 较短歌词
+        is_fast = any(k in mood_text or k in music_style_text
+                     for k in ("欢快", "energetic", "激烈", "摇滚", "rock",
+                              "热血", "燃", "爆发", "happy", "upbeat"))
+
+        # 慢歌、抒情、叙事 → 长歌词
+        is_slow = any(k in mood_text or k in music_style_text
+                     for k in ("舒缓", "抒情", "温暖", "温柔", "ballad",
+                              "故事", "回忆", "怀旧", "sad", "gentle",
+                              "梦幻", "空灵", "缥缈", "诗意", "悠扬",
+                              "dreamy", "ethereal", "poetic", "melancholic"))
+
+        # 根据判断设置目标行数和时长
+        if is_fast:
+            target_lines = "30-40"
+            duration = "120-150"
+        elif is_slow:
+            target_lines = "50-70"
+            duration = "180-240"
+        else:
+            target_lines = "40-55"
+            duration = "150-200"
+
         parts = [
             f"创作主题：{self.pm.theme}",
             f"整体艺术风格：{self.pm.style}",
@@ -766,6 +817,7 @@ class MVPipeline:
             f"结构说明：{self.pm.get('song_structure_notes', structure.notes)}",
             "可按音乐性微调结构，避免所有歌曲都套用固定主歌-副歌模板",
             "句式长短均衡，韵律协调，押韵自然",
+            f"歌词行数：生成 {target_lines} 行歌词，确保歌曲时长约 {duration} 秒（{duration.split('-')[0]}秒-{duration.split('-')[1]}秒）",
         ]
         ref = self.pm.get("reference", "")
         if ref:

@@ -22,7 +22,11 @@
       "Bash(timeout 300 python -m src.main --theme \"夏日回忆\" --style \"动漫风\" --mood \"怀旧\" --auto)",
       "Bash(tee test_mv_output.log)",
       "Bash(python -m src.main --list)",
-      "Bash(python -m pytest test_optimizations_integration.py -v)"
+      "Bash(python -m pytest test_optimizations_integration.py -v)",
+      "Bash(python tools/diagnose_alignment.py --project \"C:\\\\Users\\\\yun68\\\\.openclaw\\\\workspace\\\\mv\\\\妈妈的手_20260503_134106\")",
+      "Bash(python -m src.align \"~/.openclaw/workspace/mv/星空的梦想_20260503_154753\" --align-mode auto)",
+      "Bash(python -m src.align \"C:\\\\Users\\\\yun68\\\\.openclaw\\\\workspace\\\\mv\\\\星空的梦想_20260503_154753\" --align-mode auto)",
+      "Bash(python test_alignment_fix.py)"
     ]
   }
 }

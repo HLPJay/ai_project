@@ -229,6 +229,52 @@ def _cli_options_text() -> str:
 """
 
 
+def _estimate_generation_time(mood: str, music_style: str) -> dict:
+    """根据情绪和风格估计歌词生成时间。
+
+    返回: {"target_lines": "X-Y", "duration": "A-B秒", "estimate_time": "X-Y分钟"}
+    """
+    mood_text = (mood or "").lower()
+    music_style_text = (music_style or "").lower()
+
+    # 快节奏 → 较短歌词 → 较快生成
+    is_fast = any(k in mood_text or k in music_style_text
+                 for k in ("欢快", "energetic", "激烈", "摇滚", "rock",
+                          "热血", "燃", "爆发", "happy", "upbeat"))
+
+    # 慢歌、抒情 → 长歌词 → 较慢生成
+    is_slow = any(k in mood_text or k in music_style_text
+                 for k in ("舒缓", "抒情", "温暖", "温柔", "ballad",
+                          "故事", "回忆", "怀旧", "sad", "gentle",
+                          "梦幻", "空灵", "缥缈", "诗意", "悠扬",
+                          "dreamy", "ethereal", "poetic", "melancholic"))
+
+    if is_fast:
+        return {
+            "target_lines": "30-40行",
+            "duration": "120-150秒",
+            "lyrics_time": "2-3分钟",
+            "music_time": "3-4分钟",
+            "total_time": "5-7分钟",
+        }
+    elif is_slow:
+        return {
+            "target_lines": "50-70行",
+            "duration": "180-240秒",
+            "lyrics_time": "3-5分钟",
+            "music_time": "4-6分钟",
+            "total_time": "7-11分钟",
+        }
+    else:
+        return {
+            "target_lines": "40-55行",
+            "duration": "150-200秒",
+            "lyrics_time": "2-4分钟",
+            "music_time": "3-5分钟",
+            "total_time": "5-9分钟",
+        }
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Music-to-MV v2 — LLM-First AI MV 生成器",
@@ -356,6 +402,17 @@ def main():
     )
 
     print(f"\n📁 项目目录: {pipeline.project_dir}")
+
+    # 显示歌词生成时间估计
+    time_estimate = _estimate_generation_time(args.mood, args.music_style)
+    print(f"\n⏱️  预计生成时间（仅 Step ①-② 歌词和音乐）:")
+    print(f"   • 歌词行数: {time_estimate['target_lines']}")
+    print(f"   • 歌曲时长: {time_estimate['duration']}")
+    print(f"   • 歌词生成: {time_estimate['lyrics_time']}")
+    print(f"   • 音乐生成: {time_estimate['music_time']}")
+    print(f"   • 小计: {time_estimate['total_time']}")
+    print(f"\n   📝 注：实际时间受网络、API 负载、token 可用额度等影响。")
+    print(f"   🎬 完整 MV 流程（Step ③-⑪）另需 5-15 分钟（图片生成 + 视频处理）。\n")
 
     # 运行
     pipeline.run(phases=args.phase or "all")
