@@ -366,10 +366,74 @@ class LyricsAligner:
 
     def __init__(self, threshold_1: float = 0.25,
                  threshold_2: float = 0.20,
-                 search_window: int = 8):
+                 search_window: int = 8,
+                 max_gap_seconds: float = 5.0):
         self.threshold_1 = threshold_1
         self.threshold_2 = threshold_2
         self.search_window = search_window
+        self.max_gap_seconds = max_gap_seconds  # 允许的最大时间间隙
+
+    def _correct_asr_timestamp_bias(self, asr_segments: List[dict]) -> List[dict]:
+        """检测并修正ASR时间戳的系统偏差
+
+        问题：有时ASR在视频开头识别出不相关内容，导致实际歌词的
+        时间戳被往后推迟（如0-5s是片头，14s才是真正的歌词开始）
+
+        解决：找出最长的连续有效识别段，假设为真正的歌词部分，
+        重新调整其他段的时间戳
+        """
+        if not asr_segments or len(asr_segments) <= 1:
+            return asr_segments
+
+        # 检测段之间的间隙
+        gaps = []
+        for i in range(len(asr_segments) - 1):
+            gap = asr_segments[i + 1]["start"] - asr_segments[i]["end"]
+            gaps.append({
+                "index": i,
+                "gap": gap,
+                "after_seg": asr_segments[i + 1]["start"]
+            })
+
+        # 找最大的间隙
+        if gaps:
+            largest_gap = max(gaps, key=lambda x: x["gap"])
+            gap_size = largest_gap["gap"]
+            gap_index = largest_gap["index"]
+
+            # 如果最大间隙 > max_gap_seconds，可能是时间偏移
+            if gap_size > self.max_gap_seconds:
+                print(f"      [..] 检测到大时间间隙: {gap_size:.1f}s (在段 {gap_index} 之后)")
+                print(f"      [..] 假设后续段是真正的歌词，调整时间戳...")
+
+                # 计算偏移量
+                offset = asr_segments[gap_index]["end"]
+
+                # 重新调整后续所有段的时间
+                corrected = asr_segments[:gap_index + 1]
+
+                # 后续段：重新分配时间，压缩到合理的范围
+                remaining = asr_segments[gap_index + 1:]
+                first_valid_start = remaining[0]["start"]
+                duration_after_gap = remaining[-1]["end"] - first_valid_start
+
+                # 从上一段的结束时间开始，重新分配
+                new_start = asr_segments[gap_index]["end"] + 0.5
+                scale_factor = 1.0  # 保持原始的相对时长
+
+                for seg in remaining:
+                    relative_start = seg["start"] - first_valid_start
+                    relative_end = seg["end"] - first_valid_start
+
+                    seg["start"] = new_start + relative_start * scale_factor
+                    seg["end"] = new_start + relative_end * scale_factor
+
+                corrected.extend(remaining)
+
+                print(f"      [post] 时间戳已调整: {len(remaining)} 段重新映射")
+                return corrected
+
+        return asr_segments
 
     def run(self, project_dir: str, align_mode: str = "auto",
             srt_file: str = "", timeout: int = 600) -> Dict[str, Any]:
@@ -468,6 +532,9 @@ class LyricsAligner:
         # ③ 两遍匹配对齐
         _, clean_lyrics = parse_lyrics(str(lyrics_path))
         asr_segments = whisper_result.get("segments", [])
+
+        # 检测并修正ASR的时间戳偏移（大间隙问题）
+        asr_segments = self._correct_asr_timestamp_bias(asr_segments)
 
         # 获取音频总时长（从最后一个ASR段的end时间）
         audio_duration = 0.0
