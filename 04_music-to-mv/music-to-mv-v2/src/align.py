@@ -296,10 +296,14 @@ class WhisperTranscriber:
 
         import whisper
         last_error = None
+        # openai-whisper 默认不开 word_timestamps，时间戳粒度是 30s 窗口（粗）
+        # 开启后基于 cross-attention 做 DTW，时间戳精度提升到词级别
+        # 配合 ConfigManager 可以让用户关掉（如果遇到性能问题）
+        ow_word_timestamps = bool(cfg.get_bool("align_whisper_word_timestamps", True))
 
         for model_size in model_sizes:
             try:
-                print(f"      {model_size} 模型 ({device})...")
+                print(f"      {model_size} 模型 ({device}, word_timestamps={ow_word_timestamps})...")
                 model = whisper.load_model(model_size, device=device)
                 result = model.transcribe(
                     audio_path,
@@ -307,6 +311,7 @@ class WhisperTranscriber:
                     verbose=False,
                     fp16=fp16,
                     initial_prompt=initial_prompt,
+                    word_timestamps=ow_word_timestamps,
                 )
 
                 # 验证结果
