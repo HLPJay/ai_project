@@ -986,6 +986,9 @@ class SceneImageGenerator:
         # Quick Win C: Store scene shot_types for dynamic prohibition tracking
         self._scene_shot_types = {s.get("id"): s.get("shot_type", "wide") for s in scenes}
 
+        # P1.2: Store scene info for character consistency enhancement
+        self._scene_info = {s.get("id"): s for s in scenes}
+
         print(f"  [Steps ⑤-⑦] {len(scenes)} 个场景，并发数={parallel}")
 
         # 分析变体图需求
@@ -1438,10 +1441,50 @@ class SceneImageGenerator:
             return extra_text
         return f"{desc}, {extra_text}"
 
-    def _build_dynamic_do_not_do(self, scene_id: int = None) -> str:
-        """Build dynamic prohibition list based on previous scenes' shot_types.
+    def _enhance_character_prompt_for_scene(self, scene_id: int = None) -> str:
+        """P1.2: Enhance character prompt based on scene context
 
-        Prevents shot type repetition by tracking the last 3 scenes.
+        Adjusts character description based on visual_focus and narrative_phase.
+        """
+        base_char = self._char_prompt or ""
+        if not scene_id or not hasattr(self, '_scene_info'):
+            return base_char
+
+        scene = self._scene_info.get(scene_id)
+        if not scene:
+            return base_char
+
+        # Get scene context
+        visual_focus = scene.get("visual_focus", "mixed")
+        narrative_phase = scene.get("narrative_phase", "")
+        emotion = scene.get("emotion", "")
+
+        enhancements = []
+
+        # Enhance based on visual_focus
+        if visual_focus == "character":
+            if emotion and any(e in emotion for e in ["悲", "伤", "痛"]):
+                enhancements.append("subtle sadness in eyes, reflective gaze, tender posture")
+            elif emotion and any(e in emotion for e in ["快", "开", "欢", "喜"]):
+                enhancements.append("bright eyes, genuine smile, relaxed posture")
+            else:
+                enhancements.append("expressive face, clear emotional presence")
+
+        # Enhance based on narrative phase
+        if narrative_phase == "chorus_peak":
+            if visual_focus == "character":
+                enhancements.append("energetic movement, dynamic pose")
+
+        # Combine base character prompt with enhancements
+        if enhancements:
+            return base_char + ", " + ", ".join(enhancements)
+        return base_char
+
+    def _build_dynamic_do_not_do(self, scene_id: int = None) -> str:
+        """Build dynamic prohibition list based on previous scenes' shot_types and composition.
+
+        Prevents shot type repetition and composition repetition by tracking the last 3 scenes.
+        Includes P1.3: Visual balance constraints for subject positioning.
         """
         if not hasattr(self, '_scene_shot_types') or scene_id is None:
             return ""
@@ -1469,6 +1512,24 @@ class SceneImageGenerator:
             elif current_shot_type == "symbolic_insert":
                 prohibitions.append("use different symbolic object and framing than the last insert")
 
+        # P1.3: Visual balance constraints - prevent center-aligned subjects in consecutive frames
+        if hasattr(self, '_scene_info') and self._scene_info:
+            last_scene = self._scene_info.get(prev_ids[-1]) if prev_ids else None
+            if last_scene:
+                last_focal_position = last_scene.get("focal_position", "mixed")
+                # Infer focal position from description if not explicitly set
+                if last_focal_position == "mixed" and last_scene.get("desc"):
+                    desc_lower = last_scene["desc"].lower()
+                    if "center" in desc_lower or "中心" in last_scene.get("desc", ""):
+                        last_focal_position = "center"
+
+                if last_focal_position == "center":
+                    prohibitions.append("avoid placing the subject in the center, vary the composition position")
+                elif last_focal_position == "left":
+                    prohibitions.append("avoid left-aligned composition, vary subject position")
+                elif last_focal_position == "right":
+                    prohibitions.append("avoid right-aligned composition, vary subject position")
+
         if prohibitions:
             return ", ".join(prohibitions)
         return ""
@@ -1491,9 +1552,11 @@ class SceneImageGenerator:
             and self._char_prompt
             and self._needs_character_anchor(desc_part)
         ):
+            # P1.2: Character consistency enhancement with scene context
+            char_prompt = self._enhance_character_prompt_for_scene(scene_id)
             char_part = (
                 "maintain recurring subject continuity when a human appears, "
-                + self._char_prompt[:PROMPT_CHAR_MAX]
+                + char_prompt[:PROMPT_CHAR_MAX]
             )
         # 根据 character_policy 决定是否注入角色
         if self._character_policy == "no fixed protagonist":

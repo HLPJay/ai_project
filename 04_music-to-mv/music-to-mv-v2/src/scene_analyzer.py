@@ -610,7 +610,7 @@ class SceneAnalyzer:
         if llm_descs:
             # LLM 结果填充
             llm_count = 0
-            for s in scenes:
+            for i, s in enumerate(scenes):
                 sid = s["id"]
                 if sid in llm_descs and llm_descs[sid].get("desc"):
                     desc = llm_descs[sid]["desc"]
@@ -624,15 +624,19 @@ class SceneAnalyzer:
                                 s[key] = llm_descs[sid][key]
                         llm_count += 1
                         continue
-                # LLM 没生成或无效 → local fallback
-                s["desc"] = self._generate_local_desc(s)
+                # LLM 没生成或无效 → local fallback with context awareness
+                prev_scene = scenes[i - 1] if i > 0 else None
+                next_scene = scenes[i + 1] if i < len(scenes) - 1 else None
+                s["desc"] = self._generate_local_desc(s, prev_scene, next_scene)
 
             if llm_count > 0:
                 return "llm"
 
-        # LLM 完全失败 → 全部 local
-        for s in scenes:
-            s["desc"] = self._generate_local_desc(s)
+        # LLM 完全失败 → 全部 local with context awareness
+        for i, s in enumerate(scenes):
+            prev_scene = scenes[i - 1] if i > 0 else None
+            next_scene = scenes[i + 1] if i < len(scenes) - 1 else None
+            s["desc"] = self._generate_local_desc(s, prev_scene, next_scene)
 
         return "local"
 
@@ -1127,14 +1131,34 @@ class SceneAnalyzer:
             payload["enable_thinking"] = False
         return payload
 
-    def _generate_local_desc(self, scene: Dict) -> str:
-        """本地 fallback 场景描述，根据 visual_focus 类型化"""
+    def _generate_local_desc(self, scene: Dict, prev_scene: Dict = None, next_scene: Dict = None) -> str:
+        """本地 fallback 场景描述，根据 visual_focus 类型化，支持上下文感知
+
+        Args:
+            scene: 当前场景
+            prev_scene: 前一个场景（用于转场提示）
+            next_scene: 下一个场景（用于转场预期）
+        """
         mood_desc = get_mood_desc(self._mood)
         art_style = get_art_style(self._style)
         full_desc = get_fallback_desc(
             scene["name"], self._char_prompt, self._theme,
             scene["text_preview"], mood_desc, art_style,
         )
+
+        # P1.1: 加入上下文感知转场提示
+        context_transitions = []
+        if prev_scene:
+            prev_focus = prev_scene.get("visual_focus", "mixed")
+            if prev_focus != scene.get("visual_focus", "mixed"):
+                # 从不同的visual_focus转换
+                context_transitions.append(f"shift from {prev_focus} to {scene.get('visual_focus', 'mixed')}")
+
+        if next_scene:
+            next_focus = next_scene.get("visual_focus", "mixed")
+            if next_focus != scene.get("visual_focus", "mixed"):
+                # 预告即将转向的visual_focus
+                context_transitions.append(f"transitioning towards {next_focus}")
 
         # 根据 visual_focus 类型返回不同的后缀
         visual_focus = scene.get("visual_focus", "mixed")
@@ -1151,6 +1175,11 @@ class SceneAnalyzer:
             suffix = ", cinematic storytelling frame, lyrical visual metaphor, cohesive palette, varied subject focus"
 
         full_desc += suffix
+
+        # 附加转场上下文
+        if context_transitions:
+            full_desc += ", " + ", ".join(context_transitions)
+
         return full_desc + QUALITY_SUFFIX
 
     def _generate_variant_descs(self, scenes: List[Dict]):

@@ -666,14 +666,40 @@ def _contextual_character_prompt(theme: str) -> str:
 
 
 def build_char_prompt(style_name: str, theme: str, song_title: str = "",
-                      mood: str = "", art_suffix: str = None) -> str:
-    """构建完整的角色 prompt
+                      mood: str = "", art_suffix: str = None,
+                      visual_focus: str = None, emotion: str = None,
+                      narrative_phase: str = None) -> str:
+    """构建完整的角色 prompt，支持场景感知
 
-    将角色描述 + 风格 + 主题 + 情绪组合为最终的图片 prompt
+    Args:
+        style_name: 风格名称
+        theme: 主题
+        song_title: 歌曲标题
+        mood: 情绪
+        art_suffix: 艺术风格后缀
+        visual_focus: 视觉焦点类型（character/environment/object/symbolic）
+        emotion: 场景情感（开心/伤心/愤怒等）
+        narrative_phase: 叙事阶段（intro/verse/chorus/bridge/outro）
     """
     char_desc = _contextual_character_prompt(theme) or get_char_prompt(style_name)
     if not char_desc:
         char_desc = "An adult Chinese protagonist, natural expression, realistic everyday presence"
+
+    # P1.2: 根据 visual_focus 和 emotion 调整角色描述
+    if visual_focus == "character":
+        # 增强面部表情和情感表现
+        if emotion and "悲" in emotion or "伤" in emotion:
+            char_desc += ", subtle sadness in eyes, reflective gaze, tender posture"
+        elif emotion and any(e in emotion for e in ["快", "开", "欢"]):
+            char_desc += ", bright eyes, genuine smile, relaxed posture, engaged expression"
+        else:
+            char_desc += ", expressive face, clear emotional intent in expression"
+
+    if narrative_phase == "chorus_peak":
+        # 合唱高潮需要更多能量和动作
+        if visual_focus == "character":
+            char_desc += ", energetic movement, dynamic pose, heightened emotional expression"
+
     art_style = get_art_style(style_name)
     mood_desc = get_mood_desc(mood) if mood else ""
     theme_visual = get_theme_visual(theme)
