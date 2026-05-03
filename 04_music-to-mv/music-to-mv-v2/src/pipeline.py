@@ -573,6 +573,8 @@ class MVPipeline:
                 "total_lines": result.get("total_lines", 0),
                 "total_lyrics_lines": result.get("total_lines", 0),
                 "srt_entries": result.get("srt_entries", 0),
+                "timeline_fallback": result.get("timeline_fallback", False),
+                "timeline_strategy": result.get("timeline_strategy", ""),
             })
 
             self.pm.update_step("③ align", "completed", f"mode={align_mode}")
