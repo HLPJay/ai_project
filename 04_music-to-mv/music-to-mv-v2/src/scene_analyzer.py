@@ -1128,17 +1128,29 @@ class SceneAnalyzer:
         return payload
 
     def _generate_local_desc(self, scene: Dict) -> str:
-        """本地 fallback 场景描述"""
+        """本地 fallback 场景描述，根据 visual_focus 类型化"""
         mood_desc = get_mood_desc(self._mood)
         art_style = get_art_style(self._style)
         full_desc = get_fallback_desc(
             scene["name"], self._char_prompt, self._theme,
             scene["text_preview"], mood_desc, art_style,
         )
-        full_desc += (
-            ", cinematic storytelling frame, lyrical visual metaphor, "
-            "cohesive palette, varied subject focus"
-        )
+
+        # 根据 visual_focus 类型返回不同的后缀
+        visual_focus = scene.get("visual_focus", "mixed")
+        if visual_focus == "character":
+            suffix = ", intimate character focus, facial expression, emotion clarity, human connection"
+        elif visual_focus == "environment":
+            suffix = ", expansive environmental context, spatial depth, atmospheric mood, landscape continuity"
+        elif visual_focus == "object":
+            suffix = ", detail and texture emphasis, close observation, tactile quality, singular focus"
+        elif visual_focus == "symbolic":
+            suffix = ", metaphorical representation, abstract imagery, emotional symbolism, visual poetry"
+        else:
+            # mixed 或默认
+            suffix = ", cinematic storytelling frame, lyrical visual metaphor, cohesive palette, varied subject focus"
+
+        full_desc += suffix
         return full_desc + QUALITY_SUFFIX
 
     def _generate_variant_descs(self, scenes: List[Dict]):
@@ -1569,6 +1581,28 @@ class SceneAnalyzer:
                 pass
         return f"Style: {self._style}, Mood: {self._mood}, Theme: {self._theme}"
 
+    def _select_narrative_representative_scenes(self, scenes: List[Dict]) -> List[Dict]:
+        """Select scenes from intro_end, chorus_peak, and outro_start for balanced visual bible."""
+        intro_scenes = [s for s in scenes if s.get("narrative_phase") == "intro_end"]
+        chorus_scenes = [s for s in scenes if s.get("narrative_phase") == "chorus_peak"]
+        outro_scenes = [s for s in scenes if s.get("narrative_phase") == "outro_start"]
+
+        selected = []
+        # Take representative scene from each narrative phase
+        if intro_scenes:
+            selected.append(intro_scenes[0])
+        if chorus_scenes:
+            selected.append(chorus_scenes[0])
+        if outro_scenes:
+            selected.append(outro_scenes[0])
+
+        # If we don't have enough, fill with additional scenes (up to 8 total)
+        if len(selected) < 8:
+            remaining = [s for s in scenes if s not in selected]
+            selected.extend(remaining[:8 - len(selected)])
+
+        return selected[:8]
+
     def _generate_visual_bible(self, scenes: List[Dict]) -> Dict[str, Any]:
         llm_bible = self._call_llm_visual_bible(scenes)
         if llm_bible:
@@ -1582,8 +1616,11 @@ class SceneAnalyzer:
             if not token:
                 return None
 
+            # Quick Win B: Narrative-phase-aware sampling for better visual bible representation
+            selected_scenes = self._select_narrative_representative_scenes(scenes)
+
             scene_lines = []
-            for scene in scenes[:8]:
+            for scene in selected_scenes:
                 scene_lines.append(
                     f'- scene {scene["id"]}: focus={scene.get("visual_focus", "mixed")}, '
                     f'shot={scene.get("shot_type", "wide")}, '

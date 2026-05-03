@@ -983,6 +983,9 @@ class SceneImageGenerator:
             raise SceneImageError("scenes.json 为空或不存在")
         parallel = max(1, parallel or self.cfg.get_int("image_parallel", 1))
 
+        # Quick Win C: Store scene shot_types for dynamic prohibition tracking
+        self._scene_shot_types = {s.get("id"): s.get("shot_type", "wide") for s in scenes}
+
         print(f"  [Steps ⑤-⑦] {len(scenes)} 个场景，并发数={parallel}")
 
         # 分析变体图需求
@@ -1345,7 +1348,7 @@ class SceneImageGenerator:
         """
         # 构建完整 prompt
         provider = self.cfg.get("image_api_provider", "minimax")
-        prompt = self._build_scene_prompt(desc, provider=provider)
+        prompt = self._build_scene_prompt(desc, provider=provider, scene_id=sid)
 
         for attempt in range(1, MAX_RETRY + 1):
             try:
@@ -1435,7 +1438,42 @@ class SceneImageGenerator:
             return extra_text
         return f"{desc}, {extra_text}"
 
-    def _build_scene_prompt(self, desc: str, provider: str = "") -> str:
+    def _build_dynamic_do_not_do(self, scene_id: int = None) -> str:
+        """Build dynamic prohibition list based on previous scenes' shot_types.
+
+        Prevents shot type repetition by tracking the last 3 scenes.
+        """
+        if not hasattr(self, '_scene_shot_types') or scene_id is None:
+            return ""
+
+        # Get last 3 scene IDs (scenes with IDs < current scene_id)
+        prev_ids = [sid for sid in sorted(self._scene_shot_types.keys())
+                    if sid < scene_id][-3:]
+
+        if not prev_ids:
+            return ""
+
+        prev_shot_types = [self._scene_shot_types.get(sid, "wide") for sid in prev_ids]
+        current_shot_type = self._scene_shot_types.get(scene_id, "wide")
+
+        # Build prohibition based on repetition
+        prohibitions = []
+        if prev_shot_types.count(current_shot_type) > 0:
+            # If current scene should have this shot_type, prevent the same composition 3 frames in a row
+            if current_shot_type == "close_detail":
+                prohibitions.append("do not use the exact same close-up angle as the last scene")
+            elif current_shot_type == "establishing":
+                prohibitions.append("vary the establishing shot angle, avoid identical environmental framing")
+            elif current_shot_type == "empty_space":
+                prohibitions.append("avoid identical empty space composition as the previous frame")
+            elif current_shot_type == "symbolic_insert":
+                prohibitions.append("use different symbolic object and framing than the last insert")
+
+        if prohibitions:
+            return ", ".join(prohibitions)
+        return ""
+
+    def _build_scene_prompt(self, desc: str, provider: str = "", scene_id: int = None) -> str:
         """构建场景图片 prompt（MiniMax 要求 <= 1500 字符）"""
         desc_part = desc[:PROMPT_DESC_MAX] if desc else ""
         reference_mode = self._infer_base_reference_mode(
@@ -1461,6 +1499,9 @@ class SceneImageGenerator:
         if self._character_policy == "no fixed protagonist":
             char_part = ""
 
+        # Quick Win C: Dynamic prohibition list based on previous shot_types
+        dynamic_do_not_do = self._build_dynamic_do_not_do(scene_id)
+
         parts = [
             p for p in [
                 subject_part,
@@ -1469,7 +1510,7 @@ class SceneImageGenerator:
                 char_part,
                 mood_desc,
                 art_style,
-                self._do_not_do,
+                dynamic_do_not_do or self._do_not_do,
             ] if p
         ]
         prompt = ", ".join(parts)
