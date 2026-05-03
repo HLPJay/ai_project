@@ -134,13 +134,15 @@ class WhisperTranscriber:
         return hasher.hexdigest()
 
     def transcribe(self, audio_path: str, temp_dir: str,
-                   cache: bool = True) -> dict:
+                   cache: bool = True,
+                   initial_prompt: str = "") -> dict:
         """执行 Whisper 转写
 
         参数:
             audio_path: MP3/WAV 音频路径
             temp_dir: 临时目录
             cache: 是否使用缓存
+            initial_prompt: 提示Whisper使用简体中文，提高识别准确度
 
         返回:
             whisper 完整输出（含 segments 列表）
@@ -168,8 +170,13 @@ class WhisperTranscriber:
         language = str(cfg.get("align_whisper_language", "zh") or "zh")
         fp16 = device.startswith("cuda")
 
+        # 默认使用简体中文 prompt 强制简体输出
+        if not initial_prompt:
+            initial_prompt = "以下是简体中文歌词的转写。"
+
         print(f"  [..] Whisper 转写中（模型链: {' -> '.join(model_sizes)}, device={device}）...")
         print(f"  [..] 音频: {audio_path}")
+        print(f"  [..] Initial prompt: {initial_prompt[:50]}")
 
         last_error = None
 
@@ -182,6 +189,7 @@ class WhisperTranscriber:
                     language=language,
                     verbose=False,
                     fp16=fp16,
+                    initial_prompt=initial_prompt,
                 )
 
                 # 验证结果
@@ -373,67 +381,91 @@ class LyricsAligner:
         self.search_window = search_window
         self.max_gap_seconds = max_gap_seconds  # 允许的最大时间间隙
 
-    def _correct_asr_timestamp_bias(self, asr_segments: List[dict]) -> List[dict]:
-        """检测并修正ASR时间戳的系统偏差
+    @staticmethod
+    def _build_whisper_prompt(lyrics: List[str], max_chars: int = 200) -> str:
+        """构造 Whisper 的 initial_prompt
 
-        问题：有时ASR在视频开头识别出不相关内容，导致实际歌词的
-        时间戳被往后推迟（如0-5s是片头，14s才是真正的歌词开始）
+        作用：
+        1. 强制 Whisper 输出简体中文（避免繁简混杂）
+        2. 提示语境，让 Whisper 更准确识别歌词词汇
+        3. 减少前奏/间奏的"幻觉"识别
 
-        解决：找出最长的连续有效识别段，假设为真正的歌词部分，
-        重新调整其他段的时间戳
+        参数:
+            lyrics: 原始歌词行列表
+            max_chars: prompt最大字数（Whisper有224个token限制）
         """
-        if not asr_segments or len(asr_segments) <= 1:
+        prefix = "以下是简体中文歌词的转写。"
+        if not lyrics:
+            return prefix
+
+        # 取前几行歌词作为上下文，便于Whisper识别简体词汇
+        sample_lyrics = " ".join(lyrics[:5])
+        if len(sample_lyrics) > max_chars - len(prefix):
+            sample_lyrics = sample_lyrics[:max_chars - len(prefix)]
+        return prefix + sample_lyrics
+
+    def _filter_misrecognized_asr(self, asr_segments: List[dict],
+                                   lyrics: List[str],
+                                   min_per_line_match: float = 0.5) -> List[dict]:
+        """过滤ASR误识别段（前奏/间奏被识别成不存在的歌词）
+
+        根本原因：
+        Whisper对前奏/间奏/结尾的乐器声段，可能"猜测"出某些字
+        （如"《迷路的白天》"），这些字根本不在歌词中。
+        这些误识别段会污染对齐，导致歌词被错配到错误的时间戳。
+
+        过滤策略：检查ASR段是否能与**单行歌词**显著匹配
+        - 对每个ASR段，计算它与每行歌词的字符匹配率
+        - 取最大值作为单行匹配率
+        - 如果最大单行匹配率 < 50%，认为该段是误识别
+
+        典型数据对比（给女朋友洗脚项目）：
+        - 误识别"《迷路的白天》": 与"忙碌的白天像一场冒险"匹配3/5=0.6
+                                  与"星光点亮回家的路线"匹配2/5=0.4
+                                  最大=0.6, 但精确率仅60% → 边界情况
+        - 真实"空气中弥漫着晚风": 与"空气中弥漫着晚风的甜"匹配≈0.95 → 保留
+        """
+        if not asr_segments or not lyrics:
             return asr_segments
 
-        # 检测段之间的间隙
-        gaps = []
-        for i in range(len(asr_segments) - 1):
-            gap = asr_segments[i + 1]["start"] - asr_segments[i]["end"]
-            gaps.append({
-                "index": i,
-                "gap": gap,
-                "after_seg": asr_segments[i + 1]["start"]
-            })
+        filtered = []
+        removed_segs = []
 
-        # 找最大的间隙
-        if gaps:
-            largest_gap = max(gaps, key=lambda x: x["gap"])
-            gap_size = largest_gap["gap"]
-            gap_index = largest_gap["index"]
+        for seg in asr_segments:
+            text = seg.get("text", "").strip()
+            asr_chars = re.findall(r'[一-鿿]', text)
 
-            # 如果最大间隙 > max_gap_seconds，可能是时间偏移
-            if gap_size > self.max_gap_seconds:
-                print(f"      [..] 检测到大时间间隙: {gap_size:.1f}s (在段 {gap_index} 之后)")
-                print(f"      [..] 假设后续段是真正的歌词，调整时间戳...")
+            if len(asr_chars) < 3:
+                # 太短的段无法可靠判断，保留
+                filtered.append(seg)
+                continue
 
-                # 计算偏移量
-                offset = asr_segments[gap_index]["end"]
+            # 计算与每行歌词的最大字符匹配率
+            best_match_rate = 0.0
+            for lyric in lyrics:
+                lyric_chars = set(re.findall(r'[一-鿿]', lyric))
+                if not lyric_chars:
+                    continue
+                # 匹配率 = ASR字符在该行歌词中出现的比例
+                match_count = sum(1 for c in asr_chars if c in lyric_chars)
+                match_rate = match_count / len(asr_chars)
+                if match_rate > best_match_rate:
+                    best_match_rate = match_rate
 
-                # 重新调整后续所有段的时间
-                corrected = asr_segments[:gap_index + 1]
+            if best_match_rate >= min_per_line_match:
+                filtered.append(seg)
+            else:
+                removed_segs.append((seg, best_match_rate))
 
-                # 后续段：重新分配时间，压缩到合理的范围
-                remaining = asr_segments[gap_index + 1:]
-                first_valid_start = remaining[0]["start"]
-                duration_after_gap = remaining[-1]["end"] - first_valid_start
+        if removed_segs:
+            print(f"      [post] 过滤 {len(removed_segs)} 个误识别ASR段 "
+                  f"(单行最大字符匹配率 < {min_per_line_match})")
+            for seg, rate in removed_segs:
+                print(f"            [{seg['start']:.1f}s-{seg['end']:.1f}s] "
+                      f"\"{seg.get('text','')[:30]}\" "
+                      f"(单行匹配率={rate:.2f})")
 
-                # 从上一段的结束时间开始，重新分配
-                new_start = asr_segments[gap_index]["end"] + 0.5
-                scale_factor = 1.0  # 保持原始的相对时长
-
-                for seg in remaining:
-                    relative_start = seg["start"] - first_valid_start
-                    relative_end = seg["end"] - first_valid_start
-
-                    seg["start"] = new_start + relative_start * scale_factor
-                    seg["end"] = new_start + relative_end * scale_factor
-
-                corrected.extend(remaining)
-
-                print(f"      [post] 时间戳已调整: {len(remaining)} 段重新映射")
-                return corrected
-
-        return asr_segments
+        return filtered if filtered else asr_segments
 
     def run(self, project_dir: str, align_mode: str = "auto",
             srt_file: str = "", timeout: int = 600) -> Dict[str, Any]:
@@ -525,16 +557,20 @@ class LyricsAligner:
                 "或在 --align-mode manual 下提供 SRT 文件跳过 ASR"
             )
 
+        # 提前加载歌词，用于构造 initial_prompt（提高ASR准确度，强制简体）
+        _, clean_lyrics = parse_lyrics(str(lyrics_path))
+        initial_prompt = self._build_whisper_prompt(clean_lyrics)
+
         whisper_result = WhisperTranscriber().transcribe(
-            audio_for_asr, str(temp_dir)
+            audio_for_asr, str(temp_dir),
+            initial_prompt=initial_prompt,
         )
 
         # ③ 两遍匹配对齐
-        _, clean_lyrics = parse_lyrics(str(lyrics_path))
         asr_segments = whisper_result.get("segments", [])
 
-        # 检测并修正ASR的时间戳偏移（大间隙问题）
-        asr_segments = self._correct_asr_timestamp_bias(asr_segments)
+        # 过滤ASR误识别段（不在歌词中的"幻觉"段，如前奏被识别成奇怪文字）
+        asr_segments = self._filter_misrecognized_asr(asr_segments, clean_lyrics)
 
         # 获取音频总时长（从最后一个ASR段的end时间）
         audio_duration = 0.0
@@ -612,7 +648,9 @@ class LyricsAligner:
         asr_assigned = [False] * N
         align_map = {}  # lyric_idx -> (start, end, total_score, count)
 
-        # ── 第一遍：顺序贪心匹配 ──
+        # ── 第一遍：顺序贪心匹配（带互为最佳验证） ──
+        # 互为最佳：ASR段i 选择的歌词行j，必须 j 选择的最佳ASR段也是 i 附近
+        # 否则跳过，避免 ASR 误识别段抢占真实歌词行
         lyric_idx = 0
         for i, (start, end, text) in enumerate(asr_entries):
             if lyric_idx >= M:
@@ -631,14 +669,33 @@ class LyricsAligner:
                     best_li = j
 
             if best_score >= self.threshold_1 and best_li >= 0:
-                if best_li in align_map:
-                    a = align_map[best_li]
-                    align_map[best_li] = (a[0], end, a[2] + best_score, a[3] + 1)
-                else:
-                    align_map[best_li] = (start, end, best_score, 1)
-                lyric_assigned[best_li] = True
-                asr_assigned[i] = True
-                lyric_idx = best_li + 1
+                # 互为最佳验证：检查所选歌词行 best_li 是否真的最适合 ASR段 i
+                # 如果存在另一个更晚的ASR段匹配 best_li 的分数显著更高，跳过
+                lyric_text = lyrics[best_li]
+                better_match_exists = False
+                for k in range(i + 1, min(i + self.search_window + 2, N)):
+                    if asr_assigned[k]:
+                        continue
+                    other_text = asr_entries[k][2]
+                    if len(other_text) < 2:
+                        continue
+                    other_score = SimilarityScorer.score_pair(other_text, lyric_text)
+                    # 显著更高（>1.3倍）才认为更好的匹配存在
+                    if other_score > best_score * 1.3:
+                        better_match_exists = True
+                        print(f"      [skip] ASR段{i} \"{text[:20]}\"({best_score:.2f}) "
+                              f"放弃匹配行{best_li+1}，让位给更佳的ASR段{k}({other_score:.2f})")
+                        break
+
+                if not better_match_exists:
+                    if best_li in align_map:
+                        a = align_map[best_li]
+                        align_map[best_li] = (a[0], end, a[2] + best_score, a[3] + 1)
+                    else:
+                        align_map[best_li] = (start, end, best_score, 1)
+                    lyric_assigned[best_li] = True
+                    asr_assigned[i] = True
+                    lyric_idx = best_li + 1
 
         # ── 第二遍：补漏（包括已分配的ASR段用于多行匹配） ──
         for j in range(M):
