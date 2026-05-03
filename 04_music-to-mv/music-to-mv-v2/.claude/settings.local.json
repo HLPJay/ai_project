@@ -26,7 +26,9 @@
       "Bash(python tools/diagnose_alignment.py --project \"C:\\\\Users\\\\yun68\\\\.openclaw\\\\workspace\\\\mv\\\\妈妈的手_20260503_134106\")",
       "Bash(python -m src.align \"~/.openclaw/workspace/mv/星空的梦想_20260503_154753\" --align-mode auto)",
       "Bash(python -m src.align \"C:\\\\Users\\\\yun68\\\\.openclaw\\\\workspace\\\\mv\\\\星空的梦想_20260503_154753\" --align-mode auto)",
-      "Bash(python test_alignment_fix.py)"
+      "Bash(python test_alignment_fix.py)",
+      "Bash(python3)",
+      "Bash(python)"
     ]
   }
 }

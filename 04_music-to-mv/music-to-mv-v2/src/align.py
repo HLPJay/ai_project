@@ -71,18 +71,33 @@ class SimilarityScorer:
 
     @staticmethod
     def chinese_overlap(a: str, b: str) -> float:
-        """中文字符重叠率（对中文歌词更鲁棒）"""
+        """中文字符重叠率（对中文歌词更鲁棒）
+
+        目标：容忍ASR识别误差，如"无垠"→"乌烟"
+        当两个短语共享核心汉字时认为相似
+        """
         ca = set(re.findall(r'[\u4e00-\u9fff]', a))
         cb = set(re.findall(r'[\u4e00-\u9fff]', b))
-        return len(ca & cb) / len(ca) if ca else 0
+        if not cb:
+            return 0.0
+        overlap = len(ca & cb)
+        # \u53ec\u56de\u7387\uff08Recall\uff09\uff1ab\u7684\u5b57\u7b26\u5728a\u4e2d\u7684\u8986\u76d6\u6bd4\u4f8b
+        # \u5f53b\u662f\u77ed\u6b4c\u8bcd\u884c\uff0ca\u662f\u957fASR\u6bb5\u65f6\u6548\u679c\u6700\u597d
+        return overlap / len(cb)
 
     @staticmethod
     def score_pair(asr_text: str, lyric: str) -> float:
-        """综合评分（重叠率加权）"""
-        return max(
-            SimilarityScorer.similarity(asr_text, lyric),
-            SimilarityScorer.chinese_overlap(asr_text, lyric) * 1.2
-        )
+        """综合评分（用于匹配ASR识别到原始歌词）
+
+        策略：优先使用中文字符重叠率（对识别误差容忍度高）
+        目的：确保即使ASR识别有误（如"无垠"→"乌烟"），
+             仍能正确匹配到原始歌词行
+        """
+        seq_sim = SimilarityScorer.similarity(asr_text, lyric)
+        chinese_sim = SimilarityScorer.chinese_overlap(asr_text, lyric)
+        # 中文字符重叠率（召回率）权重更高，因为对ASR错误最容忍
+        # 给予召回率更高权重以容忍识别误差
+        return max(seq_sim * 0.4, chinese_sim * 2.0)
 
 
 # ════════════════════════════════════════════════════════════
