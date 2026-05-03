@@ -28,6 +28,78 @@ from typing import List, Tuple, Optional, Dict, Any
 
 from src.config_manager import ConfigManager
 
+# ── Windows 控制台编码兼容 ──
+# Windows 默认 GBK/cp936 编码无法处理某些 Unicode 字符（如 ↔ 箭头）
+# 强制 stdout/stderr 使用 UTF-8，避免 UnicodeEncodeError 导致进程崩溃
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        # Python < 3.7 或非交互式环境，忽略
+        pass
+
+# ── JSON 安全序列化工具 ──
+def _safe_json_default(obj):
+    """处理 json.dumps 无法直接序列化的类型（如 numpy 类型）"""
+    import numpy as np
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    if isinstance(obj, (np.str_,)):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+def _safe_json_dumps(obj, **kwargs):
+    """json.dumps 的安全版本，兼容 numpy 类型。绝对不崩溃。"""
+    try:
+        return json.dumps(obj, default=_safe_json_default, **kwargs)
+    except Exception:
+        pass
+    try:
+        return json.dumps(_recursive_to_python(obj), default=_safe_json_default, **kwargs)
+    except Exception:
+        pass
+    # 终极兜底：逐个字段构建安全的 JSON
+    try:
+        safe = _recursive_to_python(obj)
+        return json.dumps(safe, ensure_ascii=False, skipkeys=True, default=str)
+    except Exception as e:
+        # 实在不行就返回空JSON，绝不崩溃
+        return json.dumps({"error": f"JSON serialization failed: {str(e)[:50]}", "segments": []})
+
+def _recursive_to_python(obj, _depth=0):
+    """递归将对象中的所有值转换为纯 Python 类型。绝对安全不崩溃。"""
+    if _depth > 100:
+        return str(obj) if obj is not None else None
+    import numpy as np
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {k: _recursive_to_python(v, _depth + 1) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_recursive_to_python(item, _depth + 1) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_recursive_to_python(item, _depth + 1) for item in obj)
+    elif isinstance(obj, np.ndarray):
+        try:
+            return obj.tolist()
+        except Exception:
+            return list(obj) if hasattr(obj, "__iter__") else [obj.item()]
+    elif hasattr(obj, "dtype"):  # numpy 标量类型
+        try:
+            return obj.item() if hasattr(obj, "item") else str(obj)
+        except Exception:
+            return float(obj) if hasattr(obj, "__float__") else str(obj)
+    if isinstance(obj, str) and len(obj) > 10000:
+        return obj[:10000]
+    return obj if isinstance(obj, (int, float, bool, str, bytes)) or obj is None else str(obj)
+
 
 def _resolve_torch_device(config_value: str = "auto") -> str:
     """Resolve auto/cuda/cpu config to a torch-compatible device string."""
@@ -117,10 +189,21 @@ class WhisperTranscriber:
     def is_available() -> bool:
         """检查 whisper 是否已安装"""
         print("  [..] 检查 Whisper 是否可用...", flush=True)
+        cfg = ConfigManager()
+        backend = str(cfg.get("align_asr_backend", "faster-whisper") or "faster-whisper").strip().lower()
         try:
-            import whisper
+            if backend in ("faster-whisper", "faster_whisper", "faster", "auto"):
+                import faster_whisper  # noqa: F401
+            else:
+                import whisper  # noqa: F401
             return True
         except ImportError:
+            if backend in ("faster-whisper", "faster_whisper", "faster", "auto"):
+                try:
+                    import whisper  # noqa: F401
+                    return True
+                except ImportError:
+                    return False
             return False
 
     @staticmethod
@@ -147,27 +230,32 @@ class WhisperTranscriber:
         返回:
             whisper 完整输出（含 segments 列表）
         """
-        import whisper
-
         output_json = Path(temp_dir) / "song.json"
         audio_hash = self._get_file_hash(audio_path)
-
-        # 缓存命中
-        if cache and output_json.exists() and output_json.stat().st_size > 0:
-            try:
-                cached = json.loads(output_json.read_text(encoding="utf-8"))
-                if cached.get("_source_hash") == audio_hash:
-                    print(f"  [OK] Whisper 缓存命中，跳过转写")
-                    return cached
-            except (json.JSONDecodeError, KeyError):
-                pass
-
         cfg = ConfigManager()
+        backend = str(cfg.get("align_asr_backend", "faster-whisper") or "faster-whisper").strip().lower()
         primary_model = str(cfg.get("align_whisper_model", "medium"))
         fallback_models = str(cfg.get("align_whisper_fallback_models", "small,base,tiny"))
         model_sizes = _configured_model_chain(primary_model, fallback_models)
         device = _resolve_torch_device(str(cfg.get("align_whisper_device", "auto")))
         language = str(cfg.get("align_whisper_language", "zh") or "zh")
+        backend_cache_key = "faster-whisper" if backend in ("faster-whisper", "faster_whisper", "faster", "auto") else "openai-whisper"
+        model_cache_key = ",".join(model_sizes)
+
+        # 缓存命中
+        if cache and output_json.exists() and output_json.stat().st_size > 0:
+            try:
+                cached = json.loads(output_json.read_text(encoding="utf-8"))
+                if (
+                    cached.get("_source_hash") == audio_hash
+                    and cached.get("_asr_backend") == backend_cache_key
+                    and cached.get("_asr_models") == model_cache_key
+                ):
+                    print(f"  [OK] Whisper 缓存命中，跳过转写")
+                    return cached
+            except (json.JSONDecodeError, KeyError):
+                pass
+
         fp16 = device.startswith("cuda")
 
         # 默认使用简体中文 prompt 强制简体输出
@@ -178,6 +266,35 @@ class WhisperTranscriber:
         print(f"  [..] 音频: {audio_path}")
         print(f"  [..] Initial prompt: {initial_prompt[:50]}")
 
+        if backend in ("faster-whisper", "faster_whisper", "faster", "auto"):
+            try:
+                result = self._transcribe_faster_whisper(
+                    audio_path=audio_path,
+                    model_sizes=model_sizes,
+                    device=device,
+                    language=language,
+                    initial_prompt=initial_prompt,
+                )
+                if cache:
+                    result["_source_hash"] = audio_hash
+                    result["_asr_backend"] = "faster-whisper"
+                    result["_asr_models"] = model_cache_key
+                    try:
+                        output_json.write_text(
+                            _safe_json_dumps(result, ensure_ascii=False),
+                            encoding="utf-8"
+                        )
+                    except Exception as cache_err:
+                        print(f"  [!] 缓存写入失败（非致命）: {cache_err}")
+                return result
+            except ImportError:
+                print("  [!] faster-whisper 未安装，回退到 openai-whisper")
+            except Exception as e:
+                if backend not in ("auto",):
+                    raise
+                print(f"  [!] faster-whisper 失败，回退到 openai-whisper: {e}")
+
+        import whisper
         last_error = None
 
         for model_size in model_sizes:
@@ -200,10 +317,15 @@ class WhisperTranscriber:
                 # 写缓存
                 if cache:
                     result["_source_hash"] = audio_hash
-                    output_json.write_text(
-                        json.dumps(result, ensure_ascii=False),
-                        encoding="utf-8"
-                    )
+                    result["_asr_backend"] = "openai-whisper"
+                    result["_asr_models"] = model_cache_key
+                    try:
+                        output_json.write_text(
+                            _safe_json_dumps(result, ensure_ascii=False),
+                            encoding="utf-8"
+                        )
+                    except Exception as cache_err:
+                        print(f"  [!] 缓存写入失败（非致命）: {cache_err}")
 
                 print(f"      [OK] Whisper {model_size} ({device}): "
                       f"{len(result['segments'])} 段, "
@@ -223,6 +345,120 @@ class WhisperTranscriber:
 # ════════════════════════════════════════════════════════════
 # Demucs 人声分离器
 # ════════════════════════════════════════════════════════════
+
+    def _transcribe_faster_whisper(self, audio_path: str,
+                                   model_sizes: List[str],
+                                   device: str,
+                                   language: str,
+                                   initial_prompt: str) -> dict:
+        """Transcribe with faster-whisper and normalize to openai-whisper shape."""
+        from faster_whisper import WhisperModel
+
+        cfg = ConfigManager()
+        raw_compute_type = str(cfg.get("align_whisper_compute_type", "default") or "default")
+        # float16 在某些 GPU/驱动组合下会导致 CTranslate2 段错误，强制使用 default
+        if raw_compute_type in ("float16", "half"):
+            print(f"      [!] compute_type={raw_compute_type} 可能不稳定，已降级为 default")
+            compute_type = "default"
+        else:
+            compute_type = raw_compute_type
+        beam_size = int(cfg.get_int("align_whisper_beam_size", 1))
+        vad_filter = bool(cfg.get_bool("align_whisper_vad_filter", False))
+        word_timestamps = bool(cfg.get_bool("align_whisper_word_timestamps", False))
+        fw_device = "cuda" if str(device).startswith("cuda") else ("cpu" if device == "cpu" else device)
+        if fw_device == "cpu" and compute_type == "float16":
+            compute_type = "int8"
+
+        last_error = None
+        for model_size in model_sizes:
+            try:
+                print(
+                    f"      faster-whisper {model_size} ({fw_device}, "
+                    f"compute_type={compute_type}, beam={beam_size}, vad={vad_filter})..."
+                )
+                model_kwargs = {"device": fw_device}
+                if compute_type and compute_type != "default":
+                    model_kwargs["compute_type"] = compute_type
+                model = WhisperModel(model_size, **model_kwargs)
+                segments_iter, info = model.transcribe(
+                    audio_path,
+                    language=language or None,
+                    task="transcribe",
+                    beam_size=beam_size,
+                    word_timestamps=word_timestamps,
+                    vad_filter=vad_filter,
+                    initial_prompt=initial_prompt or None,
+                )
+
+                segments = []
+                text_parts = []
+                for segment in segments_iter:
+                    try:
+                        seg_text = str(segment.text or "")
+                    except Exception:
+                        # 跳过因底层 C 异常而无法读取文本的段
+                        continue
+                    # 过滤明显异常的段（二进制残留、纯英文噪音等）
+                    if len(seg_text) > 500:
+                        seg_text = seg_text[:500]
+                    cleaned = re.sub(r'[^\u4e00-\u9fff\u3000-\u303fa-zA-Z0-9\s,.\'\"!?，。！？、]', '', seg_text)
+                    if len(cleaned) < 2 and len(seg_text) > 10:
+                        # 大部分字符都是噪音，跳过
+                        continue
+                    text_parts.append(seg_text)
+                    try:
+                        data = {
+                            "id": _recursive_to_python(getattr(segment, "id", None)),
+                            "seek": _recursive_to_python(getattr(segment, "seek", None)),
+                            "start": float(segment.start) if segment.start is not None else 0.0,
+                            "end": float(segment.end) if segment.end is not None else 0.0,
+                            "text": seg_text,
+                            "tokens": _recursive_to_python(getattr(segment, "tokens", None)),
+                            "avg_logprob": _recursive_to_python(getattr(segment, "avg_logprob", None)),
+                            "compression_ratio": _recursive_to_python(getattr(segment, "compression_ratio", None)),
+                            "no_speech_prob": _recursive_to_python(getattr(segment, "no_speech_prob", None)),
+                        }
+                        if word_timestamps:
+                            data["words"] = [
+                                {
+                                    "start": None if word.start is None else float(word.start),
+                                    "end": None if word.end is None else float(word.end),
+                                    "word": str(word.word) if word.word is not None else "",
+                                    "probability": _recursive_to_python(getattr(word, "probability", None)),
+                                }
+                                for word in (getattr(segment, "words", []) or [])
+                            ]
+                        segments.append(data)
+                    except Exception as seg_err:
+                        print(f"        [!] 跳过异常段: {seg_err}")
+                        continue
+
+                if not segments:
+                    print(f"      faster-whisper {model_size} 结果为空，尝试下一个模型")
+                    continue
+
+                result = {
+                    "text": "".join(text_parts),
+                    "segments": segments,
+                    "language": str(getattr(info, "language", language) or language),
+                    "language_probability": _recursive_to_python(getattr(info, "language_probability", None)),
+                    "duration": _recursive_to_python(getattr(info, "duration", None)),
+                    "duration_after_vad": _recursive_to_python(getattr(info, "duration_after_vad", None)),
+                }
+                print(
+                    f"      [OK] faster-whisper {model_size} ({fw_device}): "
+                    f"{len(segments)} 段, {result.get('text', '')[:50]}..."
+                )
+                return result
+            except Exception as e:
+                last_error = e
+                print(f"      faster-whisper {model_size} 失败: {e}")
+                continue
+
+        raise RuntimeError(
+            f"faster-whisper 转写失败（尝试了所有模型）: {last_error}"
+        )
+
 
 class DemucsVocalSeparator:
     """调用 Demucs 分离人声
@@ -457,7 +693,7 @@ class LyricsAligner:
         if removed_segs:
             print(f"      [post] 温和过滤 {len(removed_segs)} 个明显ASR幻觉段")
             for seg, cov in removed_segs:
-                print(f"            [{seg['start']:.1f}s-{seg['end']:.1f}s] "
+                print(f"            [{seg.get('start',0.0):.1f}s-{seg.get('end',0.0):.1f}s] "
                       f"\"{seg.get('text','')[:30]}\" "
                       f"(覆盖率={cov:.2f})")
 
@@ -591,9 +827,24 @@ class LyricsAligner:
 
         # ③ 两遍匹配对齐
         asr_segments = whisper_result.get("segments", [])
+        print(f"  [debug] ASR segments: {len(asr_segments)} 段")
+        if asr_segments:
+            print(f"  [debug] 第一段 keys: {list(asr_segments[0].keys())}")
+            print(f"  [debug] 第一段 text: {asr_segments[0].get('text','')[:30]}")
+            print(f"  [debug] 第一段 start: {asr_segments[0].get('start')}")
+            print(f"  [debug] 第一段 end: {asr_segments[0].get('end')}")
+            import json as _json
+            try:
+                _json.dumps(asr_segments[0])
+                print(f"  [debug] 第一段 JSON 序列化 OK")
+            except Exception as _je:
+                print(f"  [debug] 第一段 JSON 序列化失败: {_je}")
+        print(f"  [debug] clean_lyrics: {len(clean_lyrics)} 行")
 
         # 过滤ASR误识别段（不在歌词中的"幻觉"段，如前奏被识别成奇怪文字）
+        print(f"  [..] 过滤 ASR 幻觉段...")
         asr_segments = self._filter_misrecognized_asr(asr_segments, clean_lyrics)
+        print(f"  [debug] 过滤后: {len(asr_segments)} 段")
 
         # 获取音频总时长（优先使用音乐生成阶段记录的真实音频时长）
         audio_duration = 0.0
@@ -603,8 +854,8 @@ class LyricsAligner:
         elif asr_segments:
             audio_duration = max(seg.get("end", 0.0) for seg in asr_segments)
 
-        print(f"  [..] 对齐中: {len(clean_lyrics)} 行歌词 ↔ "
-              f"{len(asr_segments)} 段 ASR...")
+        print(f"  [..] 对齐中: {len(clean_lyrics)} 行歌词 <-> "
+            f"{len(asr_segments)} 段 ASR...")
         print(f"  [..] 音频时长: {audio_duration:.1f}s")
 
         alignments = self._align(
@@ -613,6 +864,12 @@ class LyricsAligner:
         self._repair_alignment_timeline(alignments, audio_duration=audio_duration)
         timeline_fallback = False
         timeline_strategy = "asr_line_match"
+        if alignments and any(a.get("matched") for a in alignments) and all(
+            a.get("fallback") in ("asr_segment_timeline", "asr_native_timeline")
+            for a in alignments
+            if a.get("matched")
+        ):
+            timeline_strategy = "asr_native_sync"
         if self._alignment_timeline_is_suspicious(
             alignments, audio_duration=audio_duration
         ):
@@ -650,8 +907,8 @@ class LyricsAligner:
         for a in alignments:
             if a.get("interpolated"):
                 print(f"      插值行 {a['idx']+1}: "
-                      f"~{a['start']:.1f}s-{a['end']:.1f}s "
-                      f"\"{a['text'][:20]}...\"")
+                    f"~{a['start']:.1f}s-{a['end']:.1f}s "
+                    f"\"{a['text'][:20]}...\"")
 
         return {
             "srt_path": str(output_srt),
@@ -661,7 +918,7 @@ class LyricsAligner:
             "alignment": alignments,
             "timeline_fallback": timeline_fallback,
             "timeline_strategy": timeline_strategy,
-            "status": "completed",
+                            "status": "completed",
         }
 
     def _align(self, lyrics: List[str],
@@ -689,6 +946,9 @@ class LyricsAligner:
                 "matched": False,
                 "interpolated": False,
             })
+
+        if self._apply_asr_segment_timeline(result, lyrics, asr_segments):
+            return result
 
         lyric_assigned = [False] * M
         asr_assigned = [False] * N
@@ -1024,6 +1284,11 @@ class LyricsAligner:
         total_lyrics = len(lyrics)
         total_segments = len(valid_segments)
 
+        if total_segments >= total_lyrics:
+            return LyricsAligner._apply_asr_groups_to_lyrics(
+                alignments, lyrics, valid_segments
+            )
+
         for seg_idx, seg in enumerate(valid_segments):
             if lyric_idx >= total_lyrics:
                 break
@@ -1058,6 +1323,91 @@ class LyricsAligner:
             i < len(alignments) and alignments[i].get("matched")
             for i in range(total_lyrics)
         )
+
+    @staticmethod
+    def _apply_asr_groups_to_lyrics(alignments: List[Dict],
+                                    lyrics: List[str],
+                                    valid_segments: List[dict]) -> bool:
+        """Assign consecutive ASR segment groups to consecutive lyric lines.
+
+        When Whisper returns more segments than lyric lines, consuming one lyric
+        per ASR segment makes subtitles end too early and discards the later
+        native speech timeline. This path keeps every ASR segment in order and
+        only decides how many neighboring segments belong to the current lyric.
+        """
+        total_lyrics = len(lyrics)
+        total_segments = len(valid_segments)
+        if total_lyrics <= 0 or total_segments < total_lyrics:
+            return False
+
+        seg_idx = 0
+        for lyric_idx, lyric in enumerate(lyrics):
+            remaining_lyrics = total_lyrics - lyric_idx
+            remaining_segments = total_segments - seg_idx
+            if remaining_lyrics <= 1:
+                take = remaining_segments
+            else:
+                max_take = max(1, remaining_segments - (remaining_lyrics - 1))
+                min_take = max(1, remaining_segments - (remaining_lyrics - 1) * 6)
+                max_take = min(max_take, max(min_take, 6))
+                target_take = remaining_segments / remaining_lyrics
+                take = LyricsAligner._best_asr_group_size_for_lyric(
+                    lyric, valid_segments, seg_idx, min_take, max_take, target_take
+                )
+
+            group = valid_segments[seg_idx: seg_idx + take]
+            if not group:
+                return False
+
+            start = float(group[0]["start"])
+            end = float(group[-1]["end"])
+            if end <= start:
+                end = start + 0.1
+            alignments[lyric_idx].update({
+                "idx": lyric_idx,
+                "text": lyric,
+                "start": start,
+                "end": end,
+                "score": 0.0,
+                "matched": True,
+                "interpolated": True,
+                "fallback": "asr_native_timeline",
+            })
+            seg_idx += take
+
+        return all(
+            i < len(alignments) and alignments[i].get("matched")
+            for i in range(total_lyrics)
+        )
+
+    @staticmethod
+    def _best_asr_group_size_for_lyric(lyric: str,
+                                       valid_segments: List[dict],
+                                       start_idx: int,
+                                       min_take: int,
+                                       max_take: int,
+                                       target_take: float) -> int:
+        """Choose a local consecutive ASR group for one lyric line."""
+        best_take = min_take
+        best_score = -1.0
+        lyric_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', lyric)) or len(lyric))
+
+        for take in range(min_take, max_take + 1):
+            group_text = "".join(
+                str(seg.get("text", "") or "")
+                for seg in valid_segments[start_idx: start_idx + take]
+            )
+            asr_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', group_text)) or len(group_text))
+            raw_score = SimilarityScorer.score_pair(group_text, lyric)
+            length_ratio = min(asr_chars, lyric_chars) / max(asr_chars, lyric_chars)
+            cadence_delta = abs(take - target_take) / max(1.0, target_take)
+            cadence_factor = 1.0 - min(0.25, cadence_delta * 0.25)
+            score = raw_score * (0.65 + 0.35 * length_ratio) * cadence_factor
+            if score > best_score:
+                best_score = score
+                best_take = take
+
+        return best_take
 
     @staticmethod
     def _best_lyric_group_size(asr_text: str, lyrics: List[str],

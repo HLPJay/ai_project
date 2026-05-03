@@ -36,7 +36,13 @@
       "Bash(ffmpeg -i \"C:/Users/yun68/.openclaw/workspace/mv/给女朋友洗脚_疲惫一天后的温柔陪伴_20260503_163725/temp/demucs_out/htdemucs/song/vocals.wav\" -af \"silencedetect=noise=-30dB:d=0.5\" -f null -)",
       "Bash(python test_filter_fix.py)",
       "Bash(python -c \"import zhconv; print\\('zhconv available'\\)\")",
-      "Bash(python -c \"import opencc; print\\('opencc available'\\)\")"
+      "Bash(python -c \"import opencc; print\\('opencc available'\\)\")",
+      "Read(//c/Users/yun68/.openclaw/workspace/mv/朋友的陪伴_20260503_231332/temp/**)",
+      "Read(//c/Users/yun68/.openclaw/workspace/mv/朋友的陪伴_20260503_231332/**)",
+      "Bash(ffprobe -v quiet -print_format json -show_format \"C:/Users/yun68/.openclaw/workspace/mv/朋友的陪伴_20260503_231332/audio/song.mp3\")",
+      "Bash(ffmpeg -i \"C:/Users/yun68/.openclaw/workspace/mv/朋友的陪伴_20260503_231332/temp/demucs_out/htdemucs/song/vocals.wav\" -af \"silencedetect=noise=-30dB:d=0.5\" -f null -)",
+      "Bash(python -u -c ' *)",
+      "Bash(D:/claude_code/我的github项目落地/ai_project/04_music-to-mv/.venv/Scripts/python.exe -u -c ' *)"
     ]
   }
 }

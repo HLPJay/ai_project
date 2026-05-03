@@ -222,8 +222,15 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         if not cfg.get_bool("align_asr_enabled", True):
             raise ImportError("ALIGN_ASR_ENABLED=false")
 
-        print("  [..] Loading Whisper package...", flush=True)
-        import whisper  # noqa: F401
+        print("  [..] Loading ASR package...", flush=True)
+        backend = str(cfg.get("align_asr_backend", "faster-whisper") or "faster-whisper").strip().lower()
+        if backend in ("faster-whisper", "faster_whisper", "faster", "auto"):
+            try:
+                import faster_whisper  # noqa: F401
+            except ImportError:
+                import whisper  # noqa: F401
+        else:
+            import whisper  # noqa: F401
         aligner = LyricsAligner()
         result = aligner.run(
             project_dir=project_dir,

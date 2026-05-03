@@ -128,9 +128,14 @@ class Config:
     # 本地处理超时
     align_timeout_sec: int = 600
     align_asr_enabled: bool = True
+    align_asr_backend: str = "faster-whisper"
     align_whisper_model: str = "medium"
     align_whisper_fallback_models: str = "small,base,tiny"
     align_whisper_device: str = "auto"
+    align_whisper_compute_type: str = "default"
+    align_whisper_beam_size: int = 5
+    align_whisper_vad_filter: bool = True
+    align_whisper_word_timestamps: bool = False
     align_whisper_language: str = "zh"
     align_demucs_enabled: bool = True
     align_demucs_device: str = "auto"
@@ -296,9 +301,14 @@ class ConfigManager:
             "LYRICS_STRUCTURE": "lyrics_structure",
             "ALIGN_TIMEOUT_SEC": "align_timeout_sec",
             "ALIGN_ASR_ENABLED": "align_asr_enabled",
+            "ALIGN_ASR_BACKEND": "align_asr_backend",
             "ALIGN_WHISPER_MODEL": "align_whisper_model",
             "ALIGN_WHISPER_FALLBACK_MODELS": "align_whisper_fallback_models",
             "ALIGN_WHISPER_DEVICE": "align_whisper_device",
+            "ALIGN_WHISPER_COMPUTE_TYPE": "align_whisper_compute_type",
+            "ALIGN_WHISPER_BEAM_SIZE": "align_whisper_beam_size",
+            "ALIGN_WHISPER_VAD_FILTER": "align_whisper_vad_filter",
+            "ALIGN_WHISPER_WORD_TIMESTAMPS": "align_whisper_word_timestamps",
             "ALIGN_WHISPER_LANGUAGE": "align_whisper_language",
             "ALIGN_DEMUCS_ENABLED": "align_demucs_enabled",
             "ALIGN_DEMUCS_DEVICE": "align_demucs_device",
