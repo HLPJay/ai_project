@@ -350,3 +350,169 @@ python -m py_compile src\align.py src\pipeline.py
 - 引入更细粒度 forced alignment 方案，提升字幕局部同步精度。
 - 对繁简字、近音字、错别字做更稳的歌词匹配归一化。
 - 将 API 超时、重试、fallback 信息写入最终 HTML 报告。
+
+## 13. 2026-05-04 字幕对齐稳定性补充
+
+本轮继续处理 Step③ 歌词对齐中的 ASR 崩溃和时间线漂移问题，最终确认已走通。
+
+### 13.1 现象
+
+代表项目：
+
+- `母亲的温度_20260504_184427`
+- `朋友的陪伴_20260503_231332`
+
+运行命令：
+
+```powershell
+python -X utf8 -u -m src.main --project "C:\Users\yun68\.openclaw\workspace\mv\母亲的温度_20260504_184427" --phase align --auto
+```
+
+日志中可以看到：
+
+```text
+faster-whisper medium (cuda, compute_type=int8_float16, beam=5, vad=False)...
+[OK] faster-whisper medium (cuda): 21 段
+```
+
+但进程随后直接退出，`$LASTEXITCODE` 为：
+
+```text
+-1073740791
+```
+
+这个退出码不是普通 Python 异常，而是 Windows native crash。Python 的 `try/except` 无法捕获。
+
+### 13.2 根因判断
+
+这次不是 CPU/GPU 选择错误。日志已经明确显示：
+
+```text
+faster-whisper medium (cuda)
+```
+
+说明：
+
+- ASR 后端是 `faster-whisper`
+- 设备是 `cuda`
+- GPU 推理已经成功返回了 ASR 段落
+
+崩溃发生在 `[OK] faster-whisper ...` 之后，判断为：
+
+- `faster-whisper / ctranslate2 / CUDA DLL` 在推理结束、释放资源、写缓存或退出阶段发生 native crash。
+- 这类问题会直接杀掉主 Python 进程。
+- 因此主流程来不及写入 `temp/song.json`、`audio/song.srt`，也来不及把 `metadata/status.json` 从 `running` 改为 `failed`。
+
+### 13.3 环境差异确认
+
+用户对比了两个环境：
+
+当前 MV 项目环境：
+
+```text
+ctranslate2     4.7.1
+faster-whisper  1.2.1
+torch           2.6.0+cu124
+```
+
+另一个视频分析环境：
+
+```text
+ctranslate2     4.7.1
+faster-whisper  1.2.1
+torch           2.11.0
+```
+
+结论：
+
+- `faster-whisper` 和 `ctranslate2` 版本一致。
+- `faster-whisper` 主要依赖 `ctranslate2`，不是主要依赖 `torch`。
+- `torch` 差异主要影响 `demucs` 和 `openai-whisper`，不是本次 faster-whisper ASR 的核心差异。
+- 本次崩溃更像 CTranslate2/CUDA native crash，而不是 Python 包普通异常。
+
+### 13.4 修复方案
+
+核心修复方向：
+
+```text
+把 faster-whisper 放到独立子进程中执行
+```
+
+新增文件：
+
+- `src/align_asr_worker.py`
+
+作用：
+
+- 独立加载 `faster-whisper`
+- 独立执行 ASR 转写
+- 将结果写入临时 JSON
+- 主进程读取 JSON 后继续歌词同步
+
+这样即使 `ctranslate2 / CUDA DLL` 在 worker 进程退出时 native crash，也不会把主 MV 流水线进程一起杀掉。
+
+### 13.5 当前配置
+
+`.env` 和 `.env.example` 已增加/使用：
+
+```env
+ALIGN_ASR_BACKEND=faster-whisper
+ALIGN_WHISPER_COMPUTE_TYPE=float16
+ALIGN_WHISPER_BEAM_SIZE=5
+ALIGN_WHISPER_VAD_FILTER=true
+ALIGN_WHISPER_WORD_TIMESTAMPS=false
+```
+
+遇到 8G 显存或 CUDA 稳定性问题时，推荐：
+
+```env
+ALIGN_WHISPER_MODEL=small
+ALIGN_WHISPER_FALLBACK_MODELS=base,tiny
+ALIGN_WHISPER_COMPUTE_TYPE=int8_float16
+```
+
+### 13.6 最终验证结果
+
+用户复测后反馈：
+
+- 暂时没有再遇到崩溃。
+- 字幕时间线正常。
+- `metadata/info.json` 中出现：
+
+```text
+timeline_strategy = asr_native_sync
+```
+
+这说明当前正确逻辑已生效：
+
+```text
+faster-whisper 识别真实人声时间线
+↓
+保留 ASR 原生时间戳
+↓
+按顺序同步原始歌词文本
+↓
+生成 song.srt
+```
+
+### 13.7 当前结论
+
+本轮问题标记为：
+
+```text
+已修复，继续观察
+```
+
+已闭环内容：
+
+- ASR 后端切换到 `faster-whisper`
+- GPU 路径确认生效：`cuda`
+- 原生时间线同步策略生效：`asr_native_sync`
+- Windows native crash 通过 worker 子进程隔离规避
+- 字幕大幅漂移问题暂未复现
+
+仍属于后续优化的问题：
+
+- 个别字幕局部快慢仍可能存在，这属于词级/字级 forced alignment 精度问题。
+- 后续可继续引入 WhisperX、stable-ts、MFA、aeneas 等更细粒度对齐方案。
+- 建议把 worker exit code、stderr、临时 JSON 路径、ASR 后端、模型、compute type 写入最终 HTML 报告。

@@ -127,6 +127,74 @@ def _configured_model_chain(primary: str, fallbacks: str) -> List[str]:
     return chain or ["medium", "small", "base", "tiny"]
 
 
+def _run_faster_whisper_worker(audio_path: str,
+                               model_sizes: List[str],
+                               device: str,
+                               language: str,
+                               initial_prompt: str) -> dict:
+    """Run faster-whisper in an isolated child process."""
+    cfg = ConfigManager()
+    compute_type = str(cfg.get("align_whisper_compute_type", "default") or "default")
+    beam_size = int(cfg.get_int("align_whisper_beam_size", 5))
+    vad_filter = bool(cfg.get_bool("align_whisper_vad_filter", True))
+    word_timestamps = bool(cfg.get_bool("align_whisper_word_timestamps", False))
+    timeout = int(cfg.get_int("align_timeout_sec", 600))
+
+    output_path = Path(tempfile.gettempdir()) / f"mv_asr_{os.getpid()}_{int(time.time() * 1000)}.json"
+    cmd = [
+        sys.executable,
+        "-X", "utf8",
+        "-m", "src.align_asr_worker",
+        "--audio", str(audio_path),
+        "--output", str(output_path),
+        "--models", ",".join(model_sizes),
+        "--device", str(device),
+        "--compute-type", compute_type,
+        "--language", str(language or ""),
+        "--beam-size", str(beam_size),
+        "--initial-prompt", str(initial_prompt or ""),
+    ]
+    if vad_filter:
+        cmd.append("--vad-filter")
+    if word_timestamps:
+        cmd.append("--word-timestamps")
+
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    result = subprocess.run(
+        cmd,
+        cwd=str(Path(__file__).resolve().parents[1]),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        env=env,
+    )
+    if result.stdout:
+        print(result.stdout.rstrip())
+    if result.stderr:
+        print(result.stderr.rstrip())
+
+    if output_path.exists() and output_path.stat().st_size > 0:
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        try:
+            output_path.unlink()
+        except Exception:
+            pass
+        if payload.get("segments"):
+            if result.returncode != 0:
+                print(f"  [!] faster-whisper worker exited with code {result.returncode}, using completed ASR output")
+            return payload
+
+    raise RuntimeError(
+        f"faster-whisper worker failed with code {result.returncode}: "
+        f"{(result.stderr or result.stdout or '')[-1000:]}"
+    )
+
+
 # ════════════════════════════════════════════════════════════
 # 相似度评分器
 # ════════════════════════════════════════════════════════════
@@ -351,12 +419,21 @@ class WhisperTranscriber:
 # Demucs 人声分离器
 # ════════════════════════════════════════════════════════════
 
+class _FasterWhisperMixin:
     def _transcribe_faster_whisper(self, audio_path: str,
                                    model_sizes: List[str],
                                    device: str,
                                    language: str,
                                    initial_prompt: str) -> dict:
         """Transcribe with faster-whisper and normalize to openai-whisper shape."""
+        return _run_faster_whisper_worker(
+            audio_path=audio_path,
+            model_sizes=model_sizes,
+            device=device,
+            language=language,
+            initial_prompt=initial_prompt,
+        )
+
         from faster_whisper import WhisperModel
 
         cfg = ConfigManager()
@@ -463,6 +540,9 @@ class WhisperTranscriber:
         raise RuntimeError(
             f"faster-whisper 转写失败（尝试了所有模型）: {last_error}"
         )
+
+
+WhisperTranscriber._transcribe_faster_whisper = _FasterWhisperMixin._transcribe_faster_whisper
 
 
 class DemucsVocalSeparator:
