@@ -145,6 +145,8 @@ class Config:
     ffmpeg_timeout_sec: int = 600
     ffprobe_timeout_sec: int = 10
     kb_timeout_buffer_sec: int = 30
+    opening_info_enabled: bool = True
+    opening_info_duration_sec: float = 6.0
 
     # Ken Burns 镜头运动
     kb_zoom_start: float = 1.0
@@ -318,6 +320,8 @@ class ConfigManager:
             "FFMPEG_TIMEOUT_SEC": "ffmpeg_timeout_sec",
             "FFPROBE_TIMEOUT_SEC": "ffprobe_timeout_sec",
             "KB_TIMEOUT_BUFFER_SEC": "kb_timeout_buffer_sec",
+            "OPENING_INFO_ENABLED": "opening_info_enabled",
+            "OPENING_INFO_DURATION_SEC": "opening_info_duration_sec",
             "KB_ZOOM_START": "kb_zoom_start",
             "KB_ZOOM_END": "kb_zoom_end",
             "KB_PAN_X": "kb_pan_x",

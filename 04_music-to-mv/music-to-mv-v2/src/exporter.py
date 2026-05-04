@@ -193,16 +193,32 @@ class MVExporter:
         if gap <= 0.5:
             return video_file
 
+        # Do not clone the literal last frame. Some encoders/filter chains can
+        # leave a terminal black frame even when the visible clip looks fine in
+        # normal playback, and cloning that frame produces a black tail in the
+        # final MV. Freeze a frame slightly before the end instead.
+        safe_tail_offset = min(0.35, max(0.05, video_duration * 0.01))
+        safe_end = max(0.1, video_duration - safe_tail_offset)
+        pad_duration = max(0.0, audio_duration - safe_end)
+
         padded = self.temp_dir / "video_raw_padded.mp4"
         cmd = [
             self.ffmpeg, "-y",
             "-i", str(video_file),
-            "-vf", f"tpad=stop_mode=clone:stop_duration={gap:.3f}",
+            "-vf",
+            (
+                f"trim=end={safe_end:.3f},setpts=PTS-STARTPTS,"
+                f"tpad=stop_mode=clone:stop_duration={pad_duration:.3f}"
+            ),
+            "-an",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-pix_fmt", "yuv420p",
             str(padded),
         ]
-        print(f"  [WARN] 视频短于音频 {gap:.1f}s，自动延长末帧避免黑屏")
+        print(
+            f"  [WARN] 视频短于音频 {gap:.1f}s，"
+            f"冻结结尾前 {safe_tail_offset:.2f}s 的画面补齐"
+        )
         success, error = self._run_ffmpeg(cmd, log_tag="⑩ pad video")
         if success and padded.exists():
             return padded
@@ -238,6 +254,7 @@ class MVExporter:
         if not audio_file.exists():
             return {"status": "failed", "error": f"audio not found: {audio_file}"}
 
+        video_raw = self._apply_opening_info(video_raw)
         video_raw = self._pad_video_to_audio(video_raw, audio_file)
 
         # 构建 ffmpeg 命令
@@ -276,6 +293,97 @@ class MVExporter:
             "duration_sec": duration,
             "output": str(final_output),
         }
+
+    def _apply_opening_info(self, video_file: Path) -> Path:
+        """Burn a short song information overlay at the beginning."""
+        try:
+            from src.config_manager import ConfigManager
+            cfg = ConfigManager()
+            if not cfg.get_bool("opening_info_enabled", True):
+                return video_file
+            duration = max(1.0, float(cfg.get("opening_info_duration_sec", 6.0) or 6.0))
+        except Exception:
+            duration = 6.0
+
+        info_path = self.metadata_dir / "info.json"
+        if not info_path.exists():
+            return video_file
+        try:
+            info = json.loads(info_path.read_text(encoding="utf-8"))
+        except Exception:
+            return video_file
+
+        song_title = str(info.get("song_title") or info.get("project_name") or "").strip()
+        theme = str(info.get("theme") or "").strip()
+        style = str(info.get("style") or "").strip()
+        music_style = str(info.get("music_style") or "").strip()
+        mood = str(info.get("mood") or "").strip()
+
+        lines = []
+        if song_title:
+            lines.append(f"歌曲：{song_title}")
+        if theme:
+            lines.append(f"主题：{theme}")
+        meta = " / ".join(part for part in [style, music_style, mood] if part)
+        if meta:
+            lines.append(meta)
+        if not lines:
+            return video_file
+
+        ass_path = self.temp_dir / "opening_info.ass"
+        out_path = self.temp_dir / "video_raw_opening_info.mp4"
+        ass_text = self._build_opening_ass(lines, duration)
+        ass_path.write_text(ass_text, encoding="utf-8-sig")
+
+        temp_video = self.temp_dir / "opening_video.mp4"
+        self._stage_temp_input(video_file, temp_video)
+        cmd = [
+            self.ffmpeg, "-y",
+            "-i", temp_video.name,
+            "-vf", f"subtitles={ass_path.name}",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            out_path.name,
+        ]
+        success, error = self._run_ffmpeg_cwd(
+            cmd, cwd=str(self.temp_dir), log_tag="opening info"
+        )
+        if success and out_path.exists():
+            return out_path
+        print(f"  [WARN] 开场歌曲信息叠加失败，继续使用原视频: {error or 'unknown'}")
+        return video_file
+
+    @staticmethod
+    def _build_opening_ass(lines: List[str], duration: float) -> str:
+        def ts(seconds: float) -> str:
+            total_cs = max(0, int(round(seconds * 100)))
+            h, rem = divmod(total_cs, 360000)
+            m, rem = divmod(rem, 6000)
+            s, cs = divmod(rem, 100)
+            return f"{h}:{m:02}:{s:02}.{cs:02}"
+
+        def esc(text: str) -> str:
+            return text.replace("\\", "\\\\").replace("{", "(").replace("}", ")")
+
+        body = r"\N".join(esc(line) for line in lines)
+        start = ts(0)
+        end = ts(duration)
+        return "\n".join([
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1280",
+            "PlayResY: 720",
+            "WrapStyle: 0",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Opening,Microsoft YaHei,36,&H00FFFFFF,&H00FFFFFF,&H99000000,&H66000000,-1,0,0,0,100,100,0,0,1,2,1,8,60,60,70,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+            f"Dialogue: 0,{start},{end},Opening,,0,0,0,,{body}",
+            "",
+        ])
 
     def _merge_with_vf_subtitle(self, video_raw: Path, audio_file: Path,
                                  srt_file: Path, final_output: Path) -> Dict[str, Any]:

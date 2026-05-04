@@ -90,7 +90,9 @@ class KenBurnsGenerator:
                        output_path: str,
                        zoom_range: Tuple[float, float] = DEFAULT_ZOOM_RANGE,
                        sharpen_params: str = DEFAULT_SHARPEN,
-                       fade_duration: float = DEFAULT_FADE_DUR) -> bool:
+                       fade_duration: float = DEFAULT_FADE_DUR,
+                       fade_in: bool = True,
+                       fade_out: bool = True) -> bool:
         """为单张图片生成 Ken Burns 视频片段
 
         参数:
@@ -100,6 +102,8 @@ class KenBurnsGenerator:
             zoom_range: (起始缩放, 结束缩放)
             sharpen_params: unsharp 滤镜参数
             fade_duration: 淡入淡出时长（秒）
+            fade_in: 是否从黑场淡入；首场景应关闭，避免视频封面/开头黑屏。
+            fade_out: 是否在片段末尾淡到黑；最终场景应关闭，避免成片尾部黑屏。
 
         返回:
             True 成功, False 失败
@@ -135,6 +139,18 @@ class KenBurnsGenerator:
 
         # zoompan：注意表达式不能包含逗号（逗号会被 ffmpeg 解析为滤镜分隔符）
         # 使用 z=1 + step*on 的线性缩放代替 min(zoom+step, max)
+        fade_filters = []
+        if fade_in:
+            fade_filters.append(
+                f"fade=t=in:st=0:d={min(fade_duration, duration_sec*0.3):.2f}"
+            )
+        if fade_out:
+            fade_filters.append(
+                f"fade=t=out:st={fade_out_start:.2f}:"
+                f"d={min(fade_duration, duration_sec*0.3):.2f}"
+            )
+        fade_filter_text = "," + ",".join(fade_filters) if fade_filters else ""
+
         vf = (
             f"{vf_prefix}"
             f"zoompan="
@@ -144,9 +160,8 @@ class KenBurnsGenerator:
             f"d={kb_frames}:"
             f"s={render_w}x{render_h}:fps={self.fps},"
             f"scale=1280:720:flags=lanczos,"
-            f"unsharp={sharpen_params},"
-            f"fade=t=in:st=0:d={min(fade_duration, duration_sec*0.3):.2f},"
-            f"fade=t=out:st={fade_out_start:.2f}:d={min(fade_duration, duration_sec*0.3):.2f}"
+            f"unsharp={sharpen_params}"
+            f"{fade_filter_text}"
         )
 
         cmd = [
@@ -199,7 +214,9 @@ class KenBurnsGenerator:
                                      sharpen_params: str = DEFAULT_SHARPEN,
                                      transition_ratio: float = DEFAULT_TRANSITION_RATIO,
                                      min_img_dur: float = DEFAULT_MIN_IMG_DUR,
-                                     fade_duration: float = DEFAULT_FADE_DUR) -> bool:
+                                     fade_duration: float = DEFAULT_FADE_DUR,
+                                     fade_in: bool = True,
+                                     fade_out: bool = True) -> bool:
         """为多张变体图生成 Ken Burns 视频（带 crossfade）
 
         参数:
@@ -211,6 +228,8 @@ class KenBurnsGenerator:
             transition_ratio: crossfade 占每片段的比例
             min_img_dur: 单图最短时长
             fade_duration: 淡入淡出时长
+            fade_in: 是否让该场景从黑场淡入
+            fade_out: 是否让该场景最终淡到黑
 
         返回:
             True 成功, False 失败
@@ -224,7 +243,8 @@ class KenBurnsGenerator:
         if len(image_paths) == 1:
             return self.generate_scene(
                 image_paths[0], total_duration, output_path,
-                zoom_range, sharpen_params, fade_duration
+                zoom_range, sharpen_params, fade_duration,
+                fade_in=fade_in, fade_out=fade_out
             )
 
         # 多图 -> 先为每张图生成单图 KB，再 crossfade
@@ -242,7 +262,9 @@ class KenBurnsGenerator:
                 tmp = temp_dir / f"tmp_{Path(output_path).stem}_{i}.mp4"
                 ok = self.generate_scene(
                     img_path, dur_per_img, str(tmp),
-                    zoom_range, sharpen_params, fade_duration
+                    zoom_range, sharpen_params, fade_duration,
+                    fade_in=fade_in if i == 0 else True,
+                    fade_out=fade_out if i == len(image_paths) - 1 else True
                 )
                 if ok:
                     temp_clips.append(str(tmp))
@@ -357,11 +379,30 @@ class KenBurnsGenerator:
                 continue
 
             output_path = clips_dir / f"seg{sid}_scene_kb.mp4"
+            is_first_scene = idx == 0
+            is_last_scene = idx == len(scenes) - 1
 
             # 幂等：已有且大小正常则跳过
-            if output_path.exists() and output_path.stat().st_size > 1000:
+            if (
+                output_path.exists()
+                and output_path.stat().st_size > 1000
+                and not is_first_scene
+                and not is_last_scene
+            ):
                 results.append({"sid": sid, "status": "skipped", "reason": "already exists"})
                 continue
+            if output_path.exists() and is_first_scene:
+                try:
+                    output_path.unlink()
+                    print(f"  [KB] scene {sid}: 重新生成首片段，避免开头黑屏")
+                except OSError:
+                    pass
+            if output_path.exists() and is_last_scene:
+                try:
+                    output_path.unlink()
+                    print(f"  [KB] scene {sid}: 重新生成最终片段，避免旧淡出黑屏")
+                except OSError:
+                    pass
 
             print(f"  [KB] scene {sid}: {len(image_paths)} image(s), {dur}s")
 
@@ -371,6 +412,8 @@ class KenBurnsGenerator:
                 sharpen_params=sharpen,
                 transition_ratio=transition_ratio,
                 min_img_dur=min_img_dur,
+                fade_in=not is_first_scene,
+                fade_out=not is_last_scene,
             )
 
             status = "ok" if ok else "failed"
@@ -453,11 +496,16 @@ class KenBurnsGenerator:
             )
             prev_label = out_label
 
-        last_label = f"[{prev_label}]"
+        filter_parts.append(
+            f"[{prev_label}]tpad=stop_mode=clone:"
+            f"stop_duration={max(0.0, total_duration):.3f},"
+            f"trim=duration={max(0.1, total_duration):.3f},"
+            f"setpts=PTS-STARTPTS[vout]"
+        )
 
         cmd += [
             "-filter_complex", ";".join(filter_parts),
-            "-map", last_label,
+            "-map", "[vout]",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-preset", "fast",

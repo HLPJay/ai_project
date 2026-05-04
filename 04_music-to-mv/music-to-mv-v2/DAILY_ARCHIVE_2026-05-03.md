@@ -516,3 +516,254 @@ faster-whisper 识别真实人声时间线
 - 个别字幕局部快慢仍可能存在，这属于词级/字级 forced alignment 精度问题。
 - 后续可继续引入 WhisperX、stable-ts、MFA、aeneas 等更细粒度对齐方案。
 - 建议把 worker exit code、stderr、临时 JSON 路径、ASR 后端、模型、compute type 写入最终 HTML 报告。
+
+## 14. 当前项目交接总结
+
+本节用于新开窗口后快速接续当前项目状态。
+
+### 14.1 当前项目
+
+项目：
+
+```text
+music-to-mv-v2
+```
+
+路径：
+
+```text
+D:\claude_code\我的github项目落地\ai_project\04_music-to-mv\music-to-mv-v2
+```
+
+项目目标：
+
+```text
+从主题生成完整 MV，包括歌词、音乐、字幕对齐、场景分镜、图片、Ken Burns 视频、最终横屏/竖屏/TikTok 导出和 HTML 报告。
+```
+
+### 14.2 当前已完成的关键修复
+
+字幕时间线主逻辑已调整为：
+
+```text
+faster-whisper ASR 识别真实人声时间线
+↓
+保留 ASR 原生时间戳
+↓
+按顺序同步原始歌词文本
+↓
+生成 song.srt
+```
+
+确认字段：
+
+```text
+timeline_strategy = asr_native_sync
+```
+
+ASR 后端已切换为：
+
+```text
+faster-whisper
+```
+
+默认配置：
+
+```env
+ALIGN_ASR_BACKEND=faster-whisper
+ALIGN_WHISPER_DEVICE=auto
+ALIGN_WHISPER_COMPUTE_TYPE=float16
+ALIGN_WHISPER_BEAM_SIZE=5
+ALIGN_WHISPER_VAD_FILTER=true
+ALIGN_WHISPER_WORD_TIMESTAMPS=false
+```
+
+显存紧张时建议：
+
+```env
+ALIGN_WHISPER_MODEL=small
+ALIGN_WHISPER_FALLBACK_MODELS=base,tiny
+ALIGN_WHISPER_COMPUTE_TYPE=int8_float16
+```
+
+针对 Windows native crash：
+
+```text
+-1073740791
+```
+
+新增 ASR worker 子进程隔离：
+
+```text
+src/align_asr_worker.py
+```
+
+作用：
+
+```text
+faster-whisper / ctranslate2 / CUDA DLL 即使在子进程崩溃，也不直接杀掉主流程。
+```
+
+### 14.3 字幕同步相关修复
+
+已修复大漂移问题：
+
+- 原来可能因为重复副歌，把前面的歌词匹配到后面的时间段。
+- 现在 ASR 原生时间线优先，文本相似度只做局部辅助。
+
+已修复尾部重复歌词没有字幕的问题：
+
+- 代表项目：`母亲的温度_20260504_184427`
+- ASR 识别出 Final Chorus 重复，但原歌词只有一遍。
+- 当前会追加尾部重复 ASR 段。
+
+追加字幕标记：
+
+```text
+fallback = asr_repeated_tail
+```
+
+已优化 ASR 幻觉过滤：
+
+- 过滤片头制作信息幻觉，如 `编曲 李宗盛`。
+- 不再过度删除低相似度但时间戳可用的 ASR 段。
+
+### 14.4 主题参考图与关系类主题修复
+
+已优化关系类主题跑偏问题：
+
+- 增加关系类关键词：女朋友、女友、男朋友、男友、伴侣、对象。
+- 避免“陪伴”直接误判成家庭亲情。
+- 增加 `电影感 -> 电影感写实风`。
+- 关系主题强调成人、非性化、生活照护语义。
+
+### 14.5 开场歌曲信息叠加
+
+新增开场歌曲信息叠加：
+
+导出阶段会在视频开头约 6 秒显示：
+
+```text
+歌曲：xxx
+主题：xxx
+风格 / 曲风 / 情绪
+```
+
+配置：
+
+```env
+OPENING_INFO_ENABLED=true
+OPENING_INFO_DURATION_SEC=6
+```
+
+关闭：
+
+```env
+OPENING_INFO_ENABLED=false
+```
+
+涉及文件：
+
+```text
+src/exporter.py
+src/config_manager.py
+.env
+.env.example
+```
+
+### 14.6 当前重要文件
+
+```text
+src/align.py                  字幕对齐主逻辑
+src/align_asr_worker.py       faster-whisper 子进程 worker
+src/scripts_bridge.py         align 脚本桥接
+src/config_manager.py         配置管理
+src/exporter.py               拼接、合并、字幕、导出
+src/pipeline.py               主流水线
+DAILY_ARCHIVE_2026-05-03.md   阶段问题归档
+```
+
+### 14.7 常用复测命令
+
+语法检查：
+
+```powershell
+python -m py_compile src\align.py src\align_asr_worker.py src\config_manager.py src\scripts_bridge.py src\exporter.py src\pipeline.py
+```
+
+重新跑字幕对齐：
+
+```powershell
+python -X utf8 -u -m src.main --project "项目路径" --phase align --auto
+```
+
+重新跑导出：
+
+```powershell
+python -X utf8 -u -m src.main --project "项目路径" --phase export --auto
+```
+
+完整运行：
+
+```powershell
+python -X utf8 -u -m src.main --theme "主题" --style "写实摄影风" --music-style "民谣" --mood "温柔" --auto
+```
+
+### 14.8 仍需关注的问题
+
+字幕局部快慢仍可能存在：
+
+```text
+这是词级/字级 forced alignment 问题，不是大时间线漂移问题。
+```
+
+后续可考虑：
+
+```text
+WhisperX / stable-ts / MFA / aeneas
+```
+
+AI 歌曲前奏十几秒是常态：
+
+- 尤其抒情、国风、民谣、温柔类主题。
+- 可通过音乐 prompt 控制。
+
+建议提示词：
+
+```text
+前奏控制在 3-5 秒内，尽快进入第一句人声。
+```
+
+重新生成图片后，旧 Ken Burns clips 可能被复用：
+
+- 需要删除旧 clips。
+- 或后续增加 `--force-clips`。
+
+`.env` 中可能有重复配置：
+
+```text
+OPENING_INFO_ENABLED
+OPENING_INFO_DURATION_SEC
+```
+
+建议后续清理一次。
+
+最终报告还可以增强：
+
+- ASR backend
+- worker exit code
+- stderr
+- 临时 JSON 路径
+- 模型
+- compute type
+- timeline_strategy
+- 尾部重复追加数量
+- fallback 详情
+
+### 14.9 新窗口接续提示
+
+新窗口可以从这句话继续：
+
+```text
+我们已经把字幕主逻辑改为 faster-whisper + asr_native_sync，并新增 worker 隔离、尾部重复字幕追加、开场歌曲信息叠加。请继续检查后续待优化项。
+```

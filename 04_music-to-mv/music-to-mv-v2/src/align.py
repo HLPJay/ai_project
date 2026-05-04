@@ -788,6 +788,33 @@ class LyricsAligner:
         return filtered if filtered else asr_segments
 
     @staticmethod
+    def _write_asr_raw_srt(asr_segments: List[dict], output_path: Path) -> None:
+        """Write raw ASR subtitles before lyric-text synchronization.
+
+        This file is the baseline for debugging timestamp issues: it contains
+        the native faster-whisper segment times and recognized text, without
+        replacing text with the generated lyrics.
+        """
+        try:
+            parts = []
+            for seg in sorted(asr_segments or [], key=lambda x: float(x.get("start", 0.0) or 0.0)):
+                start = float(seg.get("start", 0.0) or 0.0)
+                end = float(seg.get("end", 0.0) or 0.0)
+                text = str(seg.get("text", "") or "").strip()
+                if end <= start or not text:
+                    continue
+                parts.append(
+                    f"{len(parts) + 1}\n"
+                    f"{format_srt_time(start)} --> {format_srt_time(end)}\n"
+                    f"{text}\n"
+                )
+            output_path.write_text("\n".join(parts), encoding="utf-8")
+            if parts:
+                print(f"  [OK] ASR 原生字幕: {output_path}")
+        except Exception as exc:
+            print(f"  [warn] ASR 原生字幕写入失败: {exc}")
+
+    @staticmethod
     def _is_obvious_asr_hallucination(text: str,
                                       coverage: float,
                                       no_speech_prob: float) -> bool:
@@ -933,6 +960,8 @@ class LyricsAligner:
         print(f"  [..] 过滤 ASR 幻觉段...")
         asr_segments = self._filter_misrecognized_asr(asr_segments, clean_lyrics)
         print(f"  [debug] 过滤后: {len(asr_segments)} 段")
+        raw_srt_path = project_dir / "audio" / "asr_raw.srt"
+        self._write_asr_raw_srt(asr_segments, raw_srt_path)
 
         # 获取音频总时长（优先使用音乐生成阶段记录的真实音频时长）
         audio_duration = 0.0
@@ -953,7 +982,11 @@ class LyricsAligner:
         timeline_fallback = False
         timeline_strategy = "asr_line_match"
         if alignments and any(a.get("matched") for a in alignments) and all(
-            a.get("fallback") in ("asr_segment_timeline", "asr_native_timeline")
+            a.get("fallback") in (
+                "asr_segment_timeline",
+                "asr_native_timeline",
+                "asr_word_timeline",
+            )
             for a in alignments
             if a.get("matched")
         ):
@@ -1003,6 +1036,7 @@ class LyricsAligner:
             "aligned_lines": matched,
             "total_lines": len(clean_lyrics),
             "srt_entries": srt_entries,
+            "asr_raw_srt_path": str(raw_srt_path),
             "alignment": alignments,
             "timeline_fallback": timeline_fallback,
             "timeline_strategy": timeline_strategy,
@@ -1298,13 +1332,19 @@ class LyricsAligner:
         span = max(0.0, last_end - first_start)
         max_gap = 0.0
         max_gap_after_idx = 0
+        short_count = 0
         for idx, (prev, cur) in enumerate(zip(matched, matched[1:]), start=1):
             prev_end = float(prev.get("end", 0.0) or 0.0)
             cur_start = float(cur.get("start", 0.0) or 0.0)
+            if float(prev.get("end", 0.0) or 0.0) - float(prev.get("start", 0.0) or 0.0) <= 0.7:
+                short_count += 1
             gap = cur_start - prev_end
             if gap > max_gap:
                 max_gap = gap
                 max_gap_after_idx = idx
+        last = matched[-1]
+        if float(last.get("end", 0.0) or 0.0) - float(last.get("start", 0.0) or 0.0) <= 0.7:
+            short_count += 1
 
         if first_start > max(30.0, audio_duration * 0.45):
             print(
@@ -1328,6 +1368,13 @@ class LyricsAligner:
                     f"after_line={max_gap_after_idx}, remaining={remaining}"
                 )
                 return True
+
+        if short_count >= max(4, int(len(matched) * 0.25)):
+            print(
+                f"      [warn] 短字幕过多: {short_count}/{len(matched)} "
+                f"(<=0.7s)，疑似长 ASR 段拆分失败"
+            )
+            return True
 
         if last_end > audio_duration + 5.0:
             print(
@@ -1363,7 +1410,12 @@ class LyricsAligner:
             if audio_duration > 0:
                 start = max(0.0, min(start, audio_duration))
                 end = max(start + 0.1, min(end, audio_duration))
-            valid_segments.append({"start": start, "end": end, "text": text})
+            valid_segments.append({
+                "start": start,
+                "end": end,
+                "text": text,
+                "words": seg.get("words") or [],
+            })
 
         if not valid_segments:
             return False
@@ -1388,14 +1440,17 @@ class LyricsAligner:
             else:
                 max_group = min(8, remaining_lyrics - (remaining_segments - 1))
                 max_group = max(1, max_group)
+                target_group = remaining_lyrics / max(1, remaining_segments)
                 group_size = LyricsAligner._best_lyric_group_size(
-                    seg["text"], lyrics, lyric_idx, max_group
+                    seg["text"], lyrics, lyric_idx, max_group,
+                    target_size=target_group,
                 )
 
             group = lyrics[lyric_idx: lyric_idx + group_size]
             LyricsAligner._assign_group_to_segment(
                 alignments, group, lyric_idx,
                 float(seg["start"]), float(seg["end"]),
+                seg=seg,
             )
             lyric_idx += group_size
 
@@ -1404,13 +1459,14 @@ class LyricsAligner:
             end = audio_duration if audio_duration > start else start + max(0.6, total_lyrics - lyric_idx)
             remaining = lyrics[lyric_idx:]
             LyricsAligner._assign_group_to_segment(
-                alignments, remaining, lyric_idx, start, end
+                alignments, remaining, lyric_idx, start, end,
+                seg=None,
             )
 
         return all(
             i < len(alignments) and alignments[i].get("matched")
             for i in range(total_lyrics)
-        )
+        ) and lyric_idx >= total_lyrics
 
     @staticmethod
     def _apply_asr_groups_to_lyrics(alignments: List[Dict],
@@ -1463,10 +1519,71 @@ class LyricsAligner:
             })
             seg_idx += take
 
+        if seg_idx < total_segments:
+            appended = LyricsAligner._append_repeated_tail_segments(
+                alignments, lyrics, valid_segments, seg_idx
+            )
+            if appended:
+                print(f"      [post] 追加重复歌词字幕: {appended} 行")
+
         return all(
             i < len(alignments) and alignments[i].get("matched")
             for i in range(total_lyrics)
         )
+
+    @staticmethod
+    def _append_repeated_tail_segments(alignments: List[Dict],
+                                       lyrics: List[str],
+                                       valid_segments: List[dict],
+                                       start_seg_idx: int) -> int:
+        """Append ASR tail segments that repeat earlier lyrics.
+
+        Generated songs often repeat the final chorus even when the original
+        lyrics file contains it only once. The native ASR timeline is correct,
+        so preserve those extra sung segments by mapping each tail ASR segment
+        back to the most similar original lyric line and appending a new SRT row.
+        """
+        appended = 0
+        next_idx = len(alignments)
+        recent_window_start = max(0, len(lyrics) - 10)
+        candidates = list(range(recent_window_start, len(lyrics)))
+
+        for seg in valid_segments[start_seg_idx:]:
+            text = str(seg.get("text", "") or "").strip()
+            if len(text) < 2:
+                continue
+
+            best_idx = -1
+            best_score = 0.0
+            for lyric_idx in candidates:
+                score = SimilarityScorer.score_pair(text, lyrics[lyric_idx])
+                if score > best_score:
+                    best_score = score
+                    best_idx = lyric_idx
+
+            if best_idx < 0 or best_score < 0.20:
+                continue
+
+            start = float(seg.get("start", 0.0) or 0.0)
+            end = float(seg.get("end", 0.0) or 0.0)
+            if end <= start:
+                continue
+
+            alignments.append({
+                "idx": next_idx,
+                "source_idx": best_idx,
+                "text": lyrics[best_idx],
+                "start": start,
+                "end": end,
+                "score": best_score,
+                "matched": True,
+                "interpolated": True,
+                "fallback": "asr_repeated_tail",
+            })
+            next_idx += 1
+            appended += 1
+
+        return appended
 
     @staticmethod
     def _best_asr_group_size_for_lyric(lyric: str,
@@ -1499,18 +1616,31 @@ class LyricsAligner:
 
     @staticmethod
     def _best_lyric_group_size(asr_text: str, lyrics: List[str],
-                               start_idx: int, max_group: int) -> int:
+                               start_idx: int, max_group: int,
+                               target_size: float = 0.0) -> int:
         """Choose how many original lyric lines belong to one ASR segment."""
         best_size = 1
         best_score = -1.0
         asr_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', asr_text)))
+        target_size = float(target_size or 0.0)
 
         for size in range(1, max_group + 1):
             candidate = "".join(lyrics[start_idx:start_idx + size])
             lyric_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', candidate)))
             raw_score = SimilarityScorer.score_pair(asr_text, candidate)
             length_ratio = min(asr_chars, lyric_chars) / max(asr_chars, lyric_chars)
-            score = raw_score * (0.65 + 0.35 * length_ratio)
+            target_score = 0.0
+            if target_size > 0:
+                target_score = max(
+                    0.0,
+                    1.0 - abs(size - target_size) / max(1.0, target_size),
+                )
+
+            # ASR often returns long segments containing several lyric lines.
+            # Pure similarity over-favors the first line in that segment; blend
+            # in length coverage and the expected remaining lyrics/segments
+            # cadence so long ASR segments are split into realistic line groups.
+            score = raw_score * 0.50 + length_ratio * 0.35 + target_score * 0.15
             if score > best_score:
                 best_score = score
                 best_size = size
@@ -1522,9 +1652,15 @@ class LyricsAligner:
                                  group: List[str],
                                  start_idx: int,
                                  seg_start: float,
-                                 seg_end: float) -> None:
+                                 seg_end: float,
+                                 seg: Optional[dict] = None) -> None:
         """Distribute lyric lines inside one ASR segment by text length."""
         if not group:
+            return
+
+        if seg and LyricsAligner._assign_group_to_segment_by_words(
+            alignments, group, start_idx, seg_start, seg_end, seg
+        ):
             return
 
         duration = max(0.1, seg_end - seg_start)
@@ -1556,6 +1692,102 @@ class LyricsAligner:
                 "fallback": "asr_segment_timeline",
             })
             cursor = line_end
+
+    @staticmethod
+    def _assign_group_to_segment_by_words(alignments: List[Dict],
+                                          group: List[str],
+                                          start_idx: int,
+                                          seg_start: float,
+                                          seg_end: float,
+                                          seg: dict) -> bool:
+        """Distribute lyric lines with faster-whisper word timestamps."""
+        raw_words = seg.get("words") or []
+        words = []
+        for word in raw_words:
+            try:
+                start = float(word.get("start"))
+                end = float(word.get("end"))
+            except Exception:
+                continue
+            text = str(word.get("word", "") or "").strip()
+            if not text or end <= start:
+                continue
+            units = len(re.findall(r'[\u4e00-\u9fff]', text)) or len(text)
+            if units <= 0:
+                continue
+            words.append({
+                "start": max(seg_start, min(start, seg_end)),
+                "end": max(seg_start, min(end, seg_end)),
+                "text": text,
+                "units": units,
+            })
+
+        if len(words) < max(2, len(group)):
+            return False
+
+        line_units = [
+            max(1, len(re.findall(r'[\u4e00-\u9fff]', text)) or len(text))
+            for text in group
+        ]
+        total_line_units = max(1, sum(line_units))
+        total_word_units = max(1, sum(word["units"] for word in words))
+
+        boundaries = [0]
+        consumed_line_units = 0
+        word_unit_cursor = 0
+        word_idx = 0
+        for units in line_units[:-1]:
+            consumed_line_units += units
+            target_units = consumed_line_units / total_line_units * total_word_units
+            while (
+                word_idx < len(words) - 1
+                and word_unit_cursor + words[word_idx]["units"] < target_units
+            ):
+                word_unit_cursor += words[word_idx]["units"]
+                word_idx += 1
+            boundary = max(boundaries[-1] + 1, min(word_idx + 1, len(words) - 1))
+            boundaries.append(boundary)
+        boundaries.append(len(words))
+
+        previous_end = seg_start
+        for offset, text in enumerate(group):
+            idx = start_idx + offset
+            begin = boundaries[offset]
+            end_idx = boundaries[offset + 1]
+            slice_words = words[begin:end_idx]
+            if slice_words:
+                line_start = max(previous_end, float(slice_words[0]["start"]))
+                line_end = float(slice_words[-1]["end"])
+            else:
+                portion_start = sum(line_units[:offset]) / total_line_units
+                portion_end = sum(line_units[:offset + 1]) / total_line_units
+                line_start = seg_start + (seg_end - seg_start) * portion_start
+                line_end = seg_start + (seg_end - seg_start) * portion_end
+
+            if offset == 0:
+                line_start = min(line_start, seg_start)
+            if offset == len(group) - 1:
+                line_end = max(line_end, seg_end)
+            if line_end <= line_start:
+                line_end = min(seg_end, line_start + 0.25)
+                if line_end <= line_start:
+                    line_end = line_start + 0.25
+
+            if idx >= len(alignments):
+                alignments.append({"idx": idx})
+            alignments[idx].update({
+                "idx": idx,
+                "text": text,
+                "start": line_start,
+                "end": line_end,
+                "score": 0.0,
+                "matched": True,
+                "interpolated": True,
+                "fallback": "asr_word_timeline",
+            })
+            previous_end = max(previous_end, line_end)
+
+        return True
 
     @staticmethod
     def _apply_uniform_timeline(alignments: List[Dict],
