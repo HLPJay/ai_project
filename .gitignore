@@ -1,0 +1,14 @@
+
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# Remotion / webpack cache
+**/.remotion/
+**/.cache/
+
+# build outputs
+dist/
+build/
+**/dist/
+**/build/

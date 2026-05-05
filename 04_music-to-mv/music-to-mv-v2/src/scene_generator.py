@@ -898,8 +898,8 @@ class SceneImageGenerator:
                 va = info.get("visual_anchors", "")
                 if va and isinstance(va, str):
                     return va
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("从 info.json 加载 visual_anchors 失败: %s", e)
 
         # 次优：从 scenes.json 提取 symbolic_objects
         if scenes:
@@ -946,16 +946,26 @@ class SceneImageGenerator:
             json_str = json_match.group(1)
         else:
             brace_start = raw.find("{")
-            brace_end = raw.rfind("}")
-            json_str = raw[brace_start:brace_end + 1] if brace_start != -1 and brace_end > brace_start else raw
+            json_str = ""
+            if brace_start != -1:
+                depth, end = 0, brace_start
+                for ci, ch in enumerate(raw[brace_start:], brace_start):
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end = ci
+                            break
+                json_str = raw[brace_start:end + 1]
 
         try:
             data = json.loads(json_str)
             anchor_prompt = data.get("prompt", "")
             if anchor_prompt and len(anchor_prompt) > 10:
                 return anchor_prompt
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("anchor JSON 解析失败: %s", e)
 
         return None
 
@@ -965,8 +975,8 @@ class SceneImageGenerator:
         if info_path.exists():
             try:
                 return json.loads(info_path.read_text(encoding="utf-8")).get("theme", "")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("从 info.json 加载 theme 失败: %s", e)
         return ""
 
     def generate_all(self, parallel: int = None) -> Dict[str, Any]:

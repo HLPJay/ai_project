@@ -14,11 +14,14 @@ registry.py — Prompt 注册表和版本管理
 """
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Dict, Optional, Any, List
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 # Jinja2 可用性在模块加载时检测一次，避免每次 render 都 import
 try:
@@ -94,14 +97,17 @@ class PromptTemplate:
 
 
 class PromptRegistry:
-    """Prompt 注册表"""
+    """Prompt 注册表（线程安全单例）"""
 
     _instance = None
+    _lock = __import__("threading").Lock()
 
     def __new__(cls, prompts_dir: str = None):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._init(prompts_dir)
+            with cls._lock:
+                if cls._instance is None:  # double-checked locking
+                    cls._instance = super().__new__(cls)
+                    cls._instance._init(prompts_dir)
         return cls._instance
 
     def _init(self, prompts_dir: str = None):
@@ -134,12 +140,14 @@ class PromptRegistry:
     def _load_registry(self) -> Dict:
         """加载 registry.yaml"""
         if not self.registry_path.exists():
+            logger.warning("Prompt 注册表文件不存在: %s，将使用空注册表（所有 prompt 走 fallback）", self.registry_path)
             return {}
         try:
             import yaml
             with open(self.registry_path, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
-        except Exception:
+        except Exception as e:
+            logger.error("加载 Prompt 注册表失败: %s，错误: %s，将使用空注册表", self.registry_path, e)
             return {}
 
     def _load_all_templates(self):

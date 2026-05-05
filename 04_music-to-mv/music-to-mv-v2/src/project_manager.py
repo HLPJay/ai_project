@@ -6,8 +6,11 @@ project_manager.py — 统一的项目状态管理器
 """
 
 import json
+import logging
 import os
 import random
+
+logger = logging.getLogger(__name__)
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -87,10 +90,19 @@ class ProjectManager:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         project_dir = root / f"{safe_name}_{timestamp}"
 
-        # 创建目录结构
+        # 创建目录结构（权限不足时回退到项目内 .workspace/mv）
         for subdir in ["metadata", "audio", "images", "clips", "temp", "output",
                        "metadata/llm_calls/responses"]:
-            (project_dir / subdir).mkdir(parents=True, exist_ok=True)
+            try:
+                (project_dir / subdir).mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                if root == Path.home() / ".openclaw/workspace/mv":
+                    fallback_root = Path(__file__).parent.parent / ".workspace/mv"
+                    logger.warning("默认工作区 %s 无写权限，回退到 %s", root, fallback_root)
+                    project_dir = fallback_root / f"{safe_name}_{timestamp}"
+                    (project_dir / subdir).mkdir(parents=True, exist_ok=True)
+                else:
+                    raise
 
         # 初始化 info.json
         info = {

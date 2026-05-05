@@ -362,7 +362,10 @@ def main():
 
         pipeline = MVPipeline(project_dir, auto_mode=args.auto)
         phase = args.phase or "all"
-        print(f"📂 继续项目: {pipeline.pm.project_name}")
+        pm = pipeline.pm
+        print(f"📂 继续项目: {pm.project_name}")
+        print(f"   主题: {pm.theme or '-'}")
+        print(f"   风格: {pm.style}  音乐: {pm.music_style}")
         print(f"   路径: {project_dir}")
         print(f"   阶段: {phase}")
 

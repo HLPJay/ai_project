@@ -202,11 +202,11 @@ def generate_scenes_from_srt(srt_path, lyrics_text, theme, mood, output_path):
 
     for g in groups:
         g["label"] = f"{base_label}-{name_labels.get(g['name'], '片段')}"
-        g["desc"] = (
-            f"{get_fallback_desc(g['name'], char_prompt, theme,
-                                  g['text_preview'], mood_desc, 'anime style')}"
-            f"{quality}"
+        desc_text = get_fallback_desc(
+            g["name"], char_prompt, theme,
+            g["text_preview"], mood_desc, "anime style"
         )
+        g["desc"] = f"{desc_text}{quality}"
         g["display_name"] = g["name"]
         g["segment_count"] = len(group_segs) if 'group_segs' in dir() else 2
 

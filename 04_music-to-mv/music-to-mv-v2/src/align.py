@@ -45,29 +45,32 @@ if sys.platform == "win32":
 # ── JSON 安全序列化工具 ──
 def _safe_json_default(obj):
     """处理 json.dumps 无法直接序列化的类型（如 numpy 类型）"""
-    import numpy as np
-    if isinstance(obj, (np.integer,)):
-        return int(obj)
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
-    if isinstance(obj, (np.bool_,)):
-        return bool(obj)
-    if isinstance(obj, (np.ndarray,)):
-        return obj.tolist()
-    if isinstance(obj, (np.str_,)):
-        return str(obj)
+    try:
+        import numpy as np
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        if isinstance(obj, (np.str_,)):
+            return str(obj)
+    except ImportError:
+        pass
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 def _safe_json_dumps(obj, **kwargs):
     """json.dumps 的安全版本，兼容 numpy 类型。绝对不崩溃。"""
     try:
         return json.dumps(obj, default=_safe_json_default, **kwargs)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("json.dumps 第1次失败，降级到 _recursive_to_python: %s", e)
     try:
         return json.dumps(_recursive_to_python(obj), default=_safe_json_default, **kwargs)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("json.dumps 第2次失败，降级到终极兜底: %s", e)
     # 终极兜底：逐个字段构建安全的 JSON
     try:
         safe = _recursive_to_python(obj)
@@ -80,7 +83,11 @@ def _recursive_to_python(obj, _depth=0):
     """递归将对象中的所有值转换为纯 Python 类型。绝对安全不崩溃。"""
     if _depth > 100:
         return str(obj) if obj is not None else None
-    import numpy as np
+    try:
+        import numpy as np
+        _has_numpy = True
+    except ImportError:
+        _has_numpy = False
     if obj is None:
         return None
     if isinstance(obj, dict):
@@ -89,12 +96,12 @@ def _recursive_to_python(obj, _depth=0):
         return [_recursive_to_python(item, _depth + 1) for item in obj]
     elif isinstance(obj, tuple):
         return tuple(_recursive_to_python(item, _depth + 1) for item in obj)
-    elif isinstance(obj, np.ndarray):
+    elif _has_numpy and isinstance(obj, np.ndarray):
         try:
             return obj.tolist()
         except Exception:
             return list(obj) if hasattr(obj, "__iter__") else [obj.item()]
-    elif hasattr(obj, "dtype"):  # numpy 标量类型
+    elif _has_numpy and hasattr(obj, "dtype"):  # numpy 标量类型
         try:
             return obj.item() if hasattr(obj, "item") else str(obj)
         except Exception:
@@ -134,12 +141,14 @@ def _run_faster_whisper_worker(audio_path: str,
                                model_sizes: List[str],
                                device: str,
                                language: str,
-                               initial_prompt: str) -> dict:
+                               initial_prompt: str,
+                               force_no_vad: bool = False) -> dict:
     """Run faster-whisper in an isolated child process."""
     cfg = ConfigManager()
     compute_type = str(cfg.get("align_whisper_compute_type", "default") or "default")
     beam_size = int(cfg.get_int("align_whisper_beam_size", 5))
-    vad_filter = bool(cfg.get_bool("align_whisper_vad_filter", True))
+    # force_no_vad=True 时忽略配置，Demucs 已分离人声后不需要 VAD
+    vad_filter = bool(cfg.get_bool("align_whisper_vad_filter", True)) and not force_no_vad
     word_timestamps = bool(cfg.get_bool("align_whisper_word_timestamps", False))
     timeout = int(cfg.get_int("align_timeout_sec", 600))
 
@@ -185,8 +194,8 @@ def _run_faster_whisper_worker(audio_path: str,
         payload = json.loads(output_path.read_text(encoding="utf-8"))
         try:
             output_path.unlink()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("清理 faster-whisper 输出文件失败: %s", e)
         if payload.get("segments"):
             if result.returncode != 0:
                 logger.warning("faster-whisper worker exited with code %s, using completed ASR output", result.returncode)
@@ -279,17 +288,28 @@ class WhisperTranscriber:
 
     @staticmethod
     def _get_file_hash(file_path: str) -> str:
-        """计算文件哈希（用于缓存）"""
+        """计算文件哈希（用于缓存）。
+
+        使用完整文件内容 + 文件大小 + 修改时间做哈希，
+        避免仅读前64KB导致的缓存误命中。
+        """
         import hashlib
+        import os
+        path = Path(file_path)
         hasher = hashlib.md5()
+        # 加入文件大小和修改时间作为哈希的一部分
+        stat = path.stat()
+        hasher.update(f"{stat.st_size}-{stat.st_mtime}".encode())
+        # 读取完整文件内容（音频文件通常几十MB，读完比误判缓存好）
         with open(file_path, "rb") as f:
-            # 只读前 64KB 加速
-            hasher.update(f.read(65536))
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
         return hasher.hexdigest()
 
     def transcribe(self, audio_path: str, temp_dir: str,
                    cache: bool = True,
-                   initial_prompt: str = "") -> dict:
+                   initial_prompt: str = "",
+                   force_no_vad: bool = False) -> dict:
         """执行 Whisper 转写
 
         参数:
@@ -297,6 +317,7 @@ class WhisperTranscriber:
             temp_dir: 临时目录
             cache: 是否使用缓存
             initial_prompt: 提示Whisper使用简体中文，提高识别准确度
+            force_no_vad: 强制关闭 VAD（Demucs 已分离人声时使用，避免误过滤古典唱腔）
 
         返回:
             whisper 完整输出（含 segments 列表）
@@ -345,6 +366,7 @@ class WhisperTranscriber:
                     device=device,
                     language=language,
                     initial_prompt=initial_prompt,
+                    force_no_vad=force_no_vad,
                 )
                 if cache:
                     result["_source_hash"] = audio_hash
@@ -416,20 +438,25 @@ class WhisperTranscriber:
             f"Whisper 转写失败（尝试了所有模型）: {last_error}"
         )
 
+    @staticmethod
+    def _transcribe_faster_whisper(audio_path: str, model_sizes: List[str],
+                                   device: str, language: str,
+                                   initial_prompt: str,
+                                   force_no_vad: bool = False) -> dict:
+        """调用 faster-whisper 进行语音转写（子进程模式）"""
+        return _run_faster_whisper_worker(
+            audio_path=audio_path,
+            model_sizes=model_sizes,
+            device=device,
+            language=language,
+            initial_prompt=initial_prompt,
+            force_no_vad=force_no_vad,
+        )
+
 
 # ════════════════════════════════════════════════════════════
 # Demucs 人声分离器
 # ════════════════════════════════════════════════════════════
-
-WhisperTranscriber._transcribe_faster_whisper = staticmethod(
-    lambda audio_path, model_sizes, device, language, initial_prompt: _run_faster_whisper_worker(
-        audio_path=audio_path,
-        model_sizes=model_sizes,
-        device=device,
-        language=language,
-        initial_prompt=initial_prompt,
-    )
-)
 
 
 class DemucsVocalSeparator:
@@ -443,18 +470,10 @@ class DemucsVocalSeparator:
 
     @staticmethod
     def is_available() -> bool:
-        """检查 demucs 是否可调用"""
-        cfg = ConfigManager()
-        check_timeout = cfg.get_int("align_demucs_check_timeout_sec", 10)
-        print(f"  [..] 检查 Demucs 是否可用（timeout={check_timeout}s）...", flush=True)
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "demucs", "--help"],
-                capture_output=True, text=True, timeout=check_timeout
-            )
-            return result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
+        """检查 demucs 是否已安装（用 importlib 检查，避免启动子进程触发 torch 冷启动超时）"""
+        import importlib.util
+        print("  [..] 检查 Demucs 是否可用...", flush=True)
+        return importlib.util.find_spec("demucs") is not None
 
     def separate(self, audio_path: str, temp_dir: str,
                  timeout: int = 600) -> Optional[str]:
@@ -494,9 +513,35 @@ class DemucsVocalSeparator:
             )
 
             if result.returncode != 0:
-                print(f"  [!] Demucs 失败 (code={result.returncode}), 使用原始音频")
-                print(f"  [!] Demucs 日志: {log_path}")
-                return None
+                # Windows native crash 退出码（0xC0000005/0xC0000409 等），自动降级 CPU 重试
+                _win_crash_codes = {
+                    3221225477,   # 0xC0000005 ACCESS_VIOLATION
+                    3221226505,   # 0xC0000409 STACK_BUFFER_OVERRUN
+                    3221225725,   # 0xC000009D UNEXPECTED_ERROR (常见 CUDA 崩溃)
+                }
+                if demucs_device != "cpu" and result.returncode in _win_crash_codes:
+                    print(f"  [!] Demucs CUDA 崩溃 (code={result.returncode})，自动降级 CPU 重试...")
+                    logger.warning("Demucs CUDA crash (code=%d)，降级 CPU 重试", result.returncode)
+                    cpu_cmd = [c if c != demucs_device else "cpu" for c in cmd]
+                    result2 = subprocess.run(
+                        cpu_cmd,
+                        capture_output=True, text=True,
+                        encoding="utf-8", errors="replace",
+                        timeout=timeout,
+                    )
+                    log_path.write_text(
+                        f"[CUDA crash, retried with CPU]\nSTDOUT:\n{result2.stdout or ''}\n\nSTDERR:\n{result2.stderr or ''}",
+                        encoding="utf-8",
+                    )
+                    if result2.returncode == 0:
+                        result = result2  # 让后续查找 vocals.wav 正常继续
+                    else:
+                        print(f"  [!] Demucs CPU 重试也失败 (code={result2.returncode}), 使用原始音频")
+                        return None
+                else:
+                    print(f"  [!] Demucs 失败 (code={result.returncode}), 使用原始音频")
+                    print(f"  [!] Demucs 日志: {log_path}")
+                    return None
 
             # 查找分离后的人声文件。Demucs 不同版本/封装的输出目录略有差异。
             basename = Path(audio_path).stem
@@ -547,6 +592,79 @@ def parse_srt_time(timestr: str) -> float:
     h, m, rest = timestr.split(":")
     s, ms = rest.replace(",", ".").split(".")
     return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def _validate_srt_block(block: str) -> Tuple[bool, str]:
+    """验证单个 SRT 块格式是否合法。
+
+    返回: (是否合法, 错误原因)
+    """
+    lines = block.strip().split("\n")
+    if len(lines) < 2:
+        return False, "块行数不足（需要索引+时间戳+文本）"
+
+    # 第1行: 索引号
+    try:
+        idx = int(lines[0].strip())
+        if idx <= 0:
+            return False, f"索引号必须为正整数，实际: {idx}"
+    except ValueError:
+        return False, f"索引号格式错误: {lines[0].strip()}"
+
+    # 第2行: 时间戳
+    ts_line = lines[1].strip()
+    if " --> " not in ts_line:
+        return False, f"时间戳行缺少 ' --> ': {ts_line}"
+
+    try:
+        start_str, end_str = ts_line.split(" --> ")
+        start = parse_srt_time(start_str.strip())
+        end = parse_srt_time(end_str.strip())
+        if end <= start:
+            return False, f"结束时间({end:.3f})应大于开始时间({start:.3f})"
+    except Exception as e:
+        return False, f"时间戳解析失败: {e}"
+
+    return True, ""
+
+
+def validate_srt_content(srt_content: str) -> Tuple[bool, str, List[int]]:
+    """验证 SRT 内容格式是否合法。
+
+    返回: (是否完全合法, 错误信息, 有效块索引列表)
+    """
+    blocks = srt_content.strip().split("\n\n")
+    valid_indices = []
+    errors = []
+
+    expected_idx = 1
+    for i, block in enumerate(blocks):
+        block = block.strip()
+        if not block:
+            continue
+
+        lines = block.split("\n")
+        # 检查是否有时间戳行
+        if not any(" --> " in line for line in lines):
+            errors.append(f"块{i+1}: 缺少时间戳行")
+            continue
+
+        valid, err = _validate_srt_block(block)
+        if valid:
+            try:
+                idx = int(lines[0].strip())
+                valid_indices.append(idx)
+                if idx != expected_idx:
+                    errors.append(f"块{i+1}: 索引号应为{expected_idx}，实际{idx}")
+                expected_idx = idx + 1
+            except ValueError:
+                errors.append(f"块{i+1}: 索引号解析失败")
+        else:
+            errors.append(f"块{i+1}: {err}")
+
+    if errors:
+        return False, "; ".join(errors[:5]), valid_indices
+    return True, "", valid_indices
 
 
 def parse_lyrics(lyrics_path: str) -> Tuple[List[str], List[str]]:
@@ -770,22 +888,23 @@ class LyricsAligner:
             if not srt_path.exists():
                 raise FileNotFoundError(f"SRT 文件不存在: {srt_file}")
 
-            # 解析 SRT 验证格式
+            # 解析 SRT 并验证格式
             srt_content = srt_path.read_text(encoding="utf-8")
-            srt_entries = srt_content.strip().split("\n\n")
-            valid_entries = [e for e in srt_entries if " --> " in e]
+            is_valid, err_msg, valid_indices = validate_srt_content(srt_content)
+            if not is_valid:
+                logger.warning("SRT 文件格式存在警告（非致命）: %s", err_msg)
 
             output_srt.write_text(srt_content, encoding="utf-8")
             _, clean_lines = parse_lyrics(str(lyrics_path))
 
             print(f"  [OK] 手动模式 SRT 已复制")
-            print(f"  [OK] SRT 条目: {len(valid_entries)}")
+            print(f"  [OK] SRT 有效条目: {len(valid_indices)}")
 
             return {
                 "srt_path": str(output_srt),
-                "aligned_lines": len(valid_entries),
+                "aligned_lines": len(valid_indices),
                 "total_lines": len(clean_lines),
-                "srt_entries": len(valid_entries),
+                "srt_entries": len(valid_indices),
                 "alignment": [],
                 "status": "completed",
             }
@@ -799,11 +918,13 @@ class LyricsAligner:
             raise ImportError("ALIGN_ASR_ENABLED=false")
 
         demucs_enabled = cfg.get_bool("align_demucs_enabled", True)
+        demucs_succeeded = False
         if demucs_enabled and DemucsVocalSeparator.is_available():
             vocal_path = DemucsVocalSeparator().separate(
                 str(audio_path), str(temp_dir), timeout
             )
             audio_for_asr = vocal_path or str(audio_path)
+            demucs_succeeded = bool(vocal_path)
         elif not demucs_enabled:
             audio_for_asr = str(audio_path)
             print(f"  [..] Demucs 已通过配置关闭，使用原始音频")
@@ -825,6 +946,7 @@ class LyricsAligner:
         whisper_result = WhisperTranscriber().transcribe(
             audio_for_asr, str(temp_dir),
             initial_prompt=initial_prompt,
+            force_no_vad=demucs_succeeded,
         )
 
         # ③ 两遍匹配对齐
@@ -1511,10 +1633,11 @@ class LyricsAligner:
                 )
 
             # ASR often returns long segments containing several lyric lines.
-            # Pure similarity over-favors the first line in that segment; blend
-            # in length coverage and the expected remaining lyrics/segments
-            # cadence so long ASR segments are split into realistic line groups.
-            score = raw_score * 0.50 + length_ratio * 0.35 + target_score * 0.15
+            # length_ratio（字数比）比文字相似度更可靠：
+            # 当 ASR 误识别某行歌词时，raw_score 会因文字不匹配而下降，
+            # 导致算法错误地选择更小的分组，把最后几行歌词推到下一段的起点。
+            # 降低 raw_score 权重、提高 length_ratio 权重可减少此类 1-2 秒偏移。
+            score = raw_score * 0.25 + length_ratio * 0.60 + target_score * 0.15
             if score > best_score:
                 best_score = score
                 best_size = size

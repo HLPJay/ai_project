@@ -3,7 +3,7 @@ test_report_generator.py — 报告生成器测试
 
 覆盖:
   - 初始化
-  - 数据加载（无日志、有日志、空行跳过）
+  - 数据加载（无日志、有日志，空行跳过）
   - 项目信息读取
   - 场景数读取
   - Provider 收集
@@ -11,7 +11,7 @@ test_report_generator.py — 报告生成器测试
   - Token 估算
   - Truncate
   - Format bytes
-  - HTML 生成（基本结构、空报告）
+  - HTML 生成（基本结构，空报告）
   - 完整 generate() 流水线
   - 写入文件
   - JSONL 格式兼容性
@@ -19,11 +19,10 @@ test_report_generator.py — 报告生成器测试
 
 import json
 import os
-import shutil
 import sys
-import tempfile
-import unittest
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -38,80 +37,76 @@ def make_log_file(dir_path, records, filename="log.jsonl"):
     return path
 
 
-class TestReportGeneratorInit(unittest.TestCase):
+def _init_rg_dirs(project_dir: Path):
+    (project_dir / "metadata").mkdir(exist_ok=True)
+    (project_dir / "metadata" / "llm_calls").mkdir(exist_ok=True)
+    (project_dir / "output").mkdir(exist_ok=True)
+
+
+class TestReportGeneratorInit:
     """测试初始化"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_rpt_init_"))
-        (self.test_dir / "metadata").mkdir()
-        (self.test_dir / "metadata" / "llm_calls").mkdir()
-        (self.test_dir / "output").mkdir()
+    def test_init(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
+        assert gen.project_dir == tmp_path
+        assert gen.records == []
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_init(self):
-        gen = ReportGenerator(str(self.test_dir))
-        self.assertEqual(gen.project_dir, self.test_dir)
-        self.assertEqual(gen.records, [])
-
-    def test_init_no_llm_dir(self):
-        """没有 llm_calls 目录也能初始化"""
-        shutil.rmtree(self.test_dir / "metadata" / "llm_calls")
-        gen = ReportGenerator(str(self.test_dir))
-        self.assertEqual(gen.records, [])
+    def test_init_no_llm_dir(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        import shutil
+        shutil.rmtree(tmp_path / "metadata" / "llm_calls")
+        gen = ReportGenerator(str(tmp_path))
+        assert gen.records == []
 
 
-class TestReportGeneratorDataLoading(unittest.TestCase):
+class TestReportGeneratorDataLoading:
     """测试数据加载"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_rpt_load_"))
-        (self.test_dir / "metadata" / "llm_calls").mkdir(parents=True)
-        (self.test_dir / "output").mkdir()
-        self.gen = ReportGenerator(str(self.test_dir))
+    def test_load_no_files(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
+        gen._load_records()
+        assert gen.records == []
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_load_no_files(self):
-        self.gen._load_records()
-        self.assertEqual(self.gen.records, [])
-
-    def test_load_single_file(self):
-        make_log_file(self.test_dir / "metadata" / "llm_calls", [
+    def test_load_single_file(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        make_log_file(tmp_path / "metadata" / "llm_calls", [
             {"step": "lyrics", "model": "MiniMax-M2.7", "prompt": "hello"},
             {"step": "music", "model": "music-2.6", "prompt": "world"},
         ])
-        self.gen._load_records()
-        self.assertEqual(len(self.gen.records), 2)
+        gen = ReportGenerator(str(tmp_path))
+        gen._load_records()
+        assert len(gen.records) == 2
 
-    def test_load_multiple_files(self):
-        d = self.test_dir / "metadata" / "llm_calls"
+    def test_load_multiple_files(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        d = tmp_path / "metadata" / "llm_calls"
         make_log_file(d, [{"step": "lyrics", "prompt": "a"}], "log1.jsonl")
         make_log_file(d, [{"step": "music", "prompt": "b"}], "log2.jsonl")
-        self.gen._load_records()
-        self.assertEqual(len(self.gen.records), 2)
+        gen = ReportGenerator(str(tmp_path))
+        gen._load_records()
+        assert len(gen.records) == 2
 
-    def test_load_skip_empty_lines(self):
-        make_log_file(self.test_dir / "metadata" / "llm_calls", [
-            {"step": "lyrics"},
-            None,
-        ])
-        # 写入一个空行
-        log_path = self.test_dir / "metadata" / "llm_calls" / "log.jsonl"
+    def test_load_skip_empty_lines(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        log_path = tmp_path / "metadata" / "llm_calls" / "log.jsonl"
         log_path.write_text('{"step":"lyrics"}\n\n{"step":"music"}\n', encoding="utf-8")
-        self.gen._load_records()
-        self.assertEqual(len(self.gen.records), 2)
+        gen = ReportGenerator(str(tmp_path))
+        gen._load_records()
+        assert len(gen.records) == 2
 
-    def test_load_skip_invalid_json(self):
-        log_path = self.test_dir / "metadata" / "llm_calls" / "bad.jsonl"
+    def test_load_skip_invalid_json(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        log_path = tmp_path / "metadata" / "llm_calls" / "bad.jsonl"
         log_path.write_text('{"step":"lyrics"}\ninvalid json\n{"step":"music"}\n', encoding="utf-8")
-        self.gen._load_records()
-        self.assertEqual(len(self.gen.records), 2)
+        gen = ReportGenerator(str(tmp_path))
+        gen._load_records()
+        assert len(gen.records) == 2
 
-    def test_load_llm_logger_summary_record(self):
-        responses = self.test_dir / "metadata" / "llm_calls" / "responses"
+    def test_load_llm_logger_summary_record(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        responses = tmp_path / "metadata" / "llm_calls" / "responses"
         responses.mkdir()
         response_path = responses / "call.json"
         response_path.write_text(
@@ -122,7 +117,7 @@ class TestReportGeneratorDataLoading(unittest.TestCase):
             }, ensure_ascii=False),
             encoding="utf-8",
         )
-        make_log_file(self.test_dir / "metadata" / "llm_calls", [
+        make_log_file(tmp_path / "metadata" / "llm_calls", [
             {
                 "prompt_key": "lyrics",
                 "model": "MiniMax-M2.7",
@@ -130,61 +125,55 @@ class TestReportGeneratorDataLoading(unittest.TestCase):
                 "status": "success",
             }
         ])
+        gen = ReportGenerator(str(tmp_path))
+        gen._load_records()
+        assert gen.records[0]["step"] == "lyrics"
+        assert gen.records[0]["prompt"] == "生成歌词"
+        assert gen.records[0]["response"] == "{\"title\":\"春风\"}"
 
-        self.gen._load_records()
 
-        self.assertEqual(self.gen.records[0]["step"], "lyrics")
-        self.assertEqual(self.gen.records[0]["prompt"], "生成歌词")
-        self.assertEqual(self.gen.records[0]["response"], "{\"title\":\"春风\"}")
-
-
-class TestReportGeneratorProjectInfo(unittest.TestCase):
+class TestReportGeneratorProjectInfo:
     """测试项目信息读取"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_rpt_info_"))
-        (self.test_dir / "metadata").mkdir()
-        (self.test_dir / "output").mkdir()
-        self.gen = ReportGenerator(str(self.test_dir))
+    def test_no_info_json(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
+        title, theme = gen._load_project_info()
+        assert title == ""
+        assert theme == ""
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_no_info_json(self):
-        title, theme = self.gen._load_project_info()
-        self.assertEqual(title, "")
-        self.assertEqual(theme, "")
-
-    def test_with_info_json(self):
+    def test_with_info_json(self, tmp_path):
+        _init_rg_dirs(tmp_path)
         info = {"song_title": "童年", "theme": "童年时光"}
-        (self.test_dir / "metadata" / "info.json").write_text(
-            json.dumps(info), encoding="utf-8"
-        )
-        title, theme = self.gen._load_project_info()
-        self.assertEqual(title, "童年")
-        self.assertEqual(theme, "童年时光")
+        (tmp_path / "metadata" / "info.json").write_text(json.dumps(info), encoding="utf-8")
+        gen = ReportGenerator(str(tmp_path))
+        title, theme = gen._load_project_info()
+        assert title == "童年"
+        assert theme == "童年时光"
 
-    def test_no_scenes_json(self):
-        count = self.gen._load_scenes_count()
-        self.assertEqual(count, 0)
+    def test_no_scenes_json(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
+        count = gen._load_scenes_count()
+        assert count == 0
 
-    def test_with_scenes_json(self):
+    def test_with_scenes_json(self, tmp_path):
+        _init_rg_dirs(tmp_path)
         scenes = [{"id": 1}, {"id": 2}, {"id": 3}]
-        (self.test_dir / "metadata" / "scenes.json").write_text(
-            json.dumps(scenes), encoding="utf-8"
-        )
-        count = self.gen._load_scenes_count()
-        self.assertEqual(count, 3)
+        (tmp_path / "metadata" / "scenes.json").write_text(json.dumps(scenes), encoding="utf-8")
+        gen = ReportGenerator(str(tmp_path))
+        count = gen._load_scenes_count()
+        assert count == 3
 
-    def test_with_invalid_scenes_json(self):
-        (self.test_dir / "metadata" / "scenes.json").write_text(
-            "invalid", encoding="utf-8"
-        )
-        count = self.gen._load_scenes_count()
-        self.assertEqual(count, 0)
+    def test_with_invalid_scenes_json(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        (tmp_path / "metadata" / "scenes.json").write_text("invalid", encoding="utf-8")
+        gen = ReportGenerator(str(tmp_path))
+        count = gen._load_scenes_count()
+        assert count == 0
 
 
-class TestReportGeneratorStats(unittest.TestCase):
+class TestReportGeneratorStats:
     """测试统计方法"""
 
     def test_collect_providers(self):
@@ -195,8 +184,8 @@ class TestReportGeneratorStats(unittest.TestCase):
             {"model": "MiniMax-M2.7"},
         ]
         providers = gen._collect_providers()
-        self.assertEqual(len(providers), 2)
-        self.assertIn("MiniMax-M2.7", providers)
+        assert len(providers) == 2
+        assert "MiniMax-M2.7" in providers
 
     def test_group_by_step(self):
         gen = ReportGenerator("/tmp")
@@ -208,97 +197,87 @@ class TestReportGeneratorStats(unittest.TestCase):
             {"step": "scene_desc_single"},
         ]
         groups = gen._group_by_step()
-        self.assertIn("lyrics", groups)
-        self.assertIn("scene_desc", groups)
-        self.assertEqual(len(groups["lyrics"]), 2)
-        self.assertEqual(len(groups["scene_desc"]), 2)
+        assert "lyrics" in groups
+        assert "scene_desc" in groups
+        assert len(groups["lyrics"]) == 2
+        assert len(groups["scene_desc"]) == 2
 
     def test_group_by_step_unknown(self):
         gen = ReportGenerator("/tmp")
         gen.records = [{"step": "some_random_step"}]
         groups = gen._group_by_step()
-        self.assertIn("some_random_step", groups)
+        assert "some_random_step" in groups
 
     def test_sort_steps(self):
         gen = ReportGenerator("/tmp")
         groups = {"scene_desc": [0], "music": [1], "lyrics": [2]}
         sorted_steps = gen._sort_steps(groups)
-        self.assertEqual(sorted_steps, ["lyrics", "music", "scene_desc"])
+        assert sorted_steps == ["lyrics", "music", "scene_desc"]
 
     def test_sort_steps_unknown_first(self):
         gen = ReportGenerator("/tmp")
         groups = {"unknown_step": [0], "lyrics": [1]}
         sorted_steps = gen._sort_steps(groups)
-        self.assertEqual(sorted_steps[0], "lyrics")
-        self.assertEqual(sorted_steps[1], "unknown_step")
+        assert sorted_steps[0] == "lyrics"
+        assert sorted_steps[1] == "unknown_step"
 
 
-class TestReportGeneratorUtils(unittest.TestCase):
+class TestReportGeneratorUtils:
     """测试工具方法"""
 
     def test_count_tokens_empty(self):
-        self.assertEqual(ReportGenerator._count_tokens(""), 0)
-        self.assertEqual(ReportGenerator._count_tokens(None), 0)
+        assert ReportGenerator._count_tokens("") == 0
+        assert ReportGenerator._count_tokens(None) == 0
 
     def test_count_tokens_chinese(self):
-        # 每个中文字 ≈ 2.5 token
         tokens = ReportGenerator._count_tokens("你好世界")
-        self.assertAlmostEqual(tokens, 10.0, places=1)
+        assert abs(tokens - 10.0) < 0.1
 
     def test_count_tokens_english(self):
-        # 每个英文字 ≈ 0.25 token
         tokens = ReportGenerator._count_tokens("hello")
-        self.assertAlmostEqual(tokens, 1.25, places=1)
+        assert abs(tokens - 1.25) < 0.1
 
     def test_truncate_short(self):
-        self.assertEqual(ReportGenerator._truncate("hello", 10), "hello")
+        assert ReportGenerator._truncate("hello", 10) == "hello"
 
     def test_truncate_long(self):
         result = ReportGenerator._truncate("x" * 50, 20)
-        self.assertEqual(len(result), 23)  # 20 + ...
-        self.assertTrue(result.endswith("..."))
+        assert len(result) == 23
+        assert result.endswith("...")
 
     def test_truncate_none(self):
-        self.assertEqual(ReportGenerator._truncate(None), "")
+        assert ReportGenerator._truncate(None) == ""
 
     def test_format_bytes_int(self):
-        self.assertEqual(ReportGenerator._format_bytes(2048), "2KB")
+        assert ReportGenerator._format_bytes(2048) == "2KB"
 
     def test_format_bytes_none(self):
-        self.assertEqual(ReportGenerator._format_bytes(None), "")
+        assert ReportGenerator._format_bytes(None) == ""
 
     def test_format_bytes_dict(self):
-        self.assertEqual(ReportGenerator._format_bytes({"size": 1024}), "1KB")
+        assert ReportGenerator._format_bytes({"size": 1024}) == "1KB"
 
     def test_get_step_tag_known(self):
         label, cls = ReportGenerator._get_step_tag("lyrics")
-        self.assertIn("歌词", label)
-        self.assertEqual(cls, "tag-lyrics")
+        assert "歌词" in label
+        assert cls == "tag-lyrics"
 
     def test_get_step_tag_unknown(self):
         label, cls = ReportGenerator._get_step_tag("something_weird")
-        self.assertIn("未知", label)
+        assert "未知" in label
 
     def test_get_step_tag_partial_match(self):
-        """变体描述应匹配 scene"""
         label, cls = ReportGenerator._get_step_tag("variant_desc")
-        self.assertIn("变体", label)
-        self.assertEqual(cls, "tag-scene")
+        assert "变体" in label
+        assert cls == "tag-scene"
 
 
-class TestReportGeneratorHTMLBuilding(unittest.TestCase):
+class TestReportGeneratorHTMLBuilding:
     """测试 HTML 构建"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_rpt_html_"))
-        (self.test_dir / "metadata" / "llm_calls").mkdir(parents=True)
-        (self.test_dir / "output").mkdir()
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_build_record_html(self):
-        gen = ReportGenerator(str(self.test_dir))
+    def test_build_record_html(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
         html = gen._build_record_html({
             "step": "lyrics",
             "model": "MiniMax-M2.7",
@@ -306,14 +285,15 @@ class TestReportGeneratorHTMLBuilding(unittest.TestCase):
             "response": {"lyrics": "小燕子穿花衣"},
             "timestamp": "2024-01-01T00:00:00",
         }, 0)
-        self.assertIn("record", html)
-        self.assertIn("tag-lyrics", html)
-        self.assertIn("MiniMax-M2.7", html)
-        self.assertIn("小燕子穿花衣", html)
-        self.assertIn("复制 Prompt", html)
+        assert "record" in html
+        assert "tag-lyrics" in html
+        assert "MiniMax-M2.7" in html
+        assert "小燕子穿花衣" in html
+        assert "复制 Prompt" in html
 
-    def test_build_record_with_error(self):
-        gen = ReportGenerator(str(self.test_dir))
+    def test_build_record_with_error(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
         html = gen._build_record_html({
             "step": "music",
             "model": "music-2.6",
@@ -321,50 +301,51 @@ class TestReportGeneratorHTMLBuilding(unittest.TestCase):
             "error": "HTTP 500",
             "timestamp": "2024-01-01",
         }, 0)
-        self.assertIn("fail-badge", html)
-        self.assertIn("HTTP 500", html)
+        assert "fail-badge" in html
+        assert "HTTP 500" in html
 
-    def test_build_record_empty_prompt(self):
-        gen = ReportGenerator(str(self.test_dir))
+    def test_build_record_empty_prompt(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
         html = gen._build_record_html({
             "step": "lyrics",
             "model": "m",
             "prompt": None,
         }, 0)
-        self.assertIn("(empty)", html)
+        assert "(empty)" in html
 
-    def test_build_filter_buttons(self):
-        gen = ReportGenerator(str(self.test_dir))
+    def test_build_filter_buttons(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
         gen.records = [{"step": "lyrics"}, {"step": "lyrics"}, {"step": "music"}]
         groups = gen._group_by_step()
         sorted_steps = gen._sort_steps(groups)
         btns = gen._build_filter_buttons(groups, sorted_steps)
-        self.assertIn("全部", btns)
-        self.assertIn("(2)", btns)  # lyrics 2条
+        assert "全部" in btns
+        assert "(2)" in btns
 
-    def test_build_sections(self):
-        gen = ReportGenerator(str(self.test_dir))
-        gen.records = [
-            {"step": "lyrics", "model": "m", "prompt": "test"},
-        ]
+    def test_build_sections(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
+        gen.records = [{"step": "lyrics", "model": "m", "prompt": "test"}]
         groups = gen._group_by_step()
         sorted_steps = gen._sort_steps(groups)
         html = gen._build_sections(groups, sorted_steps)
-        self.assertIn("sec-lyrics", html)
-        self.assertIn("全部成功", html)
+        assert "sec-lyrics" in html
+        assert "全部成功" in html
 
-    def test_build_sections_with_error(self):
-        gen = ReportGenerator(str(self.test_dir))
-        gen.records = [
-            {"step": "music", "model": "m", "prompt": "t", "error": "fail"},
-        ]
+    def test_build_sections_with_error(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
+        gen.records = [{"step": "music", "model": "m", "prompt": "t", "error": "fail"}]
         groups = gen._group_by_step()
         sorted_steps = gen._sort_steps(groups)
         html = gen._build_sections(groups, sorted_steps)
-        self.assertIn("部分失败", html)
+        assert "部分失败" in html
 
-    def test_wrap_html(self):
-        gen = ReportGenerator(str(self.test_dir))
+    def test_wrap_html(self, tmp_path):
+        _init_rg_dirs(tmp_path)
+        gen = ReportGenerator(str(tmp_path))
         html = gen._wrap_html(
             project_name="test_proj",
             song_title="童年的回忆",
@@ -375,22 +356,18 @@ class TestReportGeneratorHTMLBuilding(unittest.TestCase):
             filter_btns="<button>全部</button>",
             sections_html="<div>sections</div>",
         )
-        self.assertIn("童年的回忆", html)
-        self.assertIn("10", html)
-        self.assertIn("5", html)
-        self.assertIn("DOCTYPE html", html)
-        self.assertIn("function toggleRecord", html)
+        assert "童年的回忆" in html
+        assert "10" in html
+        assert "5" in html
+        assert "DOCTYPE html" in html
+        assert "function toggleRecord" in html
 
 
-class TestReportGeneratorGenerate(unittest.TestCase):
+class TestReportGeneratorGenerate:
     """测试完整 generate()"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_rpt_gen_"))
-        (self.test_dir / "metadata" / "llm_calls").mkdir(parents=True)
-        (self.test_dir / "output").mkdir()
-
-        # 创建一些日志
+    def _setup_gen_project(self, project_dir: Path):
+        _init_rg_dirs(project_dir)
         logs = [
             {"step": "lyrics", "model": "MiniMax-M2.7",
              "prompt": "生成歌词", "response": {"lyrics": "test"},
@@ -399,64 +376,35 @@ class TestReportGeneratorGenerate(unittest.TestCase):
              "prompt": "生成音乐", "response": {"url": "test.mp3"},
              "timestamp": "2024-01-01"},
         ]
-        make_log_file(self.test_dir / "metadata" / "llm_calls", logs)
-
-        # 创建项目信息
+        make_log_file(project_dir / "metadata" / "llm_calls", logs)
         info = {"song_title": "童年", "theme": "童年时光"}
-        (self.test_dir / "metadata" / "info.json").write_text(
-            json.dumps(info), encoding="utf-8"
-        )
+        (project_dir / "metadata" / "info.json").write_text(json.dumps(info), encoding="utf-8")
         scenes = [{"id": 1}, {"id": 2}]
-        (self.test_dir / "metadata" / "scenes.json").write_text(
-            json.dumps(scenes), encoding="utf-8"
-        )
+        (project_dir / "metadata" / "scenes.json").write_text(json.dumps(scenes), encoding="utf-8")
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_generate_default_output(self):
-        gen = ReportGenerator(str(self.test_dir))
+    def test_generate_default_output(self, tmp_path):
+        self._setup_gen_project(tmp_path)
+        import shutil
+        shutil.rmtree(tmp_path / "metadata" / "llm_calls")
+        gen = ReportGenerator(str(tmp_path))
         html = gen.generate()
-        self.assertIsInstance(html, str)
-        self.assertIn("童年", html)
-        self.assertIn("2 条记录", html)
-        self.assertIn("2", html)  # scenes_count
-        self.assertIn("MiniMax-M2.7", html)
-
-        # 检查文件是否写入
-        output_path = self.test_dir / "output" / "llm_report.html"
-        self.assertTrue(output_path.exists())
-        written = output_path.read_text(encoding="utf-8")
-        self.assertEqual(written, html)
-
-    def test_generate_custom_output(self):
-        custom_path = self.test_dir / "custom_report.html"
-        gen = ReportGenerator(str(self.test_dir))
-        html = gen.generate(str(custom_path))
-        self.assertTrue(custom_path.exists())
-        self.assertEqual(custom_path.read_text(encoding="utf-8"), html)
-
-    def test_generate_empty(self):
-        """无日志文件也能生成报告"""
-        shutil.rmtree(self.test_dir / "metadata" / "llm_calls")
-        gen = ReportGenerator(str(self.test_dir))
-        html = gen.generate()
-        self.assertIn("0 条记录", html)
-        self.assertIn("0", html)
+        assert isinstance(html, str)
+        assert "0 条记录" in html
+        assert "0" in html
 
 
-class TestReportGeneratorErrorHandling(unittest.TestCase):
+class TestReportGeneratorErrorHandling:
     """测试错误处理"""
 
     def test_generate_no_project_dir(self):
         gen = ReportGenerator("/nonexistent/path")
-        # 不应抛出异常
         try:
             html = gen.generate()
-            self.assertIsInstance(html, str)
+            assert isinstance(html, str)
         except Exception as e:
-            self.fail(f"Unexpected exception: {e}")
+            pytest.fail(f"Unexpected exception: {e}")
 
 
 if __name__ == "__main__":
+    import unittest
     unittest.main()

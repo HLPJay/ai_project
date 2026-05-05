@@ -195,13 +195,13 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         if result and result.returncode == 0:
             srt_path = os.path.join(project_dir, "audio", "song.srt")
             if os.path.exists(srt_path):
-                srt = open(srt_path, "r", encoding="utf-8").read()
+                with open(srt_path, "r", encoding="utf-8") as f:
+                    srt = f.read()
                 entries = [e for e in srt.strip().split("\n\n") if " --> " in e]
                 lyrics_path = os.path.join(project_dir, "audio", "lyrics.txt")
                 if os.path.exists(lyrics_path):
-                    _, clean = _parse_lyrics_text(
-                        open(lyrics_path, encoding="utf-8").read()
-                    )
+                    with open(lyrics_path, encoding="utf-8") as f:
+                        _, clean = _parse_lyrics_text(f.read())
                     return {
                         "srt_path": srt_path,
                         "aligned_lines": len(entries),
@@ -252,7 +252,8 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
     audio_duration = pm.get("audio_duration_sec", 0)
 
     if audio_duration > 0 and os.path.exists(lyrics_path):
-        lyrics_text = open(lyrics_path, "r", encoding="utf-8").read()
+        with open(lyrics_path, "r", encoding="utf-8") as f:
+            lyrics_text = f.read()
         srt_path = os.path.join(project_dir, "audio", "song.srt")
         entries = generate_basic_srt(lyrics_text, float(audio_duration), srt_path)
         _, clean = _parse_lyrics_text(lyrics_text)

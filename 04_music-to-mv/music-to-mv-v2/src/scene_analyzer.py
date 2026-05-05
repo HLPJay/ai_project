@@ -926,7 +926,7 @@ class SceneAnalyzer:
             # 构建变体请求列表
             var_requests = []
             for s in variant_scenes:
-                n_needed = max(2, min(3, -(-int(s["duration"]) // 5))) - 1
+                n_needed = max(2, min(3, math.ceil(int(s["duration"]) / 5))) - 1
                 for vi in range(1, n_needed + 1):
                     vtype, vrule = VARIANT_TYPES[vi % len(VARIANT_TYPES)]
                     var_requests.append({
@@ -1306,7 +1306,7 @@ class SceneAnalyzer:
         variant_scenes = []
         for s in scenes:
             if s.get("is_repeated") and s.get("duration", 0) > 4:
-                n_needed = max(2, min(3, -(-int(s["duration"]) // 5)))
+                n_needed = max(2, min(3, math.ceil(int(s["duration"]) / 5)))
                 current_variants = s.get("variants", [])
                 if len(current_variants) < n_needed - 1:
                     variant_scenes.append(s)
@@ -1319,7 +1319,7 @@ class SceneAnalyzer:
 
         for s in variant_scenes:
             sid = s["id"]
-            n_needed = max(2, min(3, -(-int(s["duration"]) // 5))) - 1
+            n_needed = max(2, min(3, math.ceil(int(s["duration"]) / 5))) - 1
 
             # LLM 生成的变体
             if sid in llm_variants and llm_variants[sid]:
@@ -1571,8 +1571,8 @@ class SceneAnalyzer:
                 dnd = info.get("do_not_do", [])
                 if isinstance(dnd, list) and dnd:
                     return " | ".join(dnd)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("从 info.json 加载 do_not_do 失败: %s", e)
         return ""
 
     @staticmethod
@@ -1580,8 +1580,8 @@ class SceneAnalyzer:
         try:
             if THEME_REFERENCE_CONFIG.exists():
                 return json.loads(THEME_REFERENCE_CONFIG.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("加载 THEME_REFERENCE_CONFIG 失败: %s", e)
         return {"default_mode": "environment_symbolic", "modes": []}
 
     def _infer_theme_reference_mode(self) -> str:
@@ -1725,8 +1725,8 @@ class SceneAnalyzer:
                 if bible.get("do_not_break"):
                     parts.append("Rules: " + "; ".join(bible["do_not_break"][:3]))
                 return " | ".join(parts)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("构建 visual_bible 摘要失败: %s", e)
         return f"Style: {self._style}, Mood: {self._mood}, Theme: {self._theme}"
 
     def _select_narrative_representative_scenes(self, scenes: List[Dict]) -> List[Dict]:

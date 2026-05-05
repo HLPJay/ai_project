@@ -670,6 +670,14 @@ class LLMClient:
         Args:
             request_timeout: 单次请求超时秒数，None 则从 retry_config 获取
         """
+        # MV_TEST_MODE=1 跳过真实 HTTP 调用，直接返回 mock 响应（用于单元测试）
+        if os.environ.get("MV_TEST_MODE", "").lower() in ("1", "true"):
+            logger.debug("[TEST MODE] 跳过 API 调用，返回 mock 响应: %s", prompt_key)
+            return {
+                "choices": [{"message": {"content": f"[TEST] {prompt_key} response"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+            }
+
         cfg = retry_config or RetryConfig()
         timeout = request_timeout if request_timeout is not None else cfg.request_timeout
         last_error = None

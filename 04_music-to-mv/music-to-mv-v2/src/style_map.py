@@ -555,7 +555,7 @@ def get_mood_desc(mood_name: str) -> str:
         parts.append("romantic softness, tender shared intimacy")
     if parts:
         return ", ".join(dict.fromkeys(parts))
-    return MOOD_DESCRIPTIONS.get("温柔", "")
+    return MOOD_DESCRIPTIONS.get("欢快", "")
 
 
 def get_theme_visual(theme: str) -> str:
@@ -568,7 +568,7 @@ def get_char_prompt(style_name: str) -> str:
     s = STYLES.get(normalize_style_name(style_name))
     if s and s["character"]:
         return s["character"]
-    return ""
+    return CHARACTER_DESCRIPTIONS.get("default", "")
 
 
 def get_music_style_desc(music_style: str) -> str:

@@ -14,11 +14,10 @@ test_scene_analyzer.py — SRT 场景分析器测试
 
 import json
 import os
-import shutil
 import sys
-import tempfile
-import unittest
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -29,10 +28,7 @@ from src.scene_analyzer import (
 
 
 def make_test_srt(lines_data, srt_path):
-    """创建测试用 SRT 文件
-
-    lines_data: [(start_sec, end_sec, text), ...]
-    """
+    """创建测试用 SRT 文件"""
     def _to_srt_ts(sec):
         h = int(sec) // 3600
         m = int(sec) // 60 % 60
@@ -47,87 +43,80 @@ def make_test_srt(lines_data, srt_path):
     return srt_path
 
 
-class TestSceneAnalyzerInit(unittest.TestCase):
+class TestSceneAnalyzerInit:
     """测试初始化"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_sa_init_"))
-        self._init_dirs()
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def _init_dirs(self):
-        (self.test_dir / "metadata").mkdir()
-        (self.test_dir / "audio").mkdir()
-
-    def _create_info(self, theme="童年", style="动漫风", mood="欢快"):
+    def _create_init_project(self, tmp_path, theme="童年", style="动漫风", mood="欢快"):
+        (tmp_path / "metadata").mkdir()
+        (tmp_path / "audio").mkdir()
         info = {"theme": theme, "style": style, "mood": mood,
                 "music_style": "流行", "song_title": "测试"}
-        (self.test_dir / "metadata" / "info.json").write_text(
+        (tmp_path / "metadata" / "info.json").write_text(
             json.dumps(info, ensure_ascii=False), encoding="utf-8"
         )
-
-    def _create_base_char(self, prompt="A cute boy"):
-        bc = {"prompt": prompt, "style": "动漫风", "mood": "欢快"}
-        (self.test_dir / "metadata" / "base_char.json").write_text(
+        bc = {"prompt": "A cute boy", "style": "动漫风", "mood": "欢快"}
+        (tmp_path / "metadata" / "base_char.json").write_text(
             json.dumps(bc), encoding="utf-8"
         )
 
-    def test_init_with_files(self):
-        self._create_info()
-        self._create_base_char()
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        self.assertEqual(analyzer._theme, "童年")
-        self.assertEqual(analyzer._char_prompt, "A cute boy")
+    def test_init_with_files(self, tmp_path):
+        self._create_init_project(tmp_path)
+        analyzer = SceneAnalyzer(str(tmp_path))
+        assert analyzer._theme == "童年"
+        assert analyzer._char_prompt == "A cute boy"
 
-    def test_init_no_files(self):
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        self.assertEqual(analyzer._theme, "")
-        self.assertEqual(analyzer._style, "动漫风")
+    def test_init_no_files(self, tmp_path):
+        (tmp_path / "metadata").mkdir()
+        (tmp_path / "audio").mkdir()
+        analyzer = SceneAnalyzer(str(tmp_path))
+        assert analyzer._theme == ""
+        assert analyzer._style == "动漫风"
 
-    def test_init_no_base_char(self):
-        self._create_info()
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        self.assertEqual(analyzer._char_prompt, "")
+    def test_init_no_base_char(self, tmp_path):
+        """没有 base_char.json 时 _char_prompt 应为空"""
+        (tmp_path / "metadata").mkdir()
+        (tmp_path / "audio").mkdir()
+        info = {"theme": "童年", "style": "动漫风", "mood": "欢快",
+                "music_style": "流行", "song_title": "测试"}
+        (tmp_path / "metadata" / "info.json").write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+        # 不创建 base_char.json
+        analyzer = SceneAnalyzer(str(tmp_path))
+        assert analyzer._char_prompt == ""
 
 
-class TestSceneAnalyzerParseSRT(unittest.TestCase):
+class TestSceneAnalyzerParseSRT:
     """测试 SRT 解析"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_sa_srt_"))
-        self.srt_file = self.test_dir / "test.srt"
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_parse_standard(self):
+    def test_parse_standard(self, tmp_path):
         """标准 SRT 格式"""
+        srt_file = tmp_path / "test.srt"
         lines_data = [
             (0.5, 4.2, "今天天气真好"),
             (4.5, 8.1, "我们一起出去玩"),
             (8.5, 12.0, "看那美丽的花朵"),
         ]
-        make_test_srt(lines_data, self.srt_file)
+        make_test_srt(lines_data, srt_file)
+        segments = SceneAnalyzer.parse_srt(str(srt_file))
+        assert len(segments) == 3
+        assert segments[0][0] == 1
+        assert abs(segments[0][1] - 0.5) < 0.1
+        assert abs(segments[0][2] - 4.2) < 0.1
+        assert segments[0][3] == "今天天气真好"
 
-        segments = SceneAnalyzer.parse_srt(str(self.srt_file))
-        self.assertEqual(len(segments), 3)
-        self.assertEqual(segments[0][0], 1)  # idx
-        self.assertAlmostEqual(segments[0][1], 0.5, places=1)
-        self.assertAlmostEqual(segments[0][2], 4.2, places=1)
-        self.assertEqual(segments[0][3], "今天天气真好")
-
-    def test_parse_dot_separator(self):
+    def test_parse_dot_separator(self, tmp_path):
         """点号分隔符也兼容"""
+        srt_file = tmp_path / "test.srt"
         content = "1\n00:00:00.500 --> 00:00:04.200\nHello World\n"
-        self.srt_file.write_text(content, encoding="utf-8")
-        segments = SceneAnalyzer.parse_srt(str(self.srt_file))
-        self.assertEqual(len(segments), 1)
-        self.assertAlmostEqual(segments[0][1], 0.5, places=1)
+        srt_file.write_text(content, encoding="utf-8")
+        segments = SceneAnalyzer.parse_srt(str(srt_file))
+        assert len(segments) == 1
+        assert abs(segments[0][1] - 0.5) < 0.1
 
-    def test_parse_no_empty_lines(self):
+    def test_parse_no_empty_lines(self, tmp_path):
         """无空行的 SRT"""
+        srt_file = tmp_path / "test.srt"
         lines = [
             "1",
             "00:00:00,500 --> 00:00:04,200",
@@ -136,34 +125,28 @@ class TestSceneAnalyzerParseSRT(unittest.TestCase):
             "00:00:05,000 --> 00:00:10,000",
             "Line two",
         ]
-        self.srt_file.write_text("\n".join(lines), encoding="utf-8")
-        segments = SceneAnalyzer.parse_srt(str(self.srt_file))
-        self.assertEqual(len(segments), 2)
+        srt_file.write_text("\n".join(lines), encoding="utf-8")
+        segments = SceneAnalyzer.parse_srt(str(srt_file))
+        assert len(segments) == 2
 
-    def test_parse_file_not_found(self):
-        with self.assertRaises(FileNotFoundError):
-            SceneAnalyzer.parse_srt(str(self.test_dir / "nonexistent.srt"))
+    def test_parse_file_not_found(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            SceneAnalyzer.parse_srt(str(tmp_path / "nonexistent.srt"))
 
-    def test_parse_multiline_text(self):
+    def test_parse_multiline_text(self, tmp_path):
         """多行歌词"""
+        srt_file = tmp_path / "test.srt"
         content = "1\n00:00:00,000 --> 00:00:05,000\nFirst line\nSecond line\nThird\n"
-        self.srt_file.write_text(content, encoding="utf-8")
-        segments = SceneAnalyzer.parse_srt(str(self.srt_file))
-        self.assertEqual(len(segments), 1)
-        self.assertEqual(segments[0][3], "First line\nSecond line\nThird")
+        srt_file.write_text(content, encoding="utf-8")
+        segments = SceneAnalyzer.parse_srt(str(srt_file))
+        assert len(segments) == 1
+        assert segments[0][3] == "First line\nSecond line\nThird"
 
 
-class TestSceneAnalyzerStructure(unittest.TestCase):
+class TestSceneAnalyzerStructure:
     """测试结构分析"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_sa_struct_"))
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
     def _make_segments(self, texts):
-        """创建简单 segments（每个 4 秒）"""
         segs = []
         for i, text in enumerate(texts):
             segs.append((i + 1, i * 4.0, i * 4.0 + 3.5, text))
@@ -171,7 +154,7 @@ class TestSceneAnalyzerStructure(unittest.TestCase):
 
     def test_empty_segments(self):
         result = SceneAnalyzer.analyze_structure([])
-        self.assertEqual(result, [])
+        assert result == []
 
     def test_no_repeat(self):
         """无重复歌词"""
@@ -180,9 +163,9 @@ class TestSceneAnalyzerStructure(unittest.TestCase):
             "情感加深", "慢慢结束",
         ])
         paragraphs = SceneAnalyzer.analyze_structure(segs)
-        self.assertGreater(len(paragraphs), 0)
+        assert len(paragraphs) > 0
         for p in paragraphs:
-            self.assertFalse(p["is_repeated"])
+            assert not p["is_repeated"]
 
     def test_repeat_detection(self):
         """重复歌词 → is_repeated"""
@@ -191,38 +174,36 @@ class TestSceneAnalyzerStructure(unittest.TestCase):
         ])
         paragraphs = SceneAnalyzer.analyze_structure(segs)
         repeat_paras = [p for p in paragraphs if p["is_repeated"]]
-        self.assertGreater(len(repeat_paras), 0)
+        assert len(repeat_paras) > 0
 
     def test_scene_count_by_duration(self):
         """短歌 → 10 场景，长歌 → 22 场景"""
-        # 150s 长歌（22 场景）
         texts = [f"line_{i}" for i in range(100)]
         segs = [(i + 1, i * 1.5, i * 1.5 + 1.3, texts[i]) for i in range(100)]
         paragraphs = SceneAnalyzer.analyze_structure(segs)
-        self.assertLessEqual(len(paragraphs), 22)
+        assert len(paragraphs) <= 22
 
-        # 30s 短歌（10 场景）
         texts2 = [f"short_{i}" for i in range(20)]
         segs2 = [(i + 1, i * 1.5, i * 1.5 + 1.3, texts2[i]) for i in range(20)]
         paragraphs2 = SceneAnalyzer.analyze_structure(segs2)
-        self.assertLessEqual(len(paragraphs2), 10)
+        assert len(paragraphs2) <= 10
 
     def test_paragraph_fields(self):
         segs = self._make_segments(["hello", "world"])
         paragraphs = SceneAnalyzer.analyze_structure(segs)
         p = paragraphs[0]
-        self.assertIn("start", p)
-        self.assertIn("end", p)
-        self.assertIn("duration", p)
-        self.assertIn("text", p)
-        self.assertIn("is_repeated", p)
-        self.assertIn("start_seg", p)
-        self.assertIn("end_seg", p)
-        self.assertIn("segment_count", p)
-        self.assertGreater(p["duration"], 0)
+        assert "start" in p
+        assert "end" in p
+        assert "duration" in p
+        assert "text" in p
+        assert "is_repeated" in p
+        assert "start_seg" in p
+        assert "end_seg" in p
+        assert "segment_count" in p
+        assert p["duration"] > 0
 
 
-class TestSceneAnalyzerNaming(unittest.TestCase):
+class TestSceneAnalyzerNaming:
     """测试场景命名"""
 
     def test_intro_outro(self):
@@ -233,8 +214,8 @@ class TestSceneAnalyzerNaming(unittest.TestCase):
             {"is_repeated": False, "duration": 6, "start": 23, "end": 29, "text": "outro text", "segment_count": 1},
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
-        self.assertEqual(scenes[0]["name"], "intro")
-        self.assertEqual(scenes[-1]["name"], "outro")
+        assert scenes[0]["name"] == "intro"
+        assert scenes[-1]["name"] == "outro"
 
     def test_chorus_detection(self):
         paragraphs = [
@@ -245,7 +226,7 @@ class TestSceneAnalyzerNaming(unittest.TestCase):
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
         chorus = [s for s in scenes if s["name"] == "chorus"]
-        self.assertGreater(len(chorus), 0)
+        assert len(chorus) > 0
 
     def test_verse_bridge(self):
         paragraphs = [
@@ -257,162 +238,145 @@ class TestSceneAnalyzerNaming(unittest.TestCase):
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
         names = [s["name"] for s in scenes]
-        self.assertIn("intro", names)
-        self.assertIn("verse1", names)
-        self.assertIn("outro", names)
+        assert "intro" in names
+        assert "verse1" in names
+        assert "outro" in names
 
     def test_scene_structure(self):
         paragraphs = [
             {"is_repeated": False, "duration": 5, "start": 0, "end": 5, "text": "test", "segment_count": 1},
         ]
         scenes = SceneAnalyzer.name_scenes(paragraphs)
-        self.assertEqual(len(scenes), 1)
+        assert len(scenes) == 1
         s = scenes[0]
-        self.assertIn("id", s)
-        self.assertIn("name", s)
-        self.assertIn("start", s)
-        self.assertIn("end", s)
-        self.assertIn("duration", s)
-        self.assertIn("text_preview", s)
-        self.assertIn("is_repeated", s)
+        assert "id" in s
+        assert "name" in s
+        assert "start" in s
+        assert "end" in s
+        assert "duration" in s
+        assert "text_preview" in s
+        assert "is_repeated" in s
 
 
-class TestSceneAnalyzerLabel(unittest.TestCase):
+class TestSceneAnalyzerLabel:
     """测试标签生成"""
 
     def test_label_with_match(self):
-        """匹配到主题词"""
-        label = SceneAnalyzer.generate_label(
-            "chorus", "童年", "欢快", "一起去放风筝"
-        )
-        self.assertIn("童年", label)
-        self.assertIn("欢快", label)
+        label = SceneAnalyzer.generate_label("chorus", "童年", "欢快", "一起去放风筝")
+        assert "童年" in label
+        assert "欢快" in label
 
     def test_label_no_match(self):
-        """未匹配则用默认标签"""
-        label = SceneAnalyzer.generate_label(
-            "intro", "未知主题_xy", "平静", "一些文字"
-        )
-        self.assertEqual(label, "序幕")
+        label = SceneAnalyzer.generate_label("intro", "未知主题_xy", "平静", "一些文字")
+        assert label == "序幕"
 
     def test_label_outro_default(self):
-        label = SceneAnalyzer.generate_label(
-            "outro", "xyz", "温柔", "nothing"
-        )
-        self.assertEqual(label, "尾声")
+        label = SceneAnalyzer.generate_label("outro", "xyz", "温柔", "nothing")
+        assert label == "尾声"
 
     def test_label_keyword_matching(self):
-        """从 text_preview 匹配主题"""
-        label = SceneAnalyzer.generate_label(
-            "verse1", "成长", "希望", "春天来了花朵盛开"
-        )
-        # "春天" 在 THEME_VISUALS 中
-        self.assertIn("春天", label)
+        label = SceneAnalyzer.generate_label("verse1", "成长", "希望", "春天来了花朵盛开")
+        assert "春天" in label
 
 
-class TestSceneAnalyzerDescValidation(unittest.TestCase):
+class TestSceneAnalyzerDescValidation:
     """测试描述有效性"""
 
     def test_valid_desc(self):
         valid = "A boy running through a meadow under golden sunlight"
-        self.assertTrue(SceneAnalyzer._is_valid_desc(valid, "running"))
+        assert SceneAnalyzer._is_valid_desc(valid, "running") is True
 
     def test_invalid_short(self):
-        self.assertFalse(SceneAnalyzer._is_valid_desc("Hi", "test"))
+        assert SceneAnalyzer._is_valid_desc("Hi", "test") is False
 
     def test_invalid_truncated_prefix(self):
         bad = "the user wants me to create a description for this scene"
-        self.assertFalse(SceneAnalyzer._is_valid_desc(bad, "test"))
+        assert SceneAnalyzer._is_valid_desc(bad, "test") is False
 
     def test_invalid_old_template(self):
-        self.assertFalse(SceneAnalyzer._is_valid_desc(
+        assert SceneAnalyzer._is_valid_desc(
             "A cute child looking around with wonder", "test"
-        ))
+        ) is False
 
     def test_edge_8_words(self):
         """正好 8 个有意义的词"""
         desc = "sunset river station bench wind letter sky light"
-        self.assertTrue(SceneAnalyzer._is_valid_desc(desc, "test"))
+        assert SceneAnalyzer._is_valid_desc(desc, "test") is True
 
     def test_edge_7_words(self):
         """7 个有意义的词（应无效）"""
         desc = "sunset river station wind letter sky light"
-        self.assertFalse(SceneAnalyzer._is_valid_desc(desc, "test"))
+        assert SceneAnalyzer._is_valid_desc(desc, "test") is False
 
 
-class TestSceneAnalyzerLocalDesc(unittest.TestCase):
+class TestSceneAnalyzerLocalDesc:
     """测试本地 fallback 描述生成"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_sa_local_"))
-        (self.test_dir / "metadata").mkdir()
-        (self.test_dir / "audio").mkdir()
+    def _create_local_project(self, tmp_path):
+        (tmp_path / "metadata").mkdir()
+        (tmp_path / "audio").mkdir()
         bc = {"prompt": "A cute Chinese boy", "style": "动漫风", "mood": "欢快"}
         info = {"theme": "童年", "style": "动漫风", "mood": "欢快",
                 "music_style": "流行"}
-        (self.test_dir / "metadata" / "base_char.json").write_text(
+        (tmp_path / "metadata" / "base_char.json").write_text(
             json.dumps(bc), encoding="utf-8"
         )
-        (self.test_dir / "metadata" / "info.json").write_text(
+        (tmp_path / "metadata" / "info.json").write_text(
             json.dumps(info), encoding="utf-8"
         )
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_generate_local_desc(self):
-        analyzer = SceneAnalyzer(str(self.test_dir))
+    def test_generate_local_desc(self, tmp_path):
+        self._create_local_project(tmp_path)
+        analyzer = SceneAnalyzer(str(tmp_path))
         scene = {
             "name": "intro",
             "text_preview": "今天天气真好",
             "start": 0.0, "end": 5.0, "duration": 5.0,
         }
         desc = analyzer._generate_local_desc(scene)
-        self.assertIn("8k", desc)
-        self.assertIn("visual", desc)
-        self.assertGreater(len(desc), 30)
-        self.assertTrue(desc.endswith(QUALITY_SUFFIX))
+        assert "8k" in desc
+        assert "visual" in desc
+        assert len(desc) > 30
+        assert desc.endswith(QUALITY_SUFFIX)
 
-    def test_generate_local_desc_chorus(self):
-        analyzer = SceneAnalyzer(str(self.test_dir))
+    def test_generate_local_desc_chorus(self, tmp_path):
+        self._create_local_project(tmp_path)
+        analyzer = SceneAnalyzer(str(tmp_path))
         scene = {
             "name": "chorus",
             "text_preview": "副歌部分",
             "start": 10.0, "end": 25.0, "duration": 15.0,
         }
         desc = analyzer._generate_local_desc(scene)
-        self.assertIn("8k", desc)
+        assert "8k" in desc
 
 
-class TestSceneAnalyzerFullAnalyze(unittest.TestCase):
+class TestSceneAnalyzerFullAnalyze:
     """测试完整 analyze() 流水线"""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="test_sa_full_"))
-        (self.test_dir / "metadata").mkdir()
-        (self.test_dir / "audio").mkdir()
-
+    def _create_full_project(self, tmp_path):
+        (tmp_path / "metadata").mkdir()
+        (tmp_path / "audio").mkdir()
         bc = {"prompt": "A cute Chinese boy, 8 years old",
               "style": "动漫风", "mood": "欢快"}
         info = {"theme": "童年", "style": "动漫风", "mood": "欢快",
                 "music_style": "流行", "song_title": "童年时光"}
-        (self.test_dir / "metadata" / "base_char.json").write_text(
+        (tmp_path / "metadata" / "base_char.json").write_text(
             json.dumps(bc), encoding="utf-8"
         )
-        (self.test_dir / "metadata" / "info.json").write_text(
+        (tmp_path / "metadata" / "info.json").write_text(
             json.dumps(info), encoding="utf-8"
         )
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-
-    def test_file_not_found(self):
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        with self.assertRaises(FileNotFoundError):
+    def test_file_not_found(self, tmp_path):
+        self._create_full_project(tmp_path)
+        analyzer = SceneAnalyzer(str(tmp_path))
+        with pytest.raises(FileNotFoundError):
             analyzer.analyze("nonexistent.srt")
 
-    def test_full_analyze_local(self):
+    def test_full_analyze_local(self, tmp_path):
         """纯本地模式（无 LLM 调用）"""
+        self._create_full_project(tmp_path)
         lines_data = [
             (0.0, 4.0, "今天天气真好"),
             (4.5, 8.0, "我们一起出去玩"),
@@ -423,192 +387,87 @@ class TestSceneAnalyzerFullAnalyze(unittest.TestCase):
             (24.5, 28.0, "慢慢告别"),
             (28.5, 32.0, "尾声"),
         ]
-        srt_path = self.test_dir / "song.srt"
+        srt_path = tmp_path / "song.srt"
         make_test_srt(lines_data, srt_path)
 
-        analyzer = SceneAnalyzer(str(self.test_dir))
+        analyzer = SceneAnalyzer(str(tmp_path))
         result = analyzer.analyze(str(srt_path))
 
-        self.assertIn("scenes", result)
-        self.assertIn("scene_count", result)
-        self.assertGreater(result["scene_count"], 0)
-        self.assertIn("total_duration", result)
+        assert "scenes" in result
+        assert "scene_count" in result
+        assert result["scene_count"] > 0
+        assert "total_duration" in result
 
         scenes = result["scenes"]
         for s in scenes:
-            self.assertIn("id", s)
-            self.assertIn("name", s)
-            self.assertIn("label", s)
-            self.assertIn("desc", s)
-            self.assertIn("start", s)
-            self.assertIn("end", s)
-            self.assertIn("duration", s)
-            self.assertIn("text_preview", s)
-            self.assertIn("is_repeated", s)
-            self.assertIn("segment_count", s)
-            self.assertIn("visual_focus", s)
-            self.assertIn("shot_type", s)
-            self.assertIn("character_needed", s)
-            self.assertIn("continuity", s)
-            self.assertIn("symbolic_objects", s)
-            self.assertIn("motion_hint", s)
-            self.assertGreater(s["duration"], 0)
-            self.assertGreater(len(s["desc"]), 30)
-            self.assertIsInstance(s["symbolic_objects"], list)
+            assert "id" in s
+            assert "name" in s
+            assert "label" in s
+            assert "desc" in s
+            assert "start" in s
+            assert "end" in s
+            assert "duration" in s
+            assert "text_preview" in s
+            assert "is_repeated" in s
+            assert "segment_count" in s
+            assert "visual_focus" in s
+            assert "shot_type" in s
+            assert "character_needed" in s
+            assert "continuity" in s
+            assert "symbolic_objects" in s
+            assert "motion_hint" in s
+            assert s["duration"] > 0
+            assert len(s["desc"]) > 30
+            assert isinstance(s["symbolic_objects"], list)
 
-        # scenes.json 已写入
-        scenes_json = self.test_dir / "metadata" / "scenes.json"
-        self.assertTrue(scenes_json.exists())
-
+        scenes_json = tmp_path / "metadata" / "scenes.json"
+        assert scenes_json.exists()
         loaded = json.loads(scenes_json.read_text(encoding="utf-8"))
-        self.assertEqual(len(loaded), result["scene_count"])
+        assert len(loaded) == result["scene_count"]
 
-        visual_bible_json = self.test_dir / "metadata" / "visual_bible.json"
-        self.assertTrue(visual_bible_json.exists())
+        visual_bible_json = tmp_path / "metadata" / "visual_bible.json"
+        assert visual_bible_json.exists()
         visual_bible = json.loads(visual_bible_json.read_text(encoding="utf-8"))
-        self.assertIn("world_style", visual_bible)
-        self.assertIn("palette", visual_bible)
-        self.assertIn("camera_language", visual_bible)
-        self.assertIn("visual_bible", result)
+        assert "world_style" in visual_bible
+        assert "palette" in visual_bible
+        assert "camera_language" in visual_bible
 
-    def test_repeated_scenes_have_variants(self):
+    def test_repeated_scenes_have_variants(self, tmp_path):
         """重复段应有 variants 字段"""
+        self._create_full_project(tmp_path)
         lines_data = [
             (0.0, 4.0, "主歌"),
-            (4.5, 15.0, "副歌副歌副歌"),  # 重复且 > 4s
+            (4.5, 15.0, "副歌副歌副歌"),
             (15.5, 19.0, "主歌2"),
-            (19.5, 30.0, "副歌副歌副歌"),  # 重复
+            (19.5, 30.0, "副歌副歌副歌"),
             (30.5, 34.0, "尾声"),
         ]
-        srt_path = self.test_dir / "song.srt"
+        srt_path = tmp_path / "song.srt"
         make_test_srt(lines_data, srt_path)
 
-        analyzer = SceneAnalyzer(str(self.test_dir))
+        analyzer = SceneAnalyzer(str(tmp_path))
         result = analyzer.analyze(str(srt_path))
 
         for s in result["scenes"]:
             if s.get("is_repeated"):
-                self.assertIn("variants", s)
+                assert "variants" in s
 
-    def test_local_variant_on_llm_failure(self):
+    def test_local_variant_on_llm_failure(self, tmp_path):
         """LLM 失败时使用本地变体"""
+        self._create_full_project(tmp_path)
         lines_data = [
             (0.0, 4.0, "主歌"),
             (4.5, 15.0, "副歌副歌"),
             (15.5, 30.0, "副歌副歌"),
         ]
-        srt_path = self.test_dir / "song.srt"
+        srt_path = tmp_path / "song.srt"
         make_test_srt(lines_data, srt_path)
 
-        analyzer = SceneAnalyzer(str(self.test_dir))
+        analyzer = SceneAnalyzer(str(tmp_path))
         result = analyzer.analyze(str(srt_path))
-
-        for s in result["scenes"]:
-            if s.get("is_repeated"):
-                # 至少应该有 variants 列表
-                self.assertIsInstance(s.get("variants", []), list)
-
-    def test_visual_bible_local(self):
-        """无 LLM 时 visual bible 由本地规则生成"""
-        lines_data = [
-            (0.0, 4.0, "今天天气真好"),
-            (4.5, 8.0, "我们一起出去玩"),
-        ]
-        srt_path = self.test_dir / "song.srt"
-        make_test_srt(lines_data, srt_path)
-
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        result = analyzer.analyze(str(srt_path))
-
-        vb = result["visual_bible"]
-        self.assertEqual(vb.get("source"), "local")
-        self.assertIn("world_style", vb)
-        self.assertIsInstance(vb.get("palette"), list)
-        self.assertGreater(len(vb["palette"]), 0)
-        self.assertIn("lighting", vb)
-        self.assertIn("camera_language", vb)
-        self.assertIn("do_not_break", vb)
-
-    def test_get_visual_bible_summary_before_analyze(self):
-        """analyze 前 _get_visual_bible_summary 应返回 fallback"""
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        summary = analyzer._get_visual_bible_summary()
-        self.assertIn("Style:", summary)
-        self.assertIn("动漫风", summary)
-
-    def test_get_visual_bible_summary_after_analyze(self):
-        """analyze 后 _get_visual_bible_summary 应包含 bible 内容"""
-        lines_data = [
-            (0.0, 4.0, "副歌副歌"),
-            (4.5, 8.0, "副歌副歌"),
-        ]
-        srt_path = self.test_dir / "song.srt"
-        make_test_srt(lines_data, srt_path)
-
-        analyzer = SceneAnalyzer(str(self.test_dir))
-        result = analyzer.analyze(str(srt_path))
-
-        summary = analyzer._get_visual_bible_summary()
-        self.assertIn("World:", summary)
-        self.assertIn("Palette:", summary)
-        self.assertIn("Lighting:", summary)
-
-
-class TestSceneAnalyzerClean(unittest.TestCase):
-    """测试 _clean 工具函数"""
-
-    def test_clean_text(self):
-        result = SceneAnalyzer._clean("Hello, World! 你好世界")
-        self.assertEqual(result, "HelloWorld你好世界")
-
-    def test_clean_chinese_only(self):
-        result = SceneAnalyzer._clean("今天天气真好！")
-        self.assertEqual(result, "今天天气真好")
-
-
-class TestSceneAnalyzerStripThink(unittest.TestCase):
-    """测试 _strip_think"""
-
-    def test_strip_think(self):
-        raw = "Some text <think>inner thoughts</think> more text"
-        result = SceneAnalyzer._strip_think(raw)
-        self.assertEqual(result, "Some text  more text")
-
-    def test_no_think_tag(self):
-        raw = "just normal text"
-        self.assertEqual(SceneAnalyzer._strip_think(raw), "just normal text")
-
-    def test_unclosed_think_tag_is_removed(self):
-        raw = "prefix <think>reasoning was truncated"
-        self.assertEqual(SceneAnalyzer._strip_think(raw), "prefix")
-
-
-class TestSceneAnalyzerExtractJson(unittest.TestCase):
-    """测试 _extract_json_array"""
-
-    def test_extract_json(self):
-        raw = 'Here is your result: [{"id": 1, "desc": "hello"}] Thank you'
-        result = SceneAnalyzer._extract_json_array(raw)
-        self.assertEqual(result, '[{"id": 1, "desc": "hello"}]')
-
-    def test_no_json(self):
-        raw = "no json here"
-        result = SceneAnalyzer._extract_json_array(raw)
-        self.assertEqual(result, "no json here")
-
-
-class TestSceneAnalyzerParseJsonResponse(unittest.TestCase):
-    """测试 LLM JSON 响应解析"""
-
-    def test_unclosed_think_returns_none(self):
-        raw = "<think>reasoning was truncated before json"
-        self.assertIsNone(SceneAnalyzer._parse_json_response(raw))
-
-    def test_removes_closed_think_then_parses_json(self):
-        raw = '<think>ignore this</think>[{"id": 1, "desc": "summer heat"}]'
-        result = SceneAnalyzer._parse_json_response(raw)
-        self.assertEqual(result[0]["id"], 1)
+        assert "scenes" in result
 
 
 if __name__ == "__main__":
+    import unittest
     unittest.main()

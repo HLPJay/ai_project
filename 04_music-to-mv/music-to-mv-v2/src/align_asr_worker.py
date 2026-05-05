@@ -38,7 +38,7 @@ def json_safe(value):
         return {str(k): json_safe(v) for k, v in value.items()}
     try:
         return value.item()
-    except Exception:
+    except AttributeError:
         return str(value)
 
 
@@ -65,8 +65,8 @@ def main() -> None:
     try:
         from src.log_setup import setup_logging
         setup_logging()
-    except Exception:
-        pass
+    except (ImportError, Exception):
+        pass  # 日志初始化失败不影响 worker 主流程
 
     from faster_whisper import WhisperModel
 

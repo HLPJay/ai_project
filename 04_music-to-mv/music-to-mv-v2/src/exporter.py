@@ -318,15 +318,38 @@ class MVExporter:
         style = str(info.get("style") or "").strip()
         music_style = str(info.get("music_style") or "").strip()
         mood = str(info.get("mood") or "").strip()
+        language = str(info.get("language") or "").strip()
+        audio_sec = info.get("audio_duration_sec")
+        created_at = str(info.get("created_at") or "").strip()
+
+        # 兜底：info.json 中无名称时从项目目录名推断（去掉末尾时间戳）
+        if not song_title:
+            import re as _re
+            dir_name = self.metadata_dir.parent.name
+            song_title = _re.sub(r"_\d{8}_\d{6}$", "", dir_name).strip()
+
+        # 时长格式化：128 → 2'08"
+        duration_str = ""
+        try:
+            sec = int(float(audio_sec))
+            duration_str = f"{sec // 60}'{sec % 60:02d}\""
+        except Exception:
+            pass
+
+        # 日期格式化：取 created_at 的日期部分
+        date_str = created_at[:10] if len(created_at) >= 10 else ""
 
         lines = []
         if song_title:
-            lines.append(f"歌曲：{song_title}")
-        if theme:
+            lines.append(f"♪  {song_title}")
+        if theme and theme != song_title:
             lines.append(f"主题：{theme}")
-        meta = " / ".join(part for part in [style, music_style, mood] if part)
-        if meta:
-            lines.append(meta)
+        meta_parts = [p for p in [style, music_style, mood, language] if p]
+        if meta_parts:
+            lines.append("  ·  ".join(meta_parts))
+        footer = "  ·  ".join(p for p in [duration_str, date_str] if p)
+        if footer:
+            lines.append(footer)
         if not lines:
             return video_file
 

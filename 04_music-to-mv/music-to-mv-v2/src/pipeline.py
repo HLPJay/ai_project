@@ -232,25 +232,52 @@ class MVPipeline:
                 "Content-Type": "application/json",
             }
 
-            resp_data = self.client._call_raw_api(
-                api_url, payload, headers,
-                prompt_key="creative_brief",
-                model=self.cfg.get("llm_model", "MiniMax-M2.7"),
-                prompt_text=prompt,
-            )
-            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-            # 解析 JSON（兼容 markdown 代码块包裹）
             import re
-            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                brace_start = raw.find("{")
-                brace_end = raw.rfind("}")
-                json_str = raw[brace_start:brace_end + 1] if brace_start != -1 and brace_end > brace_start else raw
+            import time as _time
 
-            brief = json.loads(json_str) if json_str.strip().startswith("{") else {}
+            max_json_retries = self.cfg.get_int("api_max_retries", 3)
+            brief = {}
+            for _attempt in range(1, max_json_retries + 1):
+                resp_data = self.client._call_raw_api(
+                    api_url, payload, headers,
+                    prompt_key="creative_brief",
+                    model=self.cfg.get("llm_model", "MiniMax-M2.7"),
+                    prompt_text=prompt,
+                )
+                raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                # 解析 JSON（兼容 markdown 代码块包裹）
+                json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(1)
+                else:
+                    brace_start = raw.find("{")
+                    json_str = ""
+                    if brace_start != -1:
+                        depth, end = 0, brace_start
+                        for ci, ch in enumerate(raw[brace_start:], brace_start):
+                            if ch == "{":
+                                depth += 1
+                            elif ch == "}":
+                                depth -= 1
+                                if depth == 0:
+                                    end = ci
+                                    break
+                        json_str = raw[brace_start:end + 1]
+
+                if json_str.strip().startswith("{"):
+                    try:
+                        brief = json.loads(json_str)
+                        break
+                    except Exception:
+                        pass
+
+                if _attempt < max_json_retries:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "creative_brief JSON 解析失败 (%d/%d)，重试...", _attempt, max_json_retries
+                    )
+                    _time.sleep(2 * _attempt)
 
             for key in ("narrative_mode", "visual_mode", "character_policy",
                         "chorus_energy", "visual_anchors", "do_not_do"):
@@ -787,8 +814,8 @@ class MVPipeline:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return int(float(result.stdout.strip()))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("获取音频时长失败（ffprobe 异常）: %s，时长将返回 0", e)
         return 0
 
     def _build_lyrics_prompt_fallback(self) -> str:

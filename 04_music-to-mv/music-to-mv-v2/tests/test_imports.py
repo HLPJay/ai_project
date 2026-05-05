@@ -1,8 +1,8 @@
 """导入测试 — 验证所有模块可正常加载"""
-import sys
 import os
-import tempfile
-import shutil
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -14,58 +14,50 @@ def test_config_manager():
     print(f"  [OK] ConfigManager: provider={cfg.get('image_api_provider')}")
 
 
-def test_project_manager():
+def test_project_manager(tmp_path):
     from src.project_manager import ProjectManager
 
-    tmpdir = tempfile.mkdtemp()
-    try:
-        pm = ProjectManager.init_new("测试", "国风", "民谣", "温柔",
-                                     workspace_root=tmpdir)
-        assert pm.theme == "测试"
-        assert pm.style == "国风"
-        assert pm.music_style == "民谣"
-        assert pm.mood == "温柔"
-        assert len(pm.info["pipeline"]) == 10  # 10 steps
+    pm = ProjectManager.init_new("测试", "国风", "民谣", "温柔",
+                                 workspace_root=str(tmp_path))
+    assert pm.theme == "测试"
+    assert pm.style == "国风"
+    assert pm.music_style == "民谣"
+    assert pm.mood == "温柔"
+    assert len(pm.info["pipeline"]) == 10  # 10 steps
 
-        # 测试暂停点
-        pm.require_approval("test_step", {"a": "A", "b": "B"})
-        assert pm.is_awaiting_approval is True
-        pm.approve("a")
-        assert pm.is_awaiting_approval is False
-        assert pm.get_user_choice("test_step") == "a"
+    # 测试暂停点
+    pm.require_approval("test_step", {"a": "A", "b": "B"})
+    assert pm.is_awaiting_approval is True
+    pm.approve("a")
+    assert pm.is_awaiting_approval is False
+    assert pm.get_user_choice("test_step") == "a"
 
-        # 测试步骤状态
-        pm.update_step("① lyrics", "running", "测试中")
-        assert pm.get_step_status("① lyrics")["status"] == "running"
-        pm.update_step("① lyrics", "completed", "完成")
-        assert pm.is_step_completed("① lyrics") is True
+    # 测试步骤状态
+    pm.update_step("① lyrics", "running", "测试中")
+    assert pm.get_step_status("① lyrics")["status"] == "running"
+    pm.update_step("① lyrics", "completed", "完成")
+    assert pm.is_step_completed("① lyrics") is True
 
-        print(f"  [OK] ProjectManager: {pm.project_name} ({pm.project_dir.name})")
-    finally:
-        shutil.rmtree(tmpdir)
+    print(f"  [OK] ProjectManager: {pm.project_name} ({pm.project_dir.name})")
 
 
-def test_llm_logger():
+def test_llm_logger(tmp_path):
     from src.llm.logger import LLMLogger
 
-    tmpdir = tempfile.mkdtemp()
-    try:
-        logger = LLMLogger(tmpdir)
+    logger = LLMLogger(str(tmp_path))
 
-        # 记录成功调用
-        logger.log_api_call("test", "model-x", "test prompt",
-                           {"result": "ok"})
+    # 记录成功调用
+    logger.log_api_call("test", "model-x", "test prompt",
+                       {"result": "ok"})
 
-        # 记录失败调用
-        logger.log_api_call("test", "model-x", "test prompt 2",
-                           error="timeout")
+    # 记录失败调用
+    logger.log_api_call("test", "model-x", "test prompt 2",
+                       error="timeout")
 
-        stats = logger.get_stats()
-        assert stats["total_calls"] == 2
-        print(f"  [OK] LLMLogger: {stats['total_calls']} calls, "
-              f"{stats['total_tokens']} tokens")
-    finally:
-        shutil.rmtree(tmpdir)
+    stats = logger.get_stats()
+    assert stats["total_calls"] == 2
+    print(f"  [OK] LLMLogger: {stats['total_calls']} calls, "
+          f"{stats['total_tokens']} tokens")
 
 
 def test_prompt_registry():
@@ -100,53 +92,43 @@ def test_prompt_registry():
         print(f"  [OK] PromptRegistry: {count + 1} templates (fallback mode)")
 
 
-def test_user_interaction():
+def test_user_interaction(tmp_path):
     from src.project_manager import ProjectManager
     from src.interaction import UserInteraction
-    import tempfile, shutil
 
-    tmpdir = tempfile.mkdtemp()
-    try:
-        pm = ProjectManager.init_new("测试交互", workspace_root=tmpdir)
+    pm = ProjectManager.init_new("测试交互", workspace_root=str(tmp_path))
 
-        # 设置暂停点
-        UserInteraction.pause_step2(pm)
-        assert pm.is_awaiting_approval is True
+    # 设置暂停点
+    UserInteraction.pause_step2(pm)
+    assert pm.is_awaiting_approval is True
 
-        # 处理用户选择
-        action = UserInteraction.handle_choice(pm, "continue")
-        assert action == "continue"
-        assert pm.is_awaiting_approval is False
+    # 处理用户选择
+    action = UserInteraction.handle_choice(pm, "continue")
+    assert action == "continue"
+    assert pm.is_awaiting_approval is False
 
-        # 再次设置，测试"自动模式"
-        UserInteraction.pause_step2(pm)
-        action = UserInteraction.handle_choice(pm, "a")
-        assert action == "continue"
+    # 再次设置，测试"自动模式"
+    UserInteraction.pause_step2(pm)
+    action = UserInteraction.handle_choice(pm, "a")
+    assert action == "continue"
 
-        print(f"  [OK] UserInteraction: handle_choice OK")
-    finally:
-        shutil.rmtree(tmpdir)
+    print(f"  [OK] UserInteraction: handle_choice OK")
 
 
-def test_mvpipeline_create():
+def test_mvpipeline_create(tmp_path):
     from src.pipeline import MVPipeline
-    import tempfile, shutil
 
-    tmpdir = tempfile.mkdtemp()
-    try:
-        pipeline = MVPipeline.create_new(
-            theme="测试",
-            style="国风",
-            music_style="民谣",
-            mood="温柔",
-            auto_mode=True,
-        )
-        assert pipeline.pm is not None
-        assert pipeline.pm.theme == "测试"
-        assert pipeline.auto_mode is True
-        print(f"  [OK] MVPipeline: created for '{pipeline.pm.project_name}'")
-    finally:
-        shutil.rmtree(tmpdir)
+    pipeline = MVPipeline.create_new(
+        theme="测试",
+        style="国风",
+        music_style="民谣",
+        mood="温柔",
+        auto_mode=True,
+    )
+    assert pipeline.pm is not None
+    assert pipeline.pm.theme == "测试"
+    assert pipeline.auto_mode is True
+    print(f"  [OK] MVPipeline: created for '{pipeline.pm.project_name}'")
 
 
 if __name__ == "__main__":
