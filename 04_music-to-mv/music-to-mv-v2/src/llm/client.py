@@ -18,6 +18,7 @@ client.py — 统一 LLM API 客户端
 """
 
 import json
+import logging
 import os
 import time
 import threading
@@ -30,6 +31,8 @@ from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
 from src.llm.logger import LLMLogger, LLMCallRecord
+
+logger = logging.getLogger(__name__)
 
 
 class RetryConfig:
@@ -480,12 +483,9 @@ class LLMClient:
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
         self._log_image_call(prompt_key, model_name, prompt, output_path, file_size)
-        if self._api_log_enabled():
-            elapsed_ms = (time.time() - start) * 1000
-            print(
-                f"  [API] comfyui image saved key={prompt_key} "
-                f"latency={elapsed_ms:.0f}ms file_size={file_size}"
-            )
+        elapsed_ms = (time.time() - start) * 1000
+        logger.debug("comfyui image saved key=%s latency=%.0fms file_size=%d",
+                     prompt_key, elapsed_ms, file_size)
         return output_path
 
     def _build_comfyui_workflow(self, prompt: str, negative_prompt: str,
@@ -626,8 +626,8 @@ class LLMClient:
                 if attempt == cfg.max_retries:
                     raise
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                if self._api_log_retries_enabled():
-                    print(f"   Download failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                logger.warning("Download failed (%s), retry %d/%d in %.0fs...",
+                               e, attempt, cfg.max_retries, delay)
                 time.sleep(delay)
 
     def _urlopen_with_retry(self, req, retry_config: RetryConfig = None):
@@ -640,15 +640,15 @@ class LLMClient:
                 if e.code not in cfg.retryable_status or attempt == cfg.max_retries:
                     raise
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                if self._api_log_retries_enabled():
-                    print(f"   HTTP {e.code}, retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                logger.warning("HTTP %s, retry %d/%d in %.0fs...",
+                               e.code, attempt, cfg.max_retries, delay)
                 time.sleep(delay)
             except Exception as e:
                 if attempt == cfg.max_retries:
                     raise
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                if self._api_log_retries_enabled():
-                    print(f"   Request failed ({e}), retry {attempt}/{cfg.max_retries} in {delay:.0f}s...")
+                logger.warning("Request failed (%s), retry %d/%d in %.0fs...",
+                               e, attempt, cfg.max_retries, delay)
                 time.sleep(delay)
 
     # ── 通用 API 调用 ────────────────────────────────────
@@ -710,9 +710,8 @@ class LLMClient:
 
             if attempt < cfg.max_retries:
                 delay = min(cfg.base_delay * (2 ** (attempt - 1)), cfg.max_delay)
-                if self._api_log_retries_enabled():
-                    print(f"  [{prompt_key}] 尝试 {attempt}/{cfg.max_retries} 失败，"
-                          f"{delay:.0f}s 后重试... 错误: {last_error}")
+                logger.warning("[%s] 尝试 %d/%d 失败，%.0fs 后重试... 错误: %s",
+                               prompt_key, attempt, cfg.max_retries, delay, last_error)
                 time.sleep(delay)
 
         # 记录失败
@@ -733,25 +732,13 @@ class LLMClient:
         from src.config_manager import ConfigManager
         return ConfigManager()
 
-    def _api_log_enabled(self) -> bool:
-        try:
-            return self._cfg().get_bool("api_log_enabled", False)
-        except Exception:
-            return False
-
-    def _api_log_retries_enabled(self) -> bool:
-        try:
-            return self._cfg().get_bool("api_log_retries", True)
-        except Exception:
-            return True
-
     def _api_log_max_chars(self) -> int:
         try:
             return max(0, self._cfg().get_int("api_log_max_chars", 500))
         except Exception:
             return 500
 
-    def _truncate_for_console(self, value: Any) -> str:
+    def _truncate_for_log(self, value: Any) -> str:
         text = (
             json.dumps(value, ensure_ascii=False)
             if isinstance(value, (dict, list))
@@ -764,41 +751,21 @@ class LLMClient:
 
     def _print_api_request_log(self, prompt_key: str, model: str, prompt_text: str,
                                attempt: int, max_retries: int, timeout: float):
-        if not self._api_log_enabled():
-            return
-        print(
-            f"  [API] request key={prompt_key} model={model} "
-            f"attempt={attempt}/{max_retries} timeout={timeout}s"
-        )
-        try:
-            if self._cfg().get_bool("api_log_prompt", False):
-                print(f"  [API prompt] {self._truncate_for_console(prompt_text)}")
-        except Exception:
-            pass
+        logger.info("API request key=%s model=%s attempt=%d/%d timeout=%.0fs",
+                    prompt_key, model, attempt, max_retries, timeout)
+        logger.debug("API prompt [%s]: %s", prompt_key, self._truncate_for_log(prompt_text))
 
     def _print_api_success_log(self, prompt_key: str, model: str,
                                response: Any, latency_ms: float):
-        if not self._api_log_enabled():
-            return
         resp_len = len(json.dumps(response, ensure_ascii=False)) if response is not None else 0
-        print(
-            f"  [API] success key={prompt_key} model={model} "
-            f"latency={latency_ms:.0f}ms response_chars={resp_len}"
-        )
-        try:
-            if self._cfg().get_bool("api_log_response", False):
-                print(f"  [API response] {self._truncate_for_console(response)}")
-        except Exception:
-            pass
+        logger.info("API success key=%s model=%s latency=%.0fms response_chars=%d",
+                    prompt_key, model, latency_ms, resp_len)
+        logger.debug("API response [%s]: %s", prompt_key, self._truncate_for_log(response))
 
     def _print_api_failure_log(self, prompt_key: str, model: str,
                                error: str, latency_ms: float):
-        if not self._api_log_enabled():
-            return
-        print(
-            f"  [API] failed key={prompt_key} model={model} "
-            f"latency={latency_ms:.0f}ms error={error}"
-        )
+        logger.warning("API failed key=%s model=%s latency=%.0fms error=%s",
+                       prompt_key, model, latency_ms, error)
 
     def _log_call(self, prompt_key: str, model: str, prompt_text: str,
                   response: Any, error: str = None,

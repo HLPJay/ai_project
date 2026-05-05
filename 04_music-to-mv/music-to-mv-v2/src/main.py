@@ -8,8 +8,10 @@ main.py — Music-to-MV v2 命令行入口
 """
 
 import argparse
+import datetime
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -317,12 +319,28 @@ def main():
     # ── 日志参数 ──
     parser.add_argument("--log-level",
                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                       help="日志级别（也可用 MV_LOG_LEVEL 环境变量或 .env 配置；默认 INFO）")
+                       help="终端日志级别（也可用 MV_LOG_LEVEL 环境变量或 .env 配置；默认 INFO）")
     parser.add_argument("--log-file",
                        help="日志同时写入此文件（也可用 MV_LOG_FILE 环境变量或 .env 配置）")
+    parser.add_argument("--log-file-level",
+                       choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                       help="文件日志级别（也可用 MV_LOG_FILE_LEVEL 配置；默认 DEBUG）")
 
     args = parser.parse_args()
-    setup_logging(cli_level=args.log_level, cli_file=args.log_file)
+
+    # 构建运行标识：用于日志文件自动命名（项目名_时间戳）
+    _ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if args.theme:
+        _raw = args.theme[0] if isinstance(args.theme, list) else args.theme
+    elif args.project:
+        _raw = Path(os.path.expanduser(args.project)).name
+    else:
+        _raw = "mv"
+    _safe = re.sub(r'[\\/:*?"<>|\s]+', "_", _raw)[:50].strip("_") or "mv"
+    _run_name = f"{_safe}_{_ts}"
+
+    setup_logging(cli_level=args.log_level, cli_file=args.log_file,
+                  cli_file_level=args.log_file_level, run_name=_run_name)
     if isinstance(args.theme, list):
         args.theme = "、".join(t.strip() for t in args.theme if t and t.strip())
     if args.phase:

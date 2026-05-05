@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import math
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -760,16 +761,29 @@ class SceneAnalyzer:
                 "Content-Type": "application/json",
             }
 
-            resp_data = self.client._call_raw_api(
-                llm_cfg["api_url"], payload, headers,
-                prompt_key="scene_desc_batch",
-                model=llm_cfg["model"],
-                prompt_text=prompt,
-                retry_config=RetryConfig.for_profile("scene_desc"),
-            )
+            # JSON 解析失败时重试（HTTP 成功但返回非 JSON 内容）
+            max_json_retries = cfg.get_int("scene_desc_api_max_retries", 3)
+            raw, resp_data, results = "", {}, None
+            for json_attempt in range(1, max_json_retries + 1):
+                resp_data = self.client._call_raw_api(
+                    llm_cfg["api_url"], payload, headers,
+                    prompt_key="scene_desc_batch",
+                    model=llm_cfg["model"],
+                    prompt_text=prompt,
+                    retry_config=RetryConfig.for_profile("scene_desc"),
+                )
+                raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                results = self._parse_json_response(raw)
+                if results:
+                    break
+                if json_attempt < max_json_retries:
+                    delay = 2 * json_attempt
+                    logger.warning(
+                        "scene_desc JSON 解析失败 (%d/%d)，%ds 后重试... response_chars=%d",
+                        json_attempt, max_json_retries, delay, len(raw),
+                    )
+                    time.sleep(delay)
 
-            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            results = self._parse_json_response(raw)
             if not results:
                 finish_reason = resp_data.get("choices", [{}])[0].get("finish_reason", "")
                 if finish_reason == "length" or "<think" in raw.lower():
@@ -783,7 +797,8 @@ class SceneAnalyzer:
                     )
                     if compact_ret:
                         return compact_ret
-                logger.warning("LLM batch descs 解析失败，使用 local fallback")
+                logger.warning("LLM batch descs 解析失败（%d 次均无有效 JSON），使用 local fallback",
+                               max_json_retries)
                 return {}
 
             ret = {}
@@ -984,16 +999,28 @@ class SceneAnalyzer:
                 "Content-Type": "application/json",
             }
 
-            resp_data = self.client._call_raw_api(
-                llm_cfg["api_url"], payload, headers,
-                prompt_key="variant_desc_batch",
-                model=llm_cfg["model"],
-                prompt_text=prompt,
-                retry_config=RetryConfig.for_profile("variant"),
-            )
+            max_json_retries = cfg.get_int("variant_api_max_retries", 3)
+            raw, resp_data, results = "", {}, None
+            for json_attempt in range(1, max_json_retries + 1):
+                resp_data = self.client._call_raw_api(
+                    llm_cfg["api_url"], payload, headers,
+                    prompt_key="variant_desc_batch",
+                    model=llm_cfg["model"],
+                    prompt_text=prompt,
+                    retry_config=RetryConfig.for_profile("variant"),
+                )
+                raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                results = self._parse_json_response(raw)
+                if results:
+                    break
+                if json_attempt < max_json_retries:
+                    delay = 2 * json_attempt
+                    logger.warning(
+                        "variant_desc JSON 解析失败 (%d/%d)，%ds 后重试... response_chars=%d",
+                        json_attempt, max_json_retries, delay, len(raw),
+                    )
+                    time.sleep(delay)
 
-            raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            results = self._parse_json_response(raw)
             if not results:
                 finish_reason = resp_data.get("choices", [{}])[0].get("finish_reason", "")
                 if finish_reason == "length" or "<think" in raw.lower():
@@ -1004,7 +1031,8 @@ class SceneAnalyzer:
                     )
                     if compact_variants:
                         return compact_variants
-                logger.warning("LLM batch variants 解析失败，使用 local fallback")
+                logger.warning("LLM batch variants 解析失败（%d 次均无有效 JSON），使用 local fallback",
+                               max_json_retries)
                 return {}
 
             merged = {}
