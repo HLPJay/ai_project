@@ -1,28 +1,90 @@
-# 敏感文件
+# ════════════════════════════════════════════════
+# Music-to-MV — Git Ignore
+# ════════════════════════════════════════════════
+
+# ── 敏感文件 ──────────────────────────────────
 .env
-.venv
 .env.local
 .env.production
+.env.*.local
+*.pem
+*.key
 
-# Python
+# ── Python ───────────────────────────────────
 __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
 build/
+.eggs/
+*.so
+.pytest_cache/
+.mypy_cache/
+.tox/
+venv/
+.venv/
 
-# 日志
-logs/
-*.log
+# ── Node / Remotion ───────────────────────────
+# node_modules 整体忽略（包含 .cache、.remotion 等所有子目录）
+*/node_modules/
+node_modules/
+# Remotion 渲染缓存和产物
+*/.remotion/
+.remotion/
+# Webpack 构建缓存
+*/.cache/
+.cache/
 
-# 项目产出（视频/音频）
+# ── 项目产出（音视频/图片）─────────────────────
 *.mp3
 *.mp4
 *.wav
 *.flac
+*.ogg
+*.m4a
+*.aac
+*.mkv
+*.mov
+*.avi
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.webp
+!.gitkeep
 
-# 临时文件
+# ── 日志与临时 ────────────────────────────────
+logs/
+*.log
+*.tmp
+*.temp
 .DS_Store
 Thumbs.db
+~$*
+*.swp
+*.swo
+*~
+.DS_Store
 
+# ── 工作空间（用户数据）────────────────────────
+*/workspace/
+workspace/
+
+# ── Claude Code ────────────────────────────────
 music-to-mv-v2/.claude/
+.claude/
+
+# ── Coverage / 测试报告 ────────────────────────
+htmlcov/
+.coverage
+*.cover
+
+# ── IDE ──────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+!.vscode/settings.json
+!.vscode/launch.json
+
+# ── 原神 / Genshin ────────────────────────────
+#（如有）原神项目特定忽略

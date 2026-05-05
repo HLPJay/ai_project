@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zero-dependency local Markdown knowledge base viewer. A Node.js HTTP server serves static files and provides APIs to browse, search, and manage Markdown notes. The frontend is a single‑page application with real‑time search, syntax‑highlighted rendering, and a separate editor page for CRUD operations.
+Local Markdown knowledge base viewer. A Node.js HTTP server serves static files and provides APIs to browse, search, and manage Markdown notes. The frontend is a single‑page application with real‑time search, syntax‑highlighted rendering, and a separate editor page for CRUD operations.
 
 ## Common Commands
 
@@ -12,6 +12,9 @@ Zero-dependency local Markdown knowledge base viewer. A Node.js HTTP server serv
 ```bash
 # Default: serves ./notes on port 3000
 node server.js
+
+# With password protection (required for editing)
+EDIT_PASSWORD=your_password node server.js
 
 # Specify custom directory and/or port
 node server.js /path/to/notes 8080
@@ -29,25 +32,37 @@ chmod +x start.sh
 
 The server runs on `127.0.0.1` and prints the URL and notes directory on start. Stop with Ctrl+C.
 
-### No build, lint, or test suite
-This project has zero dependencies and no build step. Frontend resources (marked.js, highlight.js) are loaded from CDN. There are no unit tests, linting configuration, or CI pipelines.
+### Dependencies
+This project uses npm for dependency management. Run `npm install` before first start.
+- `busboy` – multipart file upload parsing (used by image upload)
+
+No build step required. Frontend resources (marked.js, highlight.js) are loaded from local `public/libs/`.
 
 ## Architecture
 
 ### Server (`server.js`)
 - Pure Node.js HTTP server (no Express).
 - Serves static files from `public/`.
+- Token-based authentication for write operations (POST, PUT, DELETE).
 - API endpoints:
   - `GET /api/tree` – scan the notes directory, return file list with base64url IDs.
   - `GET /api/file?id=…` – read a Markdown file.
-  - `PUT /api/file` – update a file (delegated to `crud-api.js`).
-  - `DELETE /api/file?id=…` – delete a file (delegated to `crud-api.js`).
-  - `POST /api/files` – create a new file (delegated to `crud-api.js`).
-  - `POST /api/directories` – create a subdirectory (delegated to `crud-api.js`).
+  - `PUT /api/file` – update a file (requires auth token).
+  - `DELETE /api/file?id=…` – delete a file (requires auth token).
+  - `POST /api/files` – create a new file (requires auth token).
+  - `POST /api/directories` – create a subdirectory (requires auth token).
   - `GET /api/search?q=…` – full‑text search across note contents.
   - `GET /api/image?path=…` – serve images (path base64url‑encoded).
+  - `POST /api/upload-image` – upload images (requires auth token).
+  - `POST /api/auth` – authenticate and receive token.
 - Path‑traversal protection: all resolved paths must start with `NOTES_DIR`.
 - CORS headers allow `*` for local development.
+
+### Authentication
+- Write operations require Bearer token in Authorization header.
+- Token obtained via `POST /api/auth` with password.
+- Token expires after 24 hours.
+- Password set via `EDIT_PASSWORD` environment variable (required).
 
 ### CRUD module (`crud-api.js`)
 - Exported handlers for create/update/delete file and create directory.
@@ -58,8 +73,8 @@ This project has zero dependencies and no build step. Frontend resources (marked
 - `index.html` – main viewer with sidebar file tree, search bar, and rendered Markdown panel.
 - `editor.html` – dual‑pane Markdown editor (source + live preview) for creating/editing files.
 - Vanilla JavaScript, no frameworks.
-- Uses `marked` and `highlight.js` CDN for rendering and syntax highlighting.
-- Communicates with server via `fetch`.
+- Uses local `libs/` for marked.js and highlight.js.
+- Token stored in sessionStorage after authentication.
 
 ### Notes directory
 - Default `./notes` (created automatically with a sample note).
@@ -79,11 +94,12 @@ This project has zero dependencies and no build step. Frontend resources (marked
 - File names are checked for illegal characters and path‑traversal sequences.
 - Base64url IDs are decoded before use; invalid IDs result in 404.
 - Image API only serves files with image MIME types.
-- No authentication – the server is intended for local use only.
+- Token-based auth for all write operations (PUT, POST, DELETE).
+- No authentication for read operations (intended for local use).
+- `EDIT_PASSWORD` must be set via environment variable (no default).
 
 ## Development Notes
 - The codebase is written in Chinese (comments, UI strings) but the logic is standard JavaScript.
 - Adding new API endpoints: follow the pattern in `server.js` – add a condition block before the static‑file fallback.
 - Adding new frontend features: edit `index.html` and its inline `<script>`.
-- The project deliberately avoids npm dependencies; keep it zero‑dependency.
-- The `.agent/plan/` directory contains implementation plans for previous features (e.g., CRUD addition).
+- The `.agent/plan/` directory contains implementation plans for previous features.

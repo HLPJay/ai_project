@@ -1392,41 +1392,42 @@ function refreshFiles() {
 }
 
 // ═══════════════════ SETTINGS
-// 新增和修改的认证接口
-// 统一的验证函数，验证通过后执行回调
+// 认证接口
 async function requireAuth(callback) {
-  // 先用 sessionStorage 缓存，同一浏览器会话内不用重复输入
-  let pwd = sessionStorage.getItem('edit_pwd');
+  // 先用 sessionStorage 缓存 Token
+  let token = sessionStorage.getItem('edit_token');
 
-  if (!pwd) {
-    pwd = prompt('请输入编辑密码:');
-
-    //console.log('pwd值:', pwd, '类型:', typeof pwd); 
-    if (pwd === null) return;        // 点了「取消」，静默退出
-    
-    if (pwd.trim() === '') {         // 点了「确定」但没输入
+  if (!token) {
+    const pwd = prompt('请输入编辑密码:');
+    if (pwd === null) return;
+    if (pwd.trim() === '') {
       alert('密码不能为空');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.token) {
+        sessionStorage.setItem('edit_token', data.token);
+        token = data.token;
+      } else {
+        alert(data.error || '密码错误，请重试');
+        return;
+      }
+    } catch(e) {
+      alert('验证失败，请检查网络');
       return;
     }
   }
 
-  try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pwd })
-    });
-
-    if (res.ok) {
-      sessionStorage.setItem('edit_pwd', pwd); // 验证通过，缓存
-      callback(); // 执行跳转
-    } else {
-      sessionStorage.removeItem('edit_pwd'); // 清掉缓存的错误密码
-      alert('密码错误，请重试');
-    }
-  } catch(e) {
-    alert('验证失败，请检查网络');
-  }
+  callback();
 }
 
 // 初始化相关  注意新增时的认证
@@ -2111,8 +2112,18 @@ window.copyCode = function(btn) {
 };
 
 // ═══════════════════ UTILS
-async function apiFetch(path) {
-  const res = await fetch(API + path);
+async function apiFetch(path, options = {}) {
+  const token = sessionStorage.getItem('edit_token');
+  const headers = { ...options.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(API + path, { ...options, headers });
+  if (res.status === 401) {
+    sessionStorage.removeItem('edit_token');
+    alert('登录已过期，请重新登录');
+    return null;
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

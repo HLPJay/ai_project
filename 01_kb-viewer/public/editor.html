@@ -779,6 +779,63 @@ let originalContent = '';
 let isDirty = false;
 let editorWidth = 50; // 百分比
 
+// ═══════════════════ 认证辅助函数
+async function requireAuth(callback) {
+  let token = sessionStorage.getItem('edit_token');
+
+  if (!token) {
+    const pwd = prompt('请输入编辑密码:');
+    if (pwd === null) return;
+    if (pwd.trim() === '') {
+      alert('密码不能为空');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.token) {
+        sessionStorage.setItem('edit_token', data.token);
+        token = data.token;
+      } else {
+        alert(data.error || '密码错误，请重试');
+        return;
+      }
+    } catch(e) {
+      alert('验证失败，请检查网络');
+      return;
+    }
+  }
+
+  callback(token);
+}
+
+// 获取带 Token 的 fetch 选项
+function authFetchOptions(token) {
+  return {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  };
+}
+
+// 处理 401 响应
+async function handleAuthError(response) {
+  if (response.status === 401) {
+    sessionStorage.removeItem('edit_token');
+    alert('登录已过期，请重新登录');
+    return true;
+  }
+  return false;
+}
+
 // ═══════════════════ 初始化
 document.addEventListener('DOMContentLoaded', async () => {
   // 配置 marked
@@ -969,12 +1026,28 @@ async function saveFile() {
     let response;
 
     if (currentFileId) {
-      // 更新现有文件
+      // 更新现有文件 - 需要认证
+      const token = sessionStorage.getItem('edit_token');
+      if (!token) {
+        hideLoading();
+        showStatus('请先登录', 'error');
+        return;
+      }
+
       response = await fetch('/api/file', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ id: currentFileId, content })
       });
+
+      if (await handleAuthError(response)) {
+        hideLoading();
+        showStatus('登录已过期，请重新保存', 'error');
+        return;
+      }
     } else {
       // 创建新文件（应该不会发生，因为新建文件通过表单处理）
       showStatus('请使用新建文件表单创建文件', 'error');
@@ -994,7 +1067,7 @@ async function saveFile() {
     hideLoading();
     showStatus('文件保存成功', 'success');
 
-    updatePreview(); 
+    updatePreview();
     // 更新文件信息
     updateFileInfo();
 
@@ -1020,9 +1093,25 @@ async function deleteFile() {
   showLoading('删除中...');
 
   try {
+    const token = sessionStorage.getItem('edit_token');
+    if (!token) {
+      hideLoading();
+      showStatus('请先登录', 'error');
+      return;
+    }
+
     const response = await fetch(`/api/file?id=${encodeURIComponent(currentFileId)}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     });
+
+    if (await handleAuthError(response)) {
+      hideLoading();
+      showStatus('登录已过期，请重新操作', 'error');
+      return;
+    }
 
     if (!response.ok) {
       const error = await response.json();
@@ -1089,11 +1178,27 @@ async function createNewFile() {
   showLoading('创建文件中...');
 
   try {
+    const token = sessionStorage.getItem('edit_token');
+    if (!token) {
+      hideLoading();
+      showStatus('请先登录', 'error');
+      return;
+    }
+
     const response = await fetch('/api/files', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({ path: filePath, content })
     });
+
+    if (await handleAuthError(response)) {
+      hideLoading();
+      showStatus('登录已过期，请重新创建', 'error');
+      return;
+    }
 
     if (!response.ok) {
       const error = await response.json();
@@ -1369,10 +1474,22 @@ async function uploadImage(file, altText) {
     formData.append('relativeTo', currentFileId);
   }
 
+  const token = sessionStorage.getItem('edit_token');
+  if (!token) {
+    throw new Error('请先登录');
+  }
+
   const response = await fetch('/api/upload-image', {
     method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
     body: formData
   });
+
+  if (await handleAuthError(response)) {
+    throw new Error('登录已过期，请重新登录');
+  }
 
   if (!response.ok) {
     const error = await response.json();

@@ -8,6 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const crypto = require('crypto');
 const crudApi = require('./crud-api');
 
 // ── 配置 ──────────────────────────────────────────
@@ -15,6 +16,11 @@ const NOTES_DIR = path.resolve(process.argv[2] || './notes');
 const PORT = parseInt(process.argv[3] || '3000', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const IMAGES_DIR = path.join(__dirname, 'images');
+const EDIT_PASSWORD = process.env.EDIT_PASSWORD;
+const TOKEN_EXPIRE_MS = 24 * 60 * 60 * 1000; // 24小时
+
+// Token 存储 (内存)
+const tokenStore = new Map();
 
 // ── 工具函数 ──────────────────────────────────────
 
@@ -110,6 +116,32 @@ function searchFiles(files, query) {
   return results.slice(0, 50);
 }
 
+// 生成随机 Token
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// 验证 Token
+function validateToken(token) {
+  if (!token) return false;
+  const record = tokenStore.get(token);
+  if (!record) return false;
+  if (Date.now() > record.expiresAt) {
+    tokenStore.delete(token);
+    return false;
+  }
+  return true;
+}
+
+// 清理过期 Token
+function cleanupExpiredTokens() {
+  const now = Date.now();
+  for (const [token, record] of tokenStore) {
+    if (now > record.expiresAt) tokenStore.delete(token);
+  }
+}
+setInterval(cleanupExpiredTokens, 60 * 60 * 1000); // 每小时清理
+
 // 服务端认证接口
 function handleAuth(req, res) {
   let body = '';
@@ -117,19 +149,54 @@ function handleAuth(req, res) {
   req.on('end', () => {
     try {
       const { password } = JSON.parse(body);
-      const EDIT_PASSWORD = process.env.EDIT_PASSWORD || 'admin123';
-      
-      if (password === EDIT_PASSWORD) {
-        json(res, { ok: true });
-      } else {
-        json(res, { error: '密码错误' }, 401);  // ← 改这里
+
+      if (!EDIT_PASSWORD) {
+        json(res, { error: '未配置密码，请设置 EDIT_PASSWORD 环境变量' }, 500);
+        return;
       }
+
+      if (password !== EDIT_PASSWORD) {
+        json(res, { error: '密码错误' }, 401);
+        return;
+      }
+
+      // 生成 Token
+      const token = generateToken();
+      tokenStore.set(token, {
+        createdAt: Date.now(),
+        expiresAt: Date.now() + TOKEN_EXPIRE_MS
+      });
+
+      json(res, { ok: true, token });
     } catch(e) {
-      json(res, { error: '请求格式错误' }, 400);  // ← 改这里
+      json(res, { error: '请求格式错误' }, 400);
     }
   });
 }
+
+// 需要认证的写操作
+const PROTECTED_METHODS = ['POST', 'PUT', 'DELETE'];
+function needsAuth(method) {
+  return PROTECTED_METHODS.includes(method);
+}
 // ── HTTP 路由 ─────────────────────────────────────
+
+// 从请求头获取 Token
+function getToken(req) {
+  const auth = req.headers['authorization'];
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  return auth.slice(7);
+}
+
+// 验证 Token 并返回错误响应
+function authCheck(req, res) {
+  const token = getToken(req);
+  if (!token || !validateToken(token)) {
+    json(res, { error: '未授权，请重新登录' }, 401);
+    return false;
+  }
+  return true;
+}
 
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -140,7 +207,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     });
     return res.end();
   }
@@ -166,10 +233,12 @@ const server = http.createServer((req, res) => {
       } catch { return notFound(res, 'File not found'); }
     }
     else if (req.method === 'PUT') {
+      if (!authCheck(req, res)) return;
       crudApi.handleUpdateFile(req, res, NOTES_DIR);
       return;
     }
     else if (req.method === 'DELETE') {
+      if (!authCheck(req, res)) return;
       crudApi.handleDeleteFile(req, res, NOTES_DIR);
       return;
     }
@@ -180,18 +249,21 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // 在路由判断里加上
+  // API: 认证
   if (pathname === '/api/auth' && req.method === 'POST') {
     return handleAuth(req, res);
   }
+
   // API: 创建文件 (POST)
   if (pathname === '/api/files' && req.method === 'POST') {
+    if (!authCheck(req, res)) return;
     crudApi.handleCreateFile(req, res, NOTES_DIR);
     return;
   }
 
   // API: 创建目录 (POST)
   if (pathname === '/api/directories' && req.method === 'POST') {
+    if (!authCheck(req, res)) return;
     crudApi.handleCreateDirectory(req, res, NOTES_DIR);
     return;
   }
@@ -274,6 +346,7 @@ const server = http.createServer((req, res) => {
 
   // API: 图片上传
   if (pathname === '/api/upload-image' && req.method === 'POST') {
+    if (!authCheck(req, res)) return;
     crudApi.handleUploadImage(req, res, NOTES_DIR, IMAGES_DIR);
     return;
   }
@@ -305,6 +378,12 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('');
   console.log('  按 Ctrl+C 停止服务');
   console.log('');
+
+  if (!EDIT_PASSWORD) {
+    console.warn('  ⚠️  未设置 EDIT_PASSWORD 环境变量，编辑功能将不可用');
+    console.warn('  ⚠️  启动命令: EDIT_PASSWORD=your_password node server.js');
+    console.warn('');
+  }
 
   if (!fs.existsSync(NOTES_DIR)) {
     console.warn(`  ⚠️  目录不存在，已自动创建：${NOTES_DIR}`);
