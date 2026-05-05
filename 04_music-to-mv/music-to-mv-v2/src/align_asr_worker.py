@@ -6,8 +6,12 @@ take down the main MV pipeline process.
 
 import argparse
 import json
+import logging
 import os
+import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def setup_cuda_dll_paths() -> None:
@@ -56,6 +60,14 @@ def parse_args():
 def main() -> None:
     setup_cuda_dll_paths()
 
+    # 子进程也走统一日志（输出到 stderr 后由父进程 logger.debug 归集）
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    try:
+        from src.log_setup import setup_logging
+        setup_logging()
+    except Exception:
+        pass
+
     from faster_whisper import WhisperModel
 
     args = parse_args()
@@ -76,11 +88,8 @@ def main() -> None:
     last_error = None
     for model_name in [m.strip() for m in args.models.split(",") if m.strip()]:
         try:
-            print(
-                f"      faster-whisper {model_name} ({device}, "
-                f"compute_type={compute_type}, beam={args.beam_size}, vad={args.vad_filter})...",
-                flush=True,
-            )
+            logger.debug("faster-whisper %s (%s, compute_type=%s, beam=%s, vad=%s)...",
+                         model_name, device, compute_type, args.beam_size, args.vad_filter)
             kwargs = {"device": device}
             if compute_type != "default":
                 kwargs["compute_type"] = compute_type
@@ -124,7 +133,7 @@ def main() -> None:
                 segments.append(data)
 
             if not segments:
-                print(f"      faster-whisper {model_name} returned no segments", flush=True)
+                logger.info("faster-whisper %s returned no segments", model_name)
                 continue
 
             payload = {
@@ -139,15 +148,12 @@ def main() -> None:
                 "_worker_compute_type": compute_type,
             }
             output_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            print(
-                f"      [OK] faster-whisper {model_name} ({device}): "
-                f"{len(segments)} 段, {payload.get('text', '')[:50]}...",
-                flush=True,
-            )
+            logger.info("faster-whisper %s (%s): %d 段, %s...",
+                        model_name, device, len(segments), payload.get("text", "")[:50])
             return
         except Exception as exc:
             last_error = exc
-            print(f"      faster-whisper {model_name} failed: {exc}", flush=True)
+            logger.error("faster-whisper %s failed: %s", model_name, exc)
 
     raise RuntimeError(f"faster-whisper failed for all models: {last_error}")
 

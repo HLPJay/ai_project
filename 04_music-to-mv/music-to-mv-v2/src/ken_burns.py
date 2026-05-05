@@ -20,6 +20,7 @@ ken_burns.py — 纯 Python Ken Burns 视频生成器
 """
 
 import json
+import logging
 import os
 import random
 import subprocess
@@ -27,6 +28,8 @@ import shutil
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+
+logger = logging.getLogger(__name__)
 
 # ── 默认参数 ──────────────────────────────────────────
 FPS = 25
@@ -188,7 +191,7 @@ class KenBurnsGenerator:
                     return True
                 if result.returncode != 0 and attempt == 0:
                     err_text = result.stderr.decode("utf-8", errors="replace")[-200:]
-                    print(f"     [KB ffmpeg err] {err_text.strip()}")
+                    logger.debug("KB ffmpeg err: %s", err_text.strip())
                 if result.returncode != 0:
                     self.last_error = (
                         result.stderr.decode("utf-8", errors="replace")[-300:].strip()
@@ -269,7 +272,7 @@ class KenBurnsGenerator:
                 if ok:
                     temp_clips.append(str(tmp))
                 else:
-                    print(f"   [WARN] 变体图 {i} KB 生成失败")
+                    logger.warning("变体图 %d KB 生成失败", i)
 
             if not temp_clips:
                 return False
@@ -394,17 +397,17 @@ class KenBurnsGenerator:
             if output_path.exists() and is_first_scene:
                 try:
                     output_path.unlink()
-                    print(f"  [KB] scene {sid}: 重新生成首片段，避免开头黑屏")
+                    logger.info("KB scene %s: 重新生成首片段，避免开头黑屏", sid)
                 except OSError:
                     pass
             if output_path.exists() and is_last_scene:
                 try:
                     output_path.unlink()
-                    print(f"  [KB] scene {sid}: 重新生成最终片段，避免旧淡出黑屏")
+                    logger.info("KB scene %s: 重新生成最终片段，避免旧淡出黑屏", sid)
                 except OSError:
                     pass
 
-            print(f"  [KB] scene {sid}: {len(image_paths)} image(s), {dur}s")
+            logger.info("KB scene %s: %d image(s), %ss", sid, len(image_paths), dur)
 
             ok = self.generate_scene_with_variants(
                 image_paths, dur, str(output_path),
@@ -421,7 +424,7 @@ class KenBurnsGenerator:
             if not ok and self.last_error:
                 row["error"] = self.last_error
             results.append(row)
-            print(f"     {'[OK]' if ok else '[FAIL]'} done scene {sid}")
+            logger.info("%s done scene %s", "[OK]" if ok else "[FAIL]", sid)
 
         # 统计
         succeeded = sum(1 for r in results if r["status"] == "ok")
