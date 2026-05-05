@@ -191,6 +191,43 @@ python -m src.main --theme "小狗的夏日冒险" --style "动漫风" --test-re
 python -m src.main --theme "小狗的夏日冒险" --style "动漫风" --test-reference image
 ```
 
+### 日志配置
+
+终端默认只输出关键节点（"流水线启动"、"对齐完成"等）和影响产出的告警；
+算法/调试细节走标准 `logging`，默认级别 `INFO`，输出到 `stderr`。
+
+按优先级三层叠加（高 → 低）：
+
+| 来源 | 例子 |
+|------|------|
+| ① CLI 参数 | `python -m src.main --log-level DEBUG --log-file mv.log ...` |
+| ② 环境变量 | `MV_LOG_LEVEL=DEBUG MV_LOG_FILE=mv.log python -m src.main ...` |
+| ③ `.env` 文件 | 在项目根 `.env` 写 `MV_LOG_LEVEL=DEBUG` 和 `MV_LOG_FILE=mv.log` |
+| ④ 默认 | `INFO` 级别，仅输出到 stderr，不写文件 |
+
+常见用法：
+
+```bash
+# 排查问题：本次跑详细日志并写入文件
+python -m src.main --auto --log-level DEBUG --log-file mv.log
+
+# CI / 容器：用环境变量控制
+MV_LOG_LEVEL=WARNING python -m src.main --auto
+
+# 长期开 DEBUG：写到 .env
+echo "MV_LOG_LEVEL=DEBUG" >> .env
+```
+
+各模块如需输出日志，使用标准 `logging`：
+```python
+import logging
+logger = logging.getLogger(__name__)
+logger.debug("内部参数...")    # 仅 DEBUG 级别可见
+logger.info("一般流程信息")
+logger.warning("非致命降级")
+logger.error("出错: ...")
+```
+
 ### 主参考图/锚定图轻量测试
 
 `tools/test_reference_anchors.py` 用来低成本验证主题主体是否锚定正确。

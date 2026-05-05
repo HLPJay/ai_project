@@ -17,7 +17,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.log_setup import setup_logging
-setup_logging()
 
 from src.pipeline import MVPipeline
 from src.config_manager import ConfigManager
@@ -315,7 +314,15 @@ def main():
     parser.add_argument("--options", action="store_true",
                        help="列出 --theme/--style/--music-style/--mood/--language 的可参考项")
 
+    # ── 日志参数 ──
+    parser.add_argument("--log-level",
+                       choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                       help="日志级别（也可用 MV_LOG_LEVEL 环境变量或 .env 配置；默认 INFO）")
+    parser.add_argument("--log-file",
+                       help="日志同时写入此文件（也可用 MV_LOG_FILE 环境变量或 .env 配置）")
+
     args = parser.parse_args()
+    setup_logging(cli_level=args.log_level, cli_file=args.log_file)
     if isinstance(args.theme, list):
         args.theme = "、".join(t.strip() for t in args.theme if t and t.strip())
     if args.phase:
