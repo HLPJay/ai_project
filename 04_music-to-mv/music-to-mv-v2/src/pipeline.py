@@ -40,6 +40,30 @@ from src.scripts_bridge import (
 )
 
 
+# === 情绪判断辅助函数 ===
+FAST_TEMPO_KEYWORDS = (
+    "欢快", "energetic", "激烈", "摇滚", "rock",
+    "热血", "燃", "爆发", "happy", "upbeat",
+)
+SLOW_TEMPO_KEYWORDS = (
+    "舒缓", "抒情", "温暖", "温柔", "ballad",
+    "故事", "回忆", "怀旧", "sad", "gentle",
+    "梦幻", "空灵", "缥缈", "诗意", "悠扬",
+    "dreamy", "ethereal", "poetic", "melancholic",
+)
+
+
+def detect_mood_tempo(mood: str, music_style: str) -> tuple:
+    """根据情绪和音乐风格判断节奏类型
+
+    返回: (is_fast: bool, is_slow: bool)
+    """
+    text = f"{mood or ''} {music_style or ''}".lower()
+    is_fast = any(k in text for k in FAST_TEMPO_KEYWORDS)
+    is_slow = any(k in text for k in SLOW_TEMPO_KEYWORDS)
+    return is_fast, is_slow
+
+
 class MVPipeline:
     """MV 流水线主编排器"""
 
@@ -197,14 +221,14 @@ class MVPipeline:
                 "reference": self.pm.get("reference", ""),
             })
 
-            api_url = "https://api.minimaxi.com/v1/chat/completions"
+            api_url = self.cfg.get_llm_api_host() + "/v1/chat/completions"
             payload = json.dumps({
                 "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": self.cfg.get_int("creative_brief_max_tokens", 2048),
             }).encode("utf-8")
             headers = {
-                "Authorization": f"Bearer {self.cfg.get('minimax_token', '')}",
+                "Authorization": f"Bearer {self.cfg.get_llm_token()}",
                 "Content-Type": "application/json",
             }
 
@@ -306,18 +330,7 @@ class MVPipeline:
                 self.pm.set("song_structure_notes", structure.notes)
 
             # 根据情绪判断歌词长度要求（动态）
-            mood_text = (self.pm.mood or "").lower()
-            music_style_text = (self.pm.music_style or "").lower()
-
-            is_fast = any(k in mood_text or k in music_style_text
-                         for k in ("欢快", "energetic", "激烈", "摇滚", "rock",
-                                  "热血", "燃", "爆发", "happy", "upbeat"))
-
-            is_slow = any(k in mood_text or k in music_style_text
-                         for k in ("舒缓", "抒情", "温暖", "温柔", "ballad",
-                                  "故事", "回忆", "怀旧", "sad", "gentle",
-                                  "梦幻", "空灵", "缥缈", "诗意", "悠扬",
-                                  "dreamy", "ethereal", "poetic", "melancholic"))
+            is_fast, is_slow = detect_mood_tempo(self.pm.mood, self.pm.music_style)
 
             if is_fast:
                 lyrics_length_req = "段落数：8-10 个段落；每段 3-5 句；总歌词 30-40 行，适配歌曲时长 120-150 秒"
@@ -783,20 +796,7 @@ class MVPipeline:
         structure = self._select_song_structure()
 
         # 根据情绪/风格判断歌词目标长度
-        mood_text = (self.pm.mood or "").lower()
-        music_style_text = (self.pm.music_style or "").lower()
-
-        # 快节奏、高能情绪 → 较短歌词
-        is_fast = any(k in mood_text or k in music_style_text
-                     for k in ("欢快", "energetic", "激烈", "摇滚", "rock",
-                              "热血", "燃", "爆发", "happy", "upbeat"))
-
-        # 慢歌、抒情、叙事 → 长歌词
-        is_slow = any(k in mood_text or k in music_style_text
-                     for k in ("舒缓", "抒情", "温暖", "温柔", "ballad",
-                              "故事", "回忆", "怀旧", "sad", "gentle",
-                              "梦幻", "空灵", "缥缈", "诗意", "悠扬",
-                              "dreamy", "ethereal", "poetic", "melancholic"))
+        is_fast, is_slow = detect_mood_tempo(self.pm.mood, self.pm.music_style)
 
         # 根据判断设置目标行数和时长
         if is_fast:

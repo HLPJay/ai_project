@@ -25,7 +25,7 @@ def test_project_manager():
         assert pm.style == "国风"
         assert pm.music_style == "民谣"
         assert pm.mood == "温柔"
-        assert len(pm.info["pipeline"]) == 9  # 9 steps
+        assert len(pm.info["pipeline"]) == 10  # 10 steps
 
         # 测试暂停点
         pm.require_approval("test_step", {"a": "A", "b": "B"})

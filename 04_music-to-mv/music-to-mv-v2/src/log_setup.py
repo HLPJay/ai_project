@@ -79,7 +79,7 @@ def _read_env_file(key: str) -> Optional[str]:
                     if k.strip() == key:
                         return v.strip().strip("\"'") or None
             except Exception:
-                pass
+                logger.warning("读取 .env 文件失败")
             return None
         current = current.parent
     return None

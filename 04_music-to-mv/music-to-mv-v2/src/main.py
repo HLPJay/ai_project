@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.log_setup import setup_logging
 
-from src.pipeline import MVPipeline
+from src.pipeline import MVPipeline, detect_mood_tempo
 from src.config_manager import ConfigManager
 from src.project_manager import ProjectManager
 from src.interaction import UserInteraction
@@ -238,20 +238,7 @@ def _estimate_generation_time(mood: str, music_style: str) -> dict:
 
     返回: {"target_lines": "X-Y", "duration": "A-B秒", "estimate_time": "X-Y分钟"}
     """
-    mood_text = (mood or "").lower()
-    music_style_text = (music_style or "").lower()
-
-    # 快节奏 → 较短歌词 → 较快生成
-    is_fast = any(k in mood_text or k in music_style_text
-                 for k in ("欢快", "energetic", "激烈", "摇滚", "rock",
-                          "热血", "燃", "爆发", "happy", "upbeat"))
-
-    # 慢歌、抒情 → 长歌词 → 较慢生成
-    is_slow = any(k in mood_text or k in music_style_text
-                 for k in ("舒缓", "抒情", "温暖", "温柔", "ballad",
-                          "故事", "回忆", "怀旧", "sad", "gentle",
-                          "梦幻", "空灵", "缥缈", "诗意", "悠扬",
-                          "dreamy", "ethereal", "poetic", "melancholic"))
+    is_fast, is_slow = detect_mood_tempo(mood, music_style)
 
     if is_fast:
         return {

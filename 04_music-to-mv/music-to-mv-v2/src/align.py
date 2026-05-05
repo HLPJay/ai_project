@@ -224,8 +224,8 @@ class SimilarityScorer:
         if not cb:
             return 0.0
         overlap = len(ca & cb)
-        # \u53ec\u56de\u7387\uff08Recall\uff09\uff1ab\u7684\u5b57\u7b26\u5728a\u4e2d\u7684\u8986\u76d6\u6bd4\u4f8b
-        # \u5f53b\u662f\u77ed\u6b4c\u8bcd\u884c\uff0ca\u662f\u957fASR\u6bb5\u65f6\u6548\u679c\u6700\u597d
+        # Recall\uff1ab \u7684\u5b57\u7b26\u5728 a \u4e2d\u7684\u8986\u76d6\u7387
+        # \u5f53\u662f\u77ed\u6b4c\u8bcd\u884c\u65f6\uff0ca \u662f\u957fASR\u6bb5\u65f6\u6548\u679c\u6700\u597d
         return overlap / len(cb)
 
     @staticmethod
@@ -421,130 +421,15 @@ class WhisperTranscriber:
 # Demucs 人声分离器
 # ════════════════════════════════════════════════════════════
 
-class _FasterWhisperMixin:
-    def _transcribe_faster_whisper(self, audio_path: str,
-                                   model_sizes: List[str],
-                                   device: str,
-                                   language: str,
-                                   initial_prompt: str) -> dict:
-        """Transcribe with faster-whisper and normalize to openai-whisper shape."""
-        return _run_faster_whisper_worker(
-            audio_path=audio_path,
-            model_sizes=model_sizes,
-            device=device,
-            language=language,
-            initial_prompt=initial_prompt,
-        )
-
-        from faster_whisper import WhisperModel
-
-        cfg = ConfigManager()
-        raw_compute_type = str(cfg.get("align_whisper_compute_type", "default") or "default")
-        # float16 在某些 GPU/驱动组合下会导致 CTranslate2 段错误，强制使用 default
-        if raw_compute_type in ("float16", "half"):
-            logger.warning("compute_type=%s 可能不稳定，已降级为 default", raw_compute_type)
-            compute_type = "default"
-        else:
-            compute_type = raw_compute_type
-        beam_size = int(cfg.get_int("align_whisper_beam_size", 1))
-        vad_filter = bool(cfg.get_bool("align_whisper_vad_filter", False))
-        word_timestamps = bool(cfg.get_bool("align_whisper_word_timestamps", False))
-        fw_device = "cuda" if str(device).startswith("cuda") else ("cpu" if device == "cpu" else device)
-        if fw_device == "cpu" and compute_type == "float16":
-            compute_type = "int8"
-
-        last_error = None
-        for model_size in model_sizes:
-            try:
-                logger.debug(
-                    "faster-whisper %s (%s, compute_type=%s, beam=%s, vad=%s)...",
-                    model_size, fw_device, compute_type, beam_size, vad_filter,
-                )
-                model_kwargs = {"device": fw_device}
-                if compute_type and compute_type != "default":
-                    model_kwargs["compute_type"] = compute_type
-                model = WhisperModel(model_size, **model_kwargs)
-                segments_iter, info = model.transcribe(
-                    audio_path,
-                    language=language or None,
-                    task="transcribe",
-                    beam_size=beam_size,
-                    word_timestamps=word_timestamps,
-                    vad_filter=vad_filter,
-                    initial_prompt=initial_prompt or None,
-                )
-
-                segments = []
-                text_parts = []
-                for segment in segments_iter:
-                    try:
-                        seg_text = str(segment.text or "")
-                    except Exception:
-                        # 跳过因底层 C 异常而无法读取文本的段
-                        continue
-                    # 过滤明显异常的段（二进制残留、纯英文噪音等）
-                    if len(seg_text) > 500:
-                        seg_text = seg_text[:500]
-                    cleaned = re.sub(r'[^\u4e00-\u9fff\u3000-\u303fa-zA-Z0-9\s,.\'\"!?，。！？、]', '', seg_text)
-                    if len(cleaned) < 2 and len(seg_text) > 10:
-                        # 大部分字符都是噪音，跳过
-                        continue
-                    text_parts.append(seg_text)
-                    try:
-                        data = {
-                            "id": _recursive_to_python(getattr(segment, "id", None)),
-                            "seek": _recursive_to_python(getattr(segment, "seek", None)),
-                            "start": float(segment.start) if segment.start is not None else 0.0,
-                            "end": float(segment.end) if segment.end is not None else 0.0,
-                            "text": seg_text,
-                            "tokens": _recursive_to_python(getattr(segment, "tokens", None)),
-                            "avg_logprob": _recursive_to_python(getattr(segment, "avg_logprob", None)),
-                            "compression_ratio": _recursive_to_python(getattr(segment, "compression_ratio", None)),
-                            "no_speech_prob": _recursive_to_python(getattr(segment, "no_speech_prob", None)),
-                        }
-                        if word_timestamps:
-                            data["words"] = [
-                                {
-                                    "start": None if word.start is None else float(word.start),
-                                    "end": None if word.end is None else float(word.end),
-                                    "word": str(word.word) if word.word is not None else "",
-                                    "probability": _recursive_to_python(getattr(word, "probability", None)),
-                                }
-                                for word in (getattr(segment, "words", []) or [])
-                            ]
-                        segments.append(data)
-                    except Exception as seg_err:
-                        logger.debug("跳过异常段: %s", seg_err)
-                        continue
-
-                if not segments:
-                    logger.info("faster-whisper %s 结果为空，尝试下一个模型", model_size)
-                    continue
-
-                result = {
-                    "text": "".join(text_parts),
-                    "segments": segments,
-                    "language": str(getattr(info, "language", language) or language),
-                    "language_probability": _recursive_to_python(getattr(info, "language_probability", None)),
-                    "duration": _recursive_to_python(getattr(info, "duration", None)),
-                    "duration_after_vad": _recursive_to_python(getattr(info, "duration_after_vad", None)),
-                }
-                logger.info(
-                    "faster-whisper %s (%s): %d 段, %s...",
-                    model_size, fw_device, len(segments), result.get("text", "")[:50],
-                )
-                return result
-            except Exception as e:
-                last_error = e
-                logger.error("faster-whisper %s 失败: %s", model_size, e)
-                continue
-
-        raise RuntimeError(
-            f"faster-whisper 转写失败（尝试了所有模型）: {last_error}"
-        )
-
-
-WhisperTranscriber._transcribe_faster_whisper = _FasterWhisperMixin._transcribe_faster_whisper
+WhisperTranscriber._transcribe_faster_whisper = staticmethod(
+    lambda audio_path, model_sizes, device, language, initial_prompt: _run_faster_whisper_worker(
+        audio_path=audio_path,
+        model_sizes=model_sizes,
+        device=device,
+        language=language,
+        initial_prompt=initial_prompt,
+    )
+)
 
 
 class DemucsVocalSeparator:
@@ -1041,7 +926,7 @@ class LyricsAligner:
             "alignment": alignments,
             "timeline_fallback": timeline_fallback,
             "timeline_strategy": timeline_strategy,
-                            "status": "completed",
+            "status": "completed",
         }
 
     def _align(self, lyrics: List[str],

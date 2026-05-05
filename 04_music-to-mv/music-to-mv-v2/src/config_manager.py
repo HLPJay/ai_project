@@ -5,10 +5,13 @@ config_manager.py — 统一配置管理器
 替代之前 config.sh 的 Shell 方式，统一在 Python 中管理。
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -221,7 +224,7 @@ class ConfigManager:
                 key, value = line.split("=", 1)
                 self._file_values[key.strip()] = value.strip().strip("\"'")
         except Exception:
-            pass
+            logger.warning("无法解析 .env 文件，将使用环境变量或默认值")
 
     def _load_env_vars(self):
         """从环境变量（优先）或 .env 文件加载配置"""
