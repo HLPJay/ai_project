@@ -16,6 +16,9 @@ from pathlib import Path
 # 确保 src 可导入
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.log_setup import setup_logging
+setup_logging()
+
 from src.pipeline import MVPipeline
 from src.config_manager import ConfigManager
 from src.project_manager import ProjectManager

@@ -16,6 +16,7 @@ align.py — 歌词时间轴对齐模块（纯 Python，替代原版 align_lyric
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Any
 
 from src.config_manager import ConfigManager
+
+logger = logging.getLogger(__name__)
 
 # ── Windows 控制台编码兼容 ──
 # Windows 默认 GBK/cp936 编码无法处理某些 Unicode 字符（如 ↔ 箭头）
@@ -174,9 +177,9 @@ def _run_faster_whisper_worker(audio_path: str,
         env=env,
     )
     if result.stdout:
-        print(result.stdout.rstrip())
+        logger.debug("faster-whisper worker stdout: %s", result.stdout.rstrip())
     if result.stderr:
-        print(result.stderr.rstrip())
+        logger.debug("faster-whisper worker stderr: %s", result.stderr.rstrip())
 
     if output_path.exists() and output_path.stat().st_size > 0:
         payload = json.loads(output_path.read_text(encoding="utf-8"))
@@ -186,7 +189,7 @@ def _run_faster_whisper_worker(audio_path: str,
             pass
         if payload.get("segments"):
             if result.returncode != 0:
-                print(f"  [!] faster-whisper worker exited with code {result.returncode}, using completed ASR output")
+                logger.warning("faster-whisper worker exited with code %s, using completed ASR output", result.returncode)
             return payload
 
     raise RuntimeError(
@@ -331,8 +334,8 @@ class WhisperTranscriber:
             initial_prompt = "以下是简体中文歌词的转写。"
 
         print(f"  [..] Whisper 转写中（模型链: {' -> '.join(model_sizes)}, device={device}）...")
-        print(f"  [..] 音频: {audio_path}")
-        print(f"  [..] Initial prompt: {initial_prompt[:50]}")
+        logger.debug("音频: %s", audio_path)
+        logger.debug("Initial prompt: %s", initial_prompt[:50])
 
         if backend in ("faster-whisper", "faster_whisper", "faster", "auto"):
             try:
@@ -353,7 +356,7 @@ class WhisperTranscriber:
                             encoding="utf-8"
                         )
                     except Exception as cache_err:
-                        print(f"  [!] 缓存写入失败（非致命）: {cache_err}")
+                        logger.warning("缓存写入失败（非致命）: %s", cache_err)
                 return result
             except ImportError:
                 print("  [!] faster-whisper 未安装，回退到 openai-whisper")
@@ -371,7 +374,7 @@ class WhisperTranscriber:
 
         for model_size in model_sizes:
             try:
-                print(f"      {model_size} 模型 ({device}, word_timestamps={ow_word_timestamps})...")
+                logger.debug("%s 模型 (%s, word_timestamps=%s)...", model_size, device, ow_word_timestamps)
                 model = whisper.load_model(model_size, device=device)
                 result = model.transcribe(
                     audio_path,
@@ -384,7 +387,7 @@ class WhisperTranscriber:
 
                 # 验证结果
                 if not result or not result.get("segments"):
-                    print(f"      {model_size} 结果为空，尝试下一个模型")
+                    logger.info("%s 结果为空，尝试下一个模型", model_size)
                     continue
 
                 # 写缓存
@@ -398,16 +401,15 @@ class WhisperTranscriber:
                             encoding="utf-8"
                         )
                     except Exception as cache_err:
-                        print(f"  [!] 缓存写入失败（非致命）: {cache_err}")
+                        logger.warning("缓存写入失败（非致命）: %s", cache_err)
 
-                print(f"      [OK] Whisper {model_size} ({device}): "
-                      f"{len(result['segments'])} 段, "
-                      f"{result.get('text', '')[:50]}...")
+                logger.info("Whisper %s (%s): %d 段, %s...",
+                            model_size, device, len(result["segments"]), result.get("text", "")[:50])
                 return result
 
             except Exception as e:
                 last_error = e
-                print(f"      {model_size} 失败: {e}")
+                logger.error("Whisper %s 失败: %s", model_size, e)
                 continue
 
         raise RuntimeError(
@@ -440,7 +442,7 @@ class _FasterWhisperMixin:
         raw_compute_type = str(cfg.get("align_whisper_compute_type", "default") or "default")
         # float16 在某些 GPU/驱动组合下会导致 CTranslate2 段错误，强制使用 default
         if raw_compute_type in ("float16", "half"):
-            print(f"      [!] compute_type={raw_compute_type} 可能不稳定，已降级为 default")
+            logger.warning("compute_type=%s 可能不稳定，已降级为 default", raw_compute_type)
             compute_type = "default"
         else:
             compute_type = raw_compute_type
@@ -454,9 +456,9 @@ class _FasterWhisperMixin:
         last_error = None
         for model_size in model_sizes:
             try:
-                print(
-                    f"      faster-whisper {model_size} ({fw_device}, "
-                    f"compute_type={compute_type}, beam={beam_size}, vad={vad_filter})..."
+                logger.debug(
+                    "faster-whisper %s (%s, compute_type=%s, beam=%s, vad=%s)...",
+                    model_size, fw_device, compute_type, beam_size, vad_filter,
                 )
                 model_kwargs = {"device": fw_device}
                 if compute_type and compute_type != "default":
@@ -512,11 +514,11 @@ class _FasterWhisperMixin:
                             ]
                         segments.append(data)
                     except Exception as seg_err:
-                        print(f"        [!] 跳过异常段: {seg_err}")
+                        logger.debug("跳过异常段: %s", seg_err)
                         continue
 
                 if not segments:
-                    print(f"      faster-whisper {model_size} 结果为空，尝试下一个模型")
+                    logger.info("faster-whisper %s 结果为空，尝试下一个模型", model_size)
                     continue
 
                 result = {
@@ -527,14 +529,14 @@ class _FasterWhisperMixin:
                     "duration": _recursive_to_python(getattr(info, "duration", None)),
                     "duration_after_vad": _recursive_to_python(getattr(info, "duration_after_vad", None)),
                 }
-                print(
-                    f"      [OK] faster-whisper {model_size} ({fw_device}): "
-                    f"{len(segments)} 段, {result.get('text', '')[:50]}..."
+                logger.info(
+                    "faster-whisper %s (%s): %d 段, %s...",
+                    model_size, fw_device, len(segments), result.get("text", "")[:50],
                 )
                 return result
             except Exception as e:
                 last_error = e
-                print(f"      faster-whisper {model_size} 失败: {e}")
+                logger.error("faster-whisper %s 失败: %s", model_size, e)
                 continue
 
         raise RuntimeError(
@@ -592,7 +594,7 @@ class DemucsVocalSeparator:
                 "--device", demucs_device,
                 str(audio_path),
             ]
-            print(f"  -> run: {' '.join(cmd)}", flush=True)
+            logger.debug("demucs cmd: %s", " ".join(cmd))
             # 用 errors='replace' 避免 Demucs 进度条（GBK/cp936 编码的特殊字符）
             # 在子线程里抛 UnicodeDecodeError（虽然不致命但日志很乱）
             result = subprocess.run(
@@ -620,12 +622,12 @@ class DemucsVocalSeparator:
             ]
             for candidate in candidates:
                 if candidate.exists():
-                    print(f"  [OK] 人声分离完成: {candidate}")
+                    logger.info("人声分离完成: %s", candidate)
                     return str(candidate)
 
             found = list(demucs_out.rglob("vocals.wav"))
             if found:
-                print(f"  [OK] 人声分离完成: {found[0]}")
+                logger.info("人声分离完成: %s", found[0])
                 return str(found[0])
 
             print(f"  [!] Demucs 输出未找到: {candidates[0]}")
@@ -779,11 +781,11 @@ class LyricsAligner:
                 filtered.append(seg)
 
         if removed_segs:
-            print(f"      [post] 温和过滤 {len(removed_segs)} 个明显ASR幻觉段")
+            logger.info("温和过滤 %d 个明显ASR幻觉段", len(removed_segs))
             for seg, cov in removed_segs:
-                print(f"            [{seg.get('start',0.0):.1f}s-{seg.get('end',0.0):.1f}s] "
-                      f"\"{seg.get('text','')[:30]}\" "
-                      f"(覆盖率={cov:.2f})")
+                logger.debug("  [%.1fs-%.1fs] \"%s\" (覆盖率=%.2f)",
+                             seg.get("start", 0.0), seg.get("end", 0.0),
+                             (seg.get("text", "") or "")[:30], cov)
 
         return filtered if filtered else asr_segments
 
@@ -810,9 +812,9 @@ class LyricsAligner:
                 )
             output_path.write_text("\n".join(parts), encoding="utf-8")
             if parts:
-                print(f"  [OK] ASR 原生字幕: {output_path}")
+                logger.info("ASR 原生字幕: %s", output_path)
         except Exception as exc:
-            print(f"  [warn] ASR 原生字幕写入失败: {exc}")
+            logger.warning("ASR 原生字幕写入失败: %s", exc)
 
     @staticmethod
     def _is_obvious_asr_hallucination(text: str,
@@ -942,24 +944,24 @@ class LyricsAligner:
 
         # ③ 两遍匹配对齐
         asr_segments = whisper_result.get("segments", [])
-        print(f"  [debug] ASR segments: {len(asr_segments)} 段")
+        logger.debug("ASR segments: %d 段", len(asr_segments))
         if asr_segments:
-            print(f"  [debug] 第一段 keys: {list(asr_segments[0].keys())}")
-            print(f"  [debug] 第一段 text: {asr_segments[0].get('text','')[:30]}")
-            print(f"  [debug] 第一段 start: {asr_segments[0].get('start')}")
-            print(f"  [debug] 第一段 end: {asr_segments[0].get('end')}")
+            logger.debug("第一段 keys: %s", list(asr_segments[0].keys()))
+            logger.debug("第一段 text: %s", asr_segments[0].get("text", "")[:30])
+            logger.debug("第一段 start: %s", asr_segments[0].get("start"))
+            logger.debug("第一段 end: %s", asr_segments[0].get("end"))
             import json as _json
             try:
                 _json.dumps(asr_segments[0])
-                print(f"  [debug] 第一段 JSON 序列化 OK")
+                logger.debug("第一段 JSON 序列化 OK")
             except Exception as _je:
-                print(f"  [debug] 第一段 JSON 序列化失败: {_je}")
-        print(f"  [debug] clean_lyrics: {len(clean_lyrics)} 行")
+                logger.debug("第一段 JSON 序列化失败: %s", _je)
+        logger.debug("clean_lyrics: %d 行", len(clean_lyrics))
 
         # 过滤ASR误识别段（不在歌词中的"幻觉"段，如前奏被识别成奇怪文字）
         print(f"  [..] 过滤 ASR 幻觉段...")
         asr_segments = self._filter_misrecognized_asr(asr_segments, clean_lyrics)
-        print(f"  [debug] 过滤后: {len(asr_segments)} 段")
+        logger.debug("过滤后: %d 段", len(asr_segments))
         raw_srt_path = project_dir / "audio" / "asr_raw.srt"
         self._write_asr_raw_srt(asr_segments, raw_srt_path)
 
@@ -1000,10 +1002,10 @@ class LyricsAligner:
                 audio_duration=audio_duration,
             ):
                 timeline_strategy = "asr_segment_rebuild"
-                print("      [post] 已按 ASR 段真实时间戳重建原始歌词字幕")
+                logger.info("已按 ASR 段真实时间戳重建原始歌词字幕")
             else:
                 timeline_strategy = "uniform_timeline"
-                print("      [post] ASR 段不可用，回退到均匀字幕时间轴")
+                logger.warning("ASR 段不可用，回退到均匀字幕时间轴")
                 self._apply_uniform_timeline(
                     alignments, clean_lyrics, audio_duration=audio_duration
                 )
@@ -1027,9 +1029,8 @@ class LyricsAligner:
         # 打印后处理修正信息
         for a in alignments:
             if a.get("interpolated"):
-                print(f"      插值行 {a['idx']+1}: "
-                    f"~{a['start']:.1f}s-{a['end']:.1f}s "
-                    f"\"{a['text'][:20]}...\"")
+                logger.debug("插值行 %d: ~%.1fs-%.1fs \"%s...\"",
+                             a["idx"] + 1, a["start"], a["end"], a["text"][:20])
 
         return {
             "srt_path": str(output_srt),
@@ -1111,8 +1112,8 @@ class LyricsAligner:
                     # 显著更高（>1.3倍）才认为更好的匹配存在
                     if other_score > best_score * 1.3:
                         better_match_exists = True
-                        print(f"      [skip] ASR段{i} \"{text[:20]}\"({best_score:.2f}) "
-                              f"放弃匹配行{best_li+1}，让位给更佳的ASR段{k}({other_score:.2f})")
+                        logger.debug("ASR段%d \"%s\"(%.2f) 放弃匹配行%d，让位给更佳的ASR段%d(%.2f)",
+                                     i, text[:20], best_score, best_li + 1, k, other_score)
                         break
 
                 if not better_match_exists:
@@ -1176,7 +1177,7 @@ class LyricsAligner:
                 if len(text) >= 2:
                     align_map[0] = (start, end, 0.0, 0)
                     lyric_assigned[0] = True
-                    print(f"      [post] 第1行分配到首个ASR ({start:.1f}s)")
+                    logger.debug("第1行分配到首个ASR (%.1fs)", start)
                     break
 
         # 修正2: 处理多个歌词行在同一ASR段的情况
@@ -1191,7 +1192,7 @@ class LyricsAligner:
                     mid_point = a_j[0] + duration / 2
                     align_map[j] = (a_j[0], mid_point, a_j[2], a_j[3])
                     align_map[j + 1] = (mid_point, a_j[1], a_j_next[2], a_j_next[3])
-                    print(f"      [post] 行 {j+1} 和 {j+2} 共享ASR段，已分割时间")
+                    logger.debug("行 %d 和 %d 共享ASR段，已分割时间", j + 1, j + 2)
 
         # 修正3: 插值填充跳行
         for j in range(1, M):
@@ -1226,7 +1227,7 @@ class LyricsAligner:
                     # 在最后一行分配一段合理的时间
                     align_map[j] = (prev_end, prev_end + duration, 0.0, 0)
                     lyric_assigned[j] = True
-                    print(f"      [post] 最后一行 {j+1} 使用插值分配 ({prev_end:.1f}s-{prev_end + duration:.1f}s)")
+                    logger.debug("最后一行 %d 使用插值分配 (%.1fs-%.1fs)", j + 1, prev_end, prev_end + duration)
 
         # ── 填入结果 ──
         for i in range(M):
@@ -1304,11 +1305,11 @@ class LyricsAligner:
                     last["start"] = max(0.0, audio_duration - min_duration)
                 last["end"] = audio_duration
                 last["interpolated"] = True
-                print(f"      [post] 裁剪最后一行到音频末尾 ({audio_duration:.1f}s)")
+                logger.debug("裁剪最后一行到音频末尾 (%.1fs)", audio_duration)
                 repaired += 1
 
         if repaired:
-            print(f"      [post] 修正 {repaired} 个非单调/重叠字幕时间戳")
+            logger.info("修正 %d 个非单调/重叠字幕时间戳", repaired)
 
     @staticmethod
     def _alignment_timeline_is_suspicious(alignments: List[Dict],
@@ -1347,40 +1348,28 @@ class LyricsAligner:
             short_count += 1
 
         if first_start > max(30.0, audio_duration * 0.45):
-            print(
-                f"      [warn] 字幕首句过晚: {first_start:.1f}s / "
-                f"{audio_duration:.1f}s"
-            )
+            logger.warning("字幕首句过晚: %.1fs / %.1fs", first_start, audio_duration)
             return True
 
         if span < audio_duration * 0.35 and first_start > audio_duration * 0.25:
-            print(
-                f"      [warn] 字幕覆盖范围过窄且整体偏后: span={span:.1f}s, "
-                f"first={first_start:.1f}s, audio={audio_duration:.1f}s"
-            )
+            logger.warning("字幕覆盖范围过窄且整体偏后: span=%.1fs, first=%.1fs, audio=%.1fs",
+                           span, first_start, audio_duration)
             return True
 
         if max_gap > max(12.0, audio_duration * 0.18):
             remaining = len(matched) - max_gap_after_idx
             if remaining >= max(3, len(matched) // 5):
-                print(
-                    f"      [warn] 字幕局部断层过大: gap={max_gap:.1f}s, "
-                    f"after_line={max_gap_after_idx}, remaining={remaining}"
-                )
+                logger.warning("字幕局部断层过大: gap=%.1fs, after_line=%d, remaining=%d",
+                               max_gap, max_gap_after_idx, remaining)
                 return True
 
         if short_count >= max(4, int(len(matched) * 0.25)):
-            print(
-                f"      [warn] 短字幕过多: {short_count}/{len(matched)} "
-                f"(<=0.7s)，疑似长 ASR 段拆分失败"
-            )
+            logger.warning("短字幕过多: %d/%d (<=0.7s)，疑似长 ASR 段拆分失败",
+                           short_count, len(matched))
             return True
 
         if last_end > audio_duration + 5.0:
-            print(
-                f"      [warn] 字幕末句超出音频过多: {last_end:.1f}s / "
-                f"{audio_duration:.1f}s"
-            )
+            logger.warning("字幕末句超出音频过多: %.1fs / %.1fs", last_end, audio_duration)
             return True
 
         return False
@@ -1524,7 +1513,7 @@ class LyricsAligner:
                 alignments, lyrics, valid_segments, seg_idx
             )
             if appended:
-                print(f"      [post] 追加重复歌词字幕: {appended} 行")
+                logger.info("追加重复歌词字幕: %d 行", appended)
 
         return all(
             i < len(alignments) and alignments[i].get("matched")

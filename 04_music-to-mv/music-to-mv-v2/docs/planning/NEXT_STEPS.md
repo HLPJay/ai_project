@@ -169,7 +169,7 @@ A:
 
 - [PROMPT_OPTIMIZATION_STATUS.md](./PROMPT_OPTIMIZATION_STATUS.md) - 优化完成总结
 - [PROMPT_OPTIMIZATION_PLAN.md](./PROMPT_OPTIMIZATION_PLAN.md) - 详细优化计划
-- [test_optimizations_integration.py](./test_optimizations_integration.py) - 集成测试
+- [test_optimizations_integration.py](../../tests/test_optimizations_integration.py) - 集成测试
 - [.git/logs/](./logs/) - 所有提交历史
 
 ---
