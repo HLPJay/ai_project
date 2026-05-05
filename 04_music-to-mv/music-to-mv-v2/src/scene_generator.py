@@ -18,6 +18,7 @@ scene_generator.py — 场景图生成模块
 """
 
 import json
+import logging
 import os
 import sys
 import time
@@ -28,6 +29,8 @@ from typing import Dict, List, Optional, Any, Tuple
 
 from src.config_manager import ConfigManager
 from src.image_quality import ImageQualityChecker, ImageQualityThresholds
+
+logger = logging.getLogger(__name__)
 from src.llm.client import LLMClient, RetryConfig
 from src.style_map import (
     ART_STYLES, get_mood_desc, get_api_style, get_negative_prompt,
@@ -789,7 +792,7 @@ class SceneImageGenerator:
             {"environment_anchor": str, "symbolic_anchor": str}
         """
         if not self._visual_bible:
-            print("  [Anchors] visual_bible.json 不存在，跳过 anchor 生成")
+            logger.info("Anchors: visual_bible.json 不存在，跳过 anchor 生成")
             return {}
 
         output_env = self.images_dir / "environment_anchor.png"
@@ -799,7 +802,7 @@ class SceneImageGenerator:
         env_done = output_env.exists() and output_env.stat().st_size > MIN_IMAGE_SIZE
         sym_done = output_sym.exists() and output_sym.stat().st_size > MIN_IMAGE_SIZE
         if env_done and sym_done:
-            print("  [Anchors] 锚定图已存在，跳过")
+            logger.info("Anchors: 锚定图已存在，跳过")
             result = {}
             if self.metadata_dir.joinpath("anchors.json").exists():
                 result = json.loads(self.metadata_dir.joinpath("anchors.json").read_text(encoding="utf-8"))
@@ -845,9 +848,9 @@ class SceneImageGenerator:
                             seed=self._image_seed + 9000,
                         )
                     result["environment_anchor"] = anchor_prompt
-                    print(f"  [Anchor][env] {'[dry_run] ' if self.dry_run else ''}生成完成")
+                    logger.info("Anchor[env]: %s生成完成", "[dry_run] " if self.dry_run else "")
             except Exception as e:
-                print(f"  [Anchor][env] 失败: {e}")
+                logger.warning("Anchor[env] 失败: %s", e)
 
         # 2. Symbolic anchor
         if not sym_done:
@@ -871,9 +874,9 @@ class SceneImageGenerator:
                             seed=self._image_seed + 9001,
                         )
                     result["symbolic_anchor"] = anchor_prompt
-                    print(f"  [Anchor][sym] {'[dry_run] ' if self.dry_run else ''}生成完成")
+                    logger.info("Anchor[sym]: %s生成完成", "[dry_run] " if self.dry_run else "")
             except Exception as e:
-                print(f"  [Anchor][sym] 失败: {e}")
+                logger.warning("Anchor[sym] 失败: %s", e)
 
         # 持久化 anchors.json
         if result:
@@ -1325,14 +1328,14 @@ class SceneImageGenerator:
 
                 results.append(result)
 
-                # 打印进度
+                # 打印进度（每张一行，归日志）
                 tag = f"var{vi}" if vi > 0 else ""
                 if result.get("status") == "ok":
                     size_kb = result.get("size", 0) // 1024
-                    print(f"     [OK] scene {sid}{tag}: {size_kb}KB")
+                    logger.info("scene %s%s: %dKB", sid, tag, size_kb)
                 else:
                     err = result.get("error", "")
-                    print(f"     [FAIL] scene {sid}{tag}: {err}")
+                    logger.warning("scene %s%s 失败: %s", sid, tag, err)
 
         return results
 
@@ -1388,8 +1391,8 @@ class SceneImageGenerator:
                         "error": err_msg,
                         "attempt": attempt,
                     }
-                print(f"     [WARN] scene {sid} var{vi} 尝试 {attempt}/{MAX_RETRY}"
-                      f" 失败: {err_msg}, 重试...")
+                logger.warning("scene %s var%s 尝试 %d/%d 失败: %s, 重试...",
+                               sid, vi, attempt, MAX_RETRY, err_msg)
                 time.sleep(RETRY_DELAY * attempt)
 
         return {

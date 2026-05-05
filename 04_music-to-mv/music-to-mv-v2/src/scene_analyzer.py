@@ -19,6 +19,7 @@ scene_analyzer.py — SRT 场景分析器
 """
 
 import json
+import logging
 import os
 import re
 import math
@@ -31,6 +32,8 @@ from src.style_map import (
     ART_STYLES, get_art_style, get_mood_desc, get_fallback_desc,
     get_label, get_music_style_desc, THEME_VISUALS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ════════════════════════════════════════════════════════════
@@ -658,7 +661,7 @@ class SceneAnalyzer:
                 chunk_result = self._call_llm_batch_descs(chunk)
                 merged.update(chunk_result)
             if merged:
-                print(f"  [LLM batch descs] 小批次完成: {len(merged)}/{len(scenes)}")
+                logger.info("LLM batch descs 小批次完成: %d/%d", len(merged), len(scenes))
             return merged
 
         try:
@@ -705,7 +708,7 @@ class SceneAnalyzer:
                     "do_not_do": do_not_do,
                 })
             except (ImportError, KeyError) as e:
-                print(f"  [scene_desc] registry 渲染失败: {e}，使用硬编码 fallback")
+                logger.warning("scene_desc registry 渲染失败: %s，使用硬编码 fallback", e)
                 do_not_do_str = self._load_do_not_do()
                 prompt = (
                     f"You are a senior MV storyboard & cinematic visual artist.\n"
@@ -780,7 +783,7 @@ class SceneAnalyzer:
                     )
                     if compact_ret:
                         return compact_ret
-                print(f"  [LLM batch descs] 解析失败，使用 local fallback")
+                logger.warning("LLM batch descs 解析失败，使用 local fallback")
                 return {}
 
             ret = {}
@@ -800,7 +803,7 @@ class SceneAnalyzer:
             return ret
 
         except Exception as e:
-            print(f"  [LLM batch descs] 失败: {e}")
+            logger.error("LLM batch descs 失败: %s", e)
             return {}
 
     def _call_llm_compact_descs(
@@ -857,7 +860,7 @@ class SceneAnalyzer:
             raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
             results = self._parse_json_response(raw)
             if not results:
-                print("  [LLM batch descs] 极简重试仍解析失败")
+                logger.error("LLM batch descs 极简重试仍解析失败")
                 return {}
 
             ret: Dict[int, Dict] = {}
@@ -874,10 +877,10 @@ class SceneAnalyzer:
                         "motion_hint": item.get("motion_hint"),
                     }
             if ret:
-                print(f"  [LLM batch descs] 极简重试成功: {len(ret)}/{len(scenes)}")
+                logger.info("LLM batch descs 极简重试成功: %d/%d", len(ret), len(scenes))
             return ret
         except Exception as e:
-            print(f"  [LLM batch descs] 极简重试失败: {e}")
+            logger.error("LLM batch descs 极简重试失败: %s", e)
             return {}
 
     def _call_llm_batch_variants(
@@ -894,7 +897,7 @@ class SceneAnalyzer:
                 for sid, descs in chunk_result.items():
                     merged.setdefault(sid, []).extend(descs)
             if merged:
-                print(f"  [LLM batch variants] 小批次完成: {len(merged)}/{len(variant_scenes)}")
+                logger.info("LLM batch variants 小批次完成: %d/%d", len(merged), len(variant_scenes))
             return merged
 
         try:
@@ -944,7 +947,7 @@ class SceneAnalyzer:
                     "variant_tasks": var_section,
                 })
             except (ImportError, KeyError) as e:
-                print(f"  [variants] registry 渲染失败: {e}，使用硬编码 fallback")
+                logger.warning("variants registry 渲染失败: %s，使用硬编码 fallback", e)
                 prompt = (
                     f"Generate coherent but materially distinct variant prompts for repeated chorus MV scenes.\n"
                     f"\n"
@@ -1001,7 +1004,7 @@ class SceneAnalyzer:
                     )
                     if compact_variants:
                         return compact_variants
-                print(f"  [LLM batch variants] 解析失败，使用 local fallback")
+                logger.warning("LLM batch variants 解析失败，使用 local fallback")
                 return {}
 
             merged = {}
@@ -1016,7 +1019,7 @@ class SceneAnalyzer:
             return merged
 
         except Exception as e:
-            print(f"  [LLM batch variants] 失败: {e}")
+            logger.error("LLM batch variants 失败: %s", e)
             return {}
 
     def _call_llm_compact_variants(
@@ -1075,7 +1078,7 @@ class SceneAnalyzer:
             raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
             results = self._parse_json_response(raw)
             if not results:
-                print("  [LLM batch variants] 极简重试仍解析失败")
+                logger.error("LLM batch variants 极简重试仍解析失败")
                 return {}
 
             merged: Dict[int, List[str]] = {}
@@ -1086,10 +1089,10 @@ class SceneAnalyzer:
                     merged.setdefault(sid, []).append(desc)
             if merged:
                 total = sum(len(v) for v in merged.values())
-                print(f"  [LLM batch variants] 极简重试成功: {total}/{len(var_requests)}")
+                logger.info("LLM batch variants 极简重试成功: %d/%d", total, len(var_requests))
             return merged
         except Exception as e:
-            print(f"  [LLM batch variants] 极简重试失败: {e}")
+            logger.error("LLM batch variants 极简重试失败: %s", e)
             return {}
 
     def _scene_prompt_llm_config(self, cfg: ConfigManager) -> Dict[str, str]:
@@ -1758,7 +1761,7 @@ class SceneAnalyzer:
                     "scene_samples": "\n".join(scene_lines),
                 })
             except (ImportError, KeyError) as e:
-                print(f"  [visual_bible] registry 渲染失败: {e}，使用硬编码 fallback")
+                logger.warning("visual_bible registry 渲染失败: %s，使用硬编码 fallback", e)
                 prompt = (
                     "You are defining a global visual bible for a lyric-driven music video.\n"
                     "Return one compact JSON object only.\n"

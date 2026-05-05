@@ -11,6 +11,7 @@ scripts_bridge.py — 与原版 Shell 脚本的桥接层
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Dict, Optional, Any, List
 
 from src.config_manager import ConfigManager
+
+logger = logging.getLogger(__name__)
 
 
 # Windows GBK 控制台兼容
@@ -95,7 +98,7 @@ def run_script(script_name: str, project_dir: str,
     if args:
         cmd.extend(args)
 
-    print(f"  -> run: {' '.join(cmd)}")
+    logger.debug("bash cmd: %s", " ".join(cmd))
 
     result = subprocess.run(
         cmd, env=env, capture_output=True, text=True, timeout=timeout,
@@ -106,11 +109,11 @@ def run_script(script_name: str, project_dir: str,
         tail = "\n".join(lines[-20:]) if len(lines) > 20 else result.stdout
         for line in tail.split("\n"):
             if line.strip():
-                print(f"     {line.strip()}")
+                logger.debug("  %s", line.strip())
 
     if result.returncode != 0:
         err = result.stderr[-500:] if result.stderr else "no stderr"
-        print(f"  !!! returncode {result.returncode}: {err}")
+        logger.error("'%s' returncode %s: %s", script_name, result.returncode, err)
 
     if check and result.returncode != 0:
         raise RuntimeError(
@@ -137,14 +140,14 @@ def run_python_script(script_name: str, project_dir: str,
     if args:
         cmd.extend(args)
 
-    print(f"  -> run: {' '.join(cmd)}")
+    logger.debug("python cmd: %s", " ".join(cmd))
 
     result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
 
     if result.stdout:
         for line in result.stdout.strip().split("\n")[-15:]:
             if line.strip():
-                print(f"     {line.strip()}")
+                logger.debug("  %s", line.strip())
 
     if result.returncode != 0:
         raise RuntimeError(
