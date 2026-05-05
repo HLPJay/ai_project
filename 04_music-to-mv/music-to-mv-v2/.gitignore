@@ -30,5 +30,14 @@ temp/
 .ref_tests/
 .codex_tmp/
 
+# 测试与流水线临时输出
+_tmp_tests/
+_tmp_report_summary/
+_test_api_output/
+_test_pipeline_output/
+_test_pipeline_v2/
+demucs_test/
+test_mv_output.log
+
 # Claude Code 本地配置
 .claude/
