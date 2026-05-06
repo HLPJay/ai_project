@@ -490,7 +490,7 @@ class LLMClient:
 
     def _build_comfyui_workflow(self, prompt: str, negative_prompt: str,
                                 seed: int, checkpoint: str, cfg) -> Dict[str, Any]:
-        workflow_path = str(cfg.get("comfyui_workflow", "") or "").strip()
+        workflow_path = cfg.get_str("comfyui_workflow", "")
         if workflow_path:
             path = Path(workflow_path).expanduser()
             if not path.is_absolute():

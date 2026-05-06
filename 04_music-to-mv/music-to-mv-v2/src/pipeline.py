@@ -19,6 +19,7 @@ pipeline.py — MV 流水线主编排器
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -51,6 +52,25 @@ SLOW_TEMPO_KEYWORDS = (
     "梦幻", "空灵", "缥缈", "诗意", "悠扬",
     "dreamy", "ethereal", "poetic", "melancholic",
 )
+
+
+def _check_lyrics_garbled(lyrics: str, language: str = "中文") -> str:
+    """检测中文歌词中混入的非中文单词。
+
+    返回第一个可疑行，无问题返回空字符串。
+    例如："空对孤灯思故aggio" 中 aggio 是意大利语混入，会被检出。
+    """
+    if "中" not in (language or ""):
+        return ""
+    # 中文字符紧接 3+ 个拉丁字母，或反向排列
+    pattern = re.compile(r'[一-鿿][a-zA-Z]{3,}|[a-zA-Z]{3,}[一-鿿]')
+    for line in lyrics.splitlines():
+        line = line.strip()
+        if not line or line.startswith("["):
+            continue
+        if pattern.search(line):
+            return line
+    return ""
 
 
 def detect_mood_tempo(mood: str, music_style: str) -> tuple:
@@ -152,6 +172,14 @@ class MVPipeline:
             return
 
         phases = phases or "all"
+
+        # 明确指定单阶段重跑时，清除该阶段的缓存选择，确保暂停点重新生效
+        _phase_choice_keys = {
+            "align": "step_3_alignment",
+            "produce": "step_4_scene_review",
+        }
+        if phases in _phase_choice_keys and not self.auto_mode:
+            self.pm.clear_user_choice(_phase_choice_keys[phases])
 
         # 步骤 0: 创意简报 (Creative Brief) — 在所有步骤之前执行
         if phases in ("all", "init"):
@@ -390,6 +418,12 @@ class MVPipeline:
             if not lyrics:
                 raise ValueError("API 返回歌词为空")
 
+            # 检测乱码：中文行中混入非中文单词（如 LLM 幻觉产生的外语词）
+            garbled_line = _check_lyrics_garbled(lyrics, self.pm.language)
+            if garbled_line:
+                logger.warning("歌词疑似含乱码，可疑行: %r", garbled_line)
+                print(f"  ⚠️  歌词疑似含乱码（{garbled_line[:60]}），建议人工确认后再继续")
+
             # 保存歌词
             lyrics_file = self.pm.project_dir / "audio" / "lyrics.txt"
             lyrics_content = (
@@ -592,12 +626,35 @@ class MVPipeline:
 
         align_mode = choice or "auto"
 
+        # 手动模式：询问 SRT 文件路径（如果尚未设置）
+        srt_file = ""
+        if align_mode == "manual":
+            srt_file = self.pm.get("manual_srt_file", "")
+            if not srt_file:
+                print("\n  请输入手动 SRT 文件路径（支持绝对路径或相对于项目目录的路径）:")
+                while True:
+                    raw = input("  SRT 文件路径> ").strip()
+                    if not raw:
+                        print("  路径不能为空，请重新输入。")
+                        continue
+                    from pathlib import Path as _Path
+                    p = _Path(raw)
+                    if not p.is_absolute():
+                        p = self.pm.project_dir / p
+                    if p.exists():
+                        srt_file = str(p)
+                        self.pm.set("manual_srt_file", srt_file)
+                        print(f"  ✅ 使用 SRT: {srt_file}")
+                        break
+                    print(f"  文件不存在: {p}，请重新输入。")
+
         self.pm.update_step("③ align", "running",
                             f"aligning lyrics (mode={align_mode})...")
         print(f"\n[Step ③] 歌词对齐（模式: {align_mode}）...")
 
         try:
-            srt_file = self.pm.get("manual_srt_file", "") if align_mode == "manual" else ""
+            if align_mode == "manual" and not srt_file:
+                srt_file = self.pm.get("manual_srt_file", "")
             result = run_align_lyrics(
                 str(self.pm.project_dir),
                 align_mode,

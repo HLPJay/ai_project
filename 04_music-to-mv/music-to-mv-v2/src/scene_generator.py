@@ -937,19 +937,31 @@ class SceneImageGenerator:
             model=self.cfg.get("llm_model", "MiniMax-M2.7"),
             prompt_text=prompt,
         )
-        raw = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        choice = resp_data.get("choices", [{}])[0]
+        finish_reason = choice.get("finish_reason", "")
+        raw = choice.get("message", {}).get("content", "")
 
-        # 解析 JSON
+        # finish_reason=length 时模型输出被截断，内容不完整，直接放弃
+        if finish_reason == "length":
+            logger.warning("anchor_generation 输出被截断 (finish_reason=length)，放弃本次锚定图生成")
+            return None
+
+        # 剥离 <think>...</think> 推理链，防止从提示词示例 JSON 里误提取占位符
         import re
-        json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw, re.DOTALL)
+        raw_clean = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE).strip()
+        if not raw_clean:
+            logger.debug("anchor_generation 响应剥离 think 后为空")
+            return None
+
+        json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_clean, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
         else:
-            brace_start = raw.find("{")
+            brace_start = raw_clean.find("{")
             json_str = ""
             if brace_start != -1:
                 depth, end = 0, brace_start
-                for ci, ch in enumerate(raw[brace_start:], brace_start):
+                for ci, ch in enumerate(raw_clean[brace_start:], brace_start):
                     if ch == "{":
                         depth += 1
                     elif ch == "}":
@@ -957,7 +969,7 @@ class SceneImageGenerator:
                         if depth == 0:
                             end = ci
                             break
-                json_str = raw[brace_start:end + 1]
+                json_str = raw_clean[brace_start:end + 1]
 
         try:
             data = json.loads(json_str)

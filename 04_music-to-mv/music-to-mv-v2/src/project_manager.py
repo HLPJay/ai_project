@@ -234,6 +234,13 @@ class ProjectManager:
             return pa.get("user_choice")
         return None
 
+    def clear_user_choice(self, step_name: str):
+        """清除某个暂停点的缓存选择，下次执行时重新提示用户"""
+        pa = self.info.get("pending_approval", {})
+        if pa.get("step") == step_name:
+            self.info["pending_approval"] = {}
+            self._save_info()
+
     # ── 数据管理 ─────────────────────────────────────────
 
     def set(self, key: str, value: Any):

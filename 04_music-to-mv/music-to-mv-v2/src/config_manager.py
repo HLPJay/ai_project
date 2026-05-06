@@ -114,7 +114,7 @@ class Config:
     download_timeout_sec: float = 60.0
 
     # Chat completion 输出长度
-    scene_desc_max_tokens: int = 4096
+    scene_desc_max_tokens: int = 6144
     scene_desc_batch_size: int = 2
     variant_desc_max_tokens: int = 4096
     variant_desc_batch_size: int = 4
@@ -123,6 +123,8 @@ class Config:
 
     # 并发
     image_parallel: int = 1
+    scene_desc_parallel: int = 2   # 场景描述批次并发数（每批仍串行重试，批间并发）
+    variant_desc_parallel: int = 2  # 变体描述批次并发数
 
     # 歌曲结构
     lyrics_structure_mode: str = "adaptive"
@@ -302,6 +304,8 @@ class ConfigManager:
             "VISUAL_BIBLE_MAX_TOKENS": "visual_bible_max_tokens",
             "CREATIVE_BRIEF_MAX_TOKENS": "creative_brief_max_tokens",
             "IMAGE_PARALLEL": "image_parallel",
+            "SCENE_DESC_PARALLEL": "scene_desc_parallel",
+            "VARIANT_DESC_PARALLEL": "variant_desc_parallel",
             "LYRICS_STRUCTURE_MODE": "lyrics_structure_mode",
             "LYRICS_STRUCTURE": "lyrics_structure",
             "ALIGN_TIMEOUT_SEC": "align_timeout_sec",
@@ -367,6 +371,13 @@ class ConfigManager:
         """获取配置值"""
         normalized = self._legacy_key_map.get(key, key)
         return getattr(self._config, normalized, default)
+
+    def get_str(self, key: str, default: str = "") -> str:
+        """获取字符串配置，None 安全，始终返回 str。"""
+        value = self.get(key, default)
+        if value is None:
+            return default
+        return str(value).strip()
 
     def get_int(self, key: str, default: int = 0) -> int:
         """获取整数配置，兼容字符串环境变量。"""

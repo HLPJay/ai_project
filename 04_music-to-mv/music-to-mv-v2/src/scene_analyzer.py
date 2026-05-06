@@ -24,6 +24,7 @@ import os
 import re
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -657,10 +658,16 @@ class SceneAnalyzer:
         batch_size = max(1, cfg.get_int("scene_desc_batch_size", 4))
         if len(scenes) > batch_size:
             merged: Dict[int, Dict] = {}
-            for idx in range(0, len(scenes), batch_size):
-                chunk = scenes[idx:idx + batch_size]
-                chunk_result = self._call_llm_batch_descs(chunk)
-                merged.update(chunk_result)
+            chunks = [scenes[i:i + batch_size] for i in range(0, len(scenes), batch_size)]
+            parallel = max(1, min(cfg.get_int("scene_desc_parallel", 2), len(chunks)))
+            with ThreadPoolExecutor(max_workers=parallel) as executor:
+                futures = {executor.submit(self._call_llm_batch_descs, chunk): chunk
+                           for chunk in chunks}
+                for future in as_completed(futures):
+                    try:
+                        merged.update(future.result())
+                    except Exception as e:
+                        logger.warning("scene_desc 批次并发失败: %s", e)
             if merged:
                 logger.info("LLM batch descs 小批次完成: %d/%d", len(merged), len(scenes))
             return merged
@@ -906,11 +913,17 @@ class SceneAnalyzer:
         batch_size = max(1, cfg.get_int("variant_desc_batch_size", 4))
         if len(variant_scenes) > batch_size:
             merged: Dict[int, List[str]] = {}
-            for idx in range(0, len(variant_scenes), batch_size):
-                chunk = variant_scenes[idx:idx + batch_size]
-                chunk_result = self._call_llm_batch_variants(chunk, all_scenes)
-                for sid, descs in chunk_result.items():
-                    merged.setdefault(sid, []).extend(descs)
+            chunks = [variant_scenes[i:i + batch_size] for i in range(0, len(variant_scenes), batch_size)]
+            parallel = max(1, min(cfg.get_int("variant_desc_parallel", 2), len(chunks)))
+            with ThreadPoolExecutor(max_workers=parallel) as executor:
+                futures = {executor.submit(self._call_llm_batch_variants, chunk, all_scenes): chunk
+                           for chunk in chunks}
+                for future in as_completed(futures):
+                    try:
+                        for sid, descs in future.result().items():
+                            merged.setdefault(sid, []).extend(descs)
+                    except Exception as e:
+                        logger.warning("variant_desc 批次并发失败: %s", e)
             if merged:
                 logger.info("LLM batch variants 小批次完成: %d/%d", len(merged), len(variant_scenes))
             return merged
@@ -1125,7 +1138,7 @@ class SceneAnalyzer:
 
     def _scene_prompt_llm_config(self, cfg: ConfigManager) -> Dict[str, str]:
         """Return chat-completions config for scene/variant/visual-bible prompt generation."""
-        provider = str(cfg.get("scene_prompt_provider", "minimax") or "minimax").strip().lower()
+        provider = cfg.get_str("scene_prompt_provider", "minimax").lower()
         if provider in ("alibaba_qwen", "dashscope", "qwen"):
             token = cfg.get("dashscope_api_key", "") or cfg.get("alibaba_token", "")
             return {
