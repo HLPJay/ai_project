@@ -5,7 +5,7 @@ align.py — 歌词时间轴对齐模块（纯 Python，替代原版 align_lyric
   ① 人声分离（Demucs，可选）→ ② Whisper ASR 转写 → ③ 两遍匹配对齐
   → ④ 后处理修正 → ⑤ 生成 SRT
 
-核心算法：两遍贪心匹配 + 中文重叠评分 + 后处理插值
+核心算法：连续歌词块匹配 + 相邻 ASR 区间合并 + weak sequential anchor + 时长约束
 
 用法：
     from src.align import LyricsAligner
@@ -15,6 +15,7 @@ align.py — 歌词时间轴对齐模块（纯 Python，替代原版 align_lyric
     # result.srt_path, result.aligned_lines, result.total_lines
 """
 
+import bisect
 import json
 import logging
 import os
@@ -221,44 +222,85 @@ def _run_faster_whisper_worker(audio_path: str,
 # ════════════════════════════════════════════════════════════
 
 class SimilarityScorer:
-    """中日文歌词相似度评分"""
+    """歌词/ASR 相似度评分器。
+
+    歌曲 ASR 的文本经常有错字、漏字、合并句子。这里的评分目标不是
+    判断文本是否完全相同，而是判断一个 ASR 片段是否可作为某段歌词的
+    时间锚点。
+
+    分数统一归一到 0~1，避免旧版 chinese_overlap * 2.0 导致阈值语义混乱。
+    """
+
+    @staticmethod
+    def normalize(text: str) -> str:
+        """保留有助于歌词匹配的字符，去掉标点和空白。"""
+        if not text:
+            return ""
+        return "".join(
+            re.findall(
+                r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7afA-Za-z0-9]',
+                str(text).lower(),
+            )
+        )
 
     @staticmethod
     def similarity(a: str, b: str) -> float:
-        """整体相似度"""
-        a = re.sub(r'[^\w\s]', '', a.lower())
-        b = re.sub(r'[^\w\s]', '', b.lower())
+        """顺序相似度。"""
+        a = SimilarityScorer.normalize(a)
+        b = SimilarityScorer.normalize(b)
+        if not a or not b:
+            return 0.0
         return SequenceMatcher(None, a, b).ratio()
 
     @staticmethod
-    def chinese_overlap(a: str, b: str) -> float:
-        """中文字符重叠率（对中文歌词更鲁棒）
+    def char_recall(asr_text: str, lyric_text: str) -> float:
+        """歌词字符被 ASR 覆盖的比例，保留重复字符影响。
 
-        目标：容忍ASR识别误差，如"无垠"→"乌烟"
-        当两个短语共享核心汉字时认为相似
+        不使用 set overlap，避免“我/你/的/心/梦”等常见字把不相关句子
+        误判成高相似度。
         """
-        ca = set(re.findall(r'[\u4e00-\u9fff]', a))
-        cb = set(re.findall(r'[\u4e00-\u9fff]', b))
-        if not cb:
+        a = SimilarityScorer.normalize(asr_text)
+        b = SimilarityScorer.normalize(lyric_text)
+        if not a or not b:
             return 0.0
-        overlap = len(ca & cb)
-        # Recall\uff1ab \u7684\u5b57\u7b26\u5728 a \u4e2d\u7684\u8986\u76d6\u7387
-        # \u5f53\u662f\u77ed\u6b4c\u8bcd\u884c\u65f6\uff0ca \u662f\u957fASR\u6bb5\u65f6\u6548\u679c\u6700\u597d
-        return overlap / len(cb)
+
+        counts = {}
+        for ch in a:
+            counts[ch] = counts.get(ch, 0) + 1
+
+        hit = 0
+        for ch in b:
+            if counts.get(ch, 0) > 0:
+                hit += 1
+                counts[ch] -= 1
+        return hit / max(1, len(b))
+
+    @staticmethod
+    def len_ratio(a: str, b: str) -> float:
+        """长度匹配度，防止极短文本吃掉过长歌词块。"""
+        a = SimilarityScorer.normalize(a)
+        b = SimilarityScorer.normalize(b)
+        if not a or not b:
+            return 0.0
+        return min(len(a), len(b)) / max(len(a), len(b))
+
+    @staticmethod
+    def chinese_overlap(a: str, b: str) -> float:
+        """兼容旧调用：返回 0~1 的中文字符召回率。"""
+        return SimilarityScorer.char_recall(a, b)
 
     @staticmethod
     def score_pair(asr_text: str, lyric: str) -> float:
-        """综合评分（用于匹配ASR识别到原始歌词）
+        """综合评分，返回 0~1。
 
-        策略：优先使用中文字符重叠率（对识别误差容忍度高）
-        目的：确保即使ASR识别有误（如"无垠"→"乌烟"），
-             仍能正确匹配到原始歌词行
+        - seq: 连续顺序相似度，抑制常见字误匹配。
+        - recall: 容忍同音错字/漏字。
+        - length: 防止一个短 ASR 片段误匹配很长歌词块。
         """
-        seq_sim = SimilarityScorer.similarity(asr_text, lyric)
-        chinese_sim = SimilarityScorer.chinese_overlap(asr_text, lyric)
-        # 中文字符重叠率（召回率）权重更高，因为对ASR错误最容忍
-        # 给予召回率更高权重以容忍识别误差
-        return max(seq_sim * 0.4, chinese_sim * 2.0)
+        seq = SimilarityScorer.similarity(asr_text, lyric)
+        recall = SimilarityScorer.char_recall(asr_text, lyric)
+        length = SimilarityScorer.len_ratio(asr_text, lyric)
+        return 0.50 * seq + 0.35 * recall + 0.15 * length
 
 
 # ════════════════════════════════════════════════════════════
@@ -359,13 +401,10 @@ class WhisperTranscriber:
 
         fp16 = device.startswith("cuda")
 
-        # 默认使用简体中文 prompt 强制简体输出
-        if not initial_prompt:
-            initial_prompt = "以下是简体中文歌词的转写。"
-
         logger.info("Whisper 转写中（模型链: %s, device=%s）...", f" -> ".join(model_sizes), device)
         logger.debug("音频: %s", audio_path)
-        logger.debug("Initial prompt: %s", initial_prompt[:50])
+        if initial_prompt:
+            logger.debug("Initial prompt: %s", initial_prompt[:50])
 
         if backend in ("faster-whisper", "faster_whisper", "faster", "auto"):
             try:
@@ -750,20 +789,32 @@ def parse_lyrics(lyrics_path: str) -> Tuple[List[str], List[str]]:
 class LyricsAligner:
     """歌词 → SRT 对齐器
 
-    两遍贪心匹配算法：
-    - 第一遍：顺序匹配，窗口搜索（找到最佳歌词行）
-    - 第二遍：补漏未匹配的歌词行
-    - 后处理：插值填充跳行
+    块匹配算法：
+    - lyrics.txt 是权威文本，ASR 只作为人声时间锚点。
+    - 先做当前位置附近的连续歌词块匹配，必要时合并相邻 ASR 段。
+    - 文本强匹配用 strong anchor；文本差但位置/时长合理时用 weak sequential anchor。
+    - 缺失行最后才插值，重复/乱序段单独用更严格阈值插入。
     """
 
-    def __init__(self, threshold_1: float = 0.25,
-                 threshold_2: float = 0.20,
-                 search_window: int = 8,
-                 max_gap_seconds: float = 5.0):
+    def __init__(self, threshold_1: float = 0.42,
+                 threshold_2: float = 0.35,
+                 search_window: int = 10,
+                 max_gap_seconds: float = 5.0,
+                 weak_anchor_threshold: float = 0.18,
+                 weak_anchor_max_offset: int = 1,
+                 enable_weak_anchor: bool = True):
+        # strong / normal thresholds：文本相似度较高时直接使用 ASR 时间锚点。
         self.threshold_1 = threshold_1
         self.threshold_2 = threshold_2
         self.search_window = search_window
-        self.max_gap_seconds = max_gap_seconds  # 允许的最大时间间隙
+        self.max_gap_seconds = max_gap_seconds
+
+        # weak sequential anchor：用于“ASR 有人声时间戳，但识别文字差距大”的场景。
+        # 只在主顺序流程中使用，不参与重复/乱序插入。
+        self.enable_weak_anchor = enable_weak_anchor
+        self.weak_anchor_threshold = weak_anchor_threshold
+        self.weak_anchor_max_offset = max(0, int(weak_anchor_max_offset))
+        self.weak_anchor_min_duration_ratio = 0.38
 
     @staticmethod
     def _load_project_audio_duration(project_dir: Path) -> float:
@@ -779,18 +830,43 @@ class LyricsAligner:
     def _build_whisper_prompt(lyrics: List[str], max_chars: int = 200) -> str:
         """构造 Whisper 的 initial_prompt
 
-        作用：
-        - 强制 Whisper 输出简体中文（避免繁简混杂）
-        - 提供风格提示，但不包含具体歌词
+        从歌词中提取 2-4 字的去重关键词，拼成逗号分隔列表。
+        Whisper 把 initial_prompt 当作"已识别的前文上下文"，解码时
+        优先选用 prompt 中出现过的词汇，大幅减少同音/近音字错误。
 
-        重要：不要在prompt中放具体歌词！
-        Whisper会把prompt当作"已识别的前文"，可能跳过这些内容
-        导致歌曲开头的几行被漏识别。
-
-        参数:
-            lyrics: （未使用，保留接口）
+        只放短关键词，不放完整歌词句子——完整句子会导致 Whisper
+        认为"已经识别过了"而跳过歌曲开头。
         """
-        return "歌词转写，简体中文。"
+        if not lyrics:
+            return "简体中文歌词转写。"
+
+        # 先按标点分割，再提取 2-4 字的中文片段作为关键词
+        seen: set = set()
+        keywords: list = []
+        for line in lyrics:
+            segments = re.split(r'[，。！？、,.\s]+', line)
+            for seg in segments:
+                words = re.findall(r'[一-鿿]{2,4}', seg)
+                for w in words:
+                    if w not in seen:
+                        seen.add(w)
+                        keywords.append(w)
+
+        if not keywords:
+            return "简体中文歌词转写。"
+
+        prefix = "简体中文歌词。"
+        result_parts = [prefix]
+        current_len = len(prefix)
+        for kw in keywords:
+            addition = kw + "，"
+            if current_len + len(addition) > max_chars:
+                break
+            result_parts.append(addition)
+            current_len += len(addition)
+
+        prompt = "".join(result_parts).rstrip("，") + "。"
+        return prompt
 
     def _filter_misrecognized_asr(self, asr_segments: List[dict],
                                    lyrics: List[str],
@@ -901,6 +977,49 @@ class LyricsAligner:
             mostly_silence and (near_unrelated or repeated_noise)
         )
 
+    @staticmethod
+    def _is_probably_non_lyric_text(text: str) -> bool:
+        """过滤明显不是歌词的 ASR 标签。
+
+        规则故意保守：只过滤明确乐器/制作/字幕/版权/占位标签。
+        短英文歌词如 Baby / Oh yeah / My love 不会仅因英文而被删除。
+        """
+        raw = str(text or "").strip()
+        if not raw:
+            return True
+
+        lowered = raw.lower().strip(" .。!！?？,，:：;；-—_[]()（）")
+        compact = re.sub(r"[^a-z0-9一-鿿]+", " ", lowered).strip()
+
+        explicit_markers = (
+            "instrumental", "interlude", "backing track", "karaoke",
+            "music", "bgm", "sound effect", "sfx", "subtitle",
+            "lyrics by", "composer", "arranger", "produced by",
+            "copyright", "all rights reserved", "zither harp",
+        )
+        if any(marker in lowered for marker in explicit_markers):
+            return True
+
+        # 明确乐器名组成的短标签。
+        instrument_words = {
+            "zither", "harp", "piano", "guitar", "violin", "cello",
+            "drum", "drums", "bass", "synth", "synthesizer", "flute",
+            "strings", "trumpet", "sax", "saxophone", "percussion",
+        }
+        words = [w for w in re.split(r"\s+", compact) if w]
+        has_cjk = bool(re.search(r"[一-鿿]", raw))
+        if words and not has_cjk and len(words) <= 3 and all(w in instrument_words for w in words):
+            return True
+
+        production_markers = (
+            "编曲", "作曲", "作词", "演唱", "原唱", "制作人",
+            "出品", "发行", "字幕", "词曲", "版权所有",
+        )
+        if any(marker in raw for marker in production_markers):
+            return True
+
+        return False
+
     def run(self, project_dir: str, align_mode: str = "auto",
             srt_file: str = "", timeout: int = 600) -> Dict[str, Any]:
         """执行完整对齐流程
@@ -994,7 +1113,7 @@ class LyricsAligner:
                 "aligned_lines": matched,
                 "total_lines": len(clean_lyrics),
                 "srt_entries": srt_entries,
-                "alignment": [],
+                "alignment": self._alignment_debug_payload(alignments),
                 "status": "completed",
             }
 
@@ -1028,13 +1147,11 @@ class LyricsAligner:
                 "或在 --align-mode manual 下提供 SRT 文件跳过 ASR"
             )
 
-        # 提前加载歌词，用于构造 initial_prompt（提高ASR准确度，强制简体）
         _, clean_lyrics = parse_lyrics(str(lyrics_path))
-        initial_prompt = self._build_whisper_prompt(clean_lyrics)
 
         whisper_result = WhisperTranscriber().transcribe(
             audio_for_asr, str(temp_dir),
-            initial_prompt=initial_prompt,
+            initial_prompt="简体中文歌曲歌词转写。",
             force_no_vad=demucs_succeeded,
         )
 
@@ -1072,38 +1189,10 @@ class LyricsAligner:
         logger.info("对齐中: %d 行歌词 <-> %d 段 ASR...", len(clean_lyrics), len(asr_segments))
         logger.info("音频时长: %.1fs", audio_duration)
 
-        alignments = self._align(
-            clean_lyrics, asr_segments
-        )
+        # 统一用 _align_manual：顺序分配 + 保留原始时间戳
+        # auto 和 manual 模式共用同一套算法，不再有 fallback 重组逻辑
+        alignments = self._align_manual(clean_lyrics, asr_segments)
         self._repair_alignment_timeline(alignments, audio_duration=audio_duration)
-        timeline_fallback = False
-        timeline_strategy = "asr_line_match"
-        if alignments and any(a.get("matched") for a in alignments) and all(
-            a.get("fallback") in (
-                "asr_segment_timeline",
-                "asr_native_timeline",
-                "asr_word_timeline",
-            )
-            for a in alignments
-            if a.get("matched")
-        ):
-            timeline_strategy = "asr_native_sync"
-        if self._alignment_timeline_is_suspicious(
-            alignments, audio_duration=audio_duration
-        ):
-            timeline_fallback = True
-            if self._apply_asr_segment_timeline(
-                alignments, clean_lyrics, asr_segments,
-                audio_duration=audio_duration,
-            ):
-                timeline_strategy = "asr_segment_rebuild"
-                logger.info("已按 ASR 段真实时间戳重建原始歌词字幕")
-            else:
-                timeline_strategy = "uniform_timeline"
-                logger.warning("ASR 段不可用，回退到均匀字幕时间轴")
-                self._apply_uniform_timeline(
-                    alignments, clean_lyrics, audio_duration=audio_duration
-                )
 
         # ④ 生成 SRT
         srt_content = self._generate_srt(alignments, clean_lyrics)
@@ -1131,29 +1220,18 @@ class LyricsAligner:
             "total_lines": len(clean_lyrics),
             "srt_entries": srt_entries,
             "asr_raw_srt_path": str(raw_srt_path),
-            "alignment": alignments,
-            "timeline_fallback": timeline_fallback,
-            "timeline_strategy": timeline_strategy,
+            "alignment": self._alignment_debug_payload(alignments),
             "status": "completed",
         }
 
-    def _align(self, lyrics: List[str],
-               asr_segments: List[dict]) -> List[Dict]:
-        """两遍对齐算法
+    def _line_weight(self, text: str) -> int:
+        """歌词行分配时间时的权重。"""
+        return max(1, len(SimilarityScorer.normalize(text)))
 
-        返回:
-            [{"idx": int, "text": str, "start": float, "end": float,
-              "score": float, "matched": bool, "interpolated": bool}, ...]
-        """
-        M, N = len(lyrics), len(asr_segments)
-        asr_entries = [
-            (seg["start"], seg["end"], seg["text"].strip())
-            for seg in asr_segments
-        ]
-
-        result = []
-        for i in range(M):
-            result.append({
+    @staticmethod
+    def _init_alignment_result(lyrics: List[str]) -> List[Dict[str, Any]]:
+        return [
+            {
                 "idx": i,
                 "text": lyrics[i],
                 "start": 0.0,
@@ -1161,384 +1239,800 @@ class LyricsAligner:
                 "score": 0.0,
                 "matched": False,
                 "interpolated": False,
-            })
+                "_source": "",
+                "_srt_idx": -1,
+                "_srt_idx_end": -1,
+                "_asr_text": "",
+                "_matched_block": "",
+                "low_confidence": False,
+                "_match_kind": "",
+            }
+            for i in range(len(lyrics))
+        ]
 
-        if self._apply_asr_segment_timeline(result, lyrics, asr_segments):
-            return result
+    def _min_readable_duration_for_line(self, text: str) -> float:
+        """估算一行歌词的最低可唱/可读时长。
 
-        lyric_assigned = [False] * M
-        asr_assigned = [False] * N
-        align_map = {}  # lyric_idx -> (start, end, total_score, count)
+        注意：这是“完整歌词行”的最低时长，不是 SRT 技术合法时长。
+        目标是避免 6~8 个中文字被压到 0.3s 这种明显不合理的时间段。
+        """
+        norm = SimilarityScorer.normalize(text)
+        n = len(norm)
+        if n <= 0:
+            return 0.30
+        if n <= 1:
+            return 0.30
+        if n <= 2:
+            return 0.45
+        if n <= 4:
+            return 0.70
+        if n <= 7:
+            return 0.95
+        if n <= 11:
+            return 1.15
+        return 1.35
 
-        # ── 第一遍：顺序贪心匹配（带互为最佳验证） ──
-        # 互为最佳：ASR段i 选择的歌词行j，必须 j 选择的最佳ASR段也是 i 附近
-        # 否则跳过，避免 ASR 误识别段抢占真实歌词行
-        lyric_idx = 0
-        for i, (start, end, text) in enumerate(asr_entries):
-            if lyric_idx >= M:
-                break
-            if len(text) < 2:
-                continue
+    def _block_required_duration(self, lyrics: List[str], start_i: int, end_i: int) -> float:
+        """连续歌词块的最低合理承载时长。"""
+        if end_i <= start_i:
+            return 0.0
+        return sum(self._min_readable_duration_for_line(lyrics[i]) for i in range(start_i, end_i))
 
-            best_score = 0
-            best_li = -1
-            for j in range(lyric_idx, min(lyric_idx + self.search_window, M)):
-                if lyric_assigned[j]:
+    def _duration_fit(self,
+                      lyrics: List[str],
+                      start_i: int,
+                      end_i: int,
+                      duration: float) -> Tuple[float, float]:
+        """返回 (duration_ratio, required_duration)。"""
+        required = max(0.05, self._block_required_duration(lyrics, start_i, end_i))
+        ratio = max(0.0, float(duration)) / required
+        return ratio, required
+
+    def _duration_can_hold_block(self,
+                                 lyrics: List[str],
+                                 start_i: int,
+                                 end_i: int,
+                                 duration: float,
+                                 min_ratio: float = 0.45) -> bool:
+        """判断时间区间是否足够承载歌词块。
+
+        min_ratio 不设为 1.0，是因为唱歌可能比朗读快，且 Whisper 边界常偏短。
+        主顺序匹配可宽松一些；重复/乱序插入要更严格。
+        """
+        ratio, _ = self._duration_fit(lyrics, start_i, end_i, duration)
+        return ratio >= min_ratio
+
+    def _estimate_avg_line_len(self, lyrics: List[str]) -> float:
+        lengths = [self._line_weight(line) for line in lyrics if SimilarityScorer.normalize(line)]
+        if not lengths:
+            return 6.0
+        return max(1.0, sum(lengths) / len(lengths))
+
+    def _estimate_max_block_lines(self, asr_text: str, duration: float, lyrics: List[str]) -> int:
+        """根据 ASR 文本长度和时间长度动态估算最多匹配几行歌词。
+
+        旧版固定 1~4 行，会在快歌/长段副歌里不够，也会在短 segment 上过度匹配。
+        这里同时受文本长度和时长约束，最大允许 8 行。
+        """
+        norm_len = len(SimilarityScorer.normalize(asr_text))
+        avg_len = self._estimate_avg_line_len(lyrics)
+        by_text = int(round(norm_len / avg_len)) + 1
+        by_time = int(max(1.0, float(duration)) / 0.70) + 1
+        return max(1, min(8, max(by_text, by_time)))
+
+    def _merge_gap_limit(self) -> float:
+        """允许合并相邻 ASR segment 的最大静音间隔。"""
+        return max(0.35, min(float(self.max_gap_seconds or 5.0), 1.20))
+
+    def _build_segment_group(self,
+                             srt_entries: List[Tuple[float, float, str]],
+                             start_idx: int,
+                             end_idx: int) -> Tuple[float, float, str]:
+        """把 [start_idx, end_idx] 的 ASR/SRT 段合并成一个候选时间区间。"""
+        seg_start = float(srt_entries[start_idx][0])
+        seg_end = float(srt_entries[end_idx][1])
+        text = " ".join(
+            str(srt_entries[i][2] or "").strip()
+            for i in range(start_idx, end_idx + 1)
+            if str(srt_entries[i][2] or "").strip()
+        )
+        return seg_start, seg_end, text
+
+    def _assign_segment_to_lyric_block(self,
+                                      result: List[Dict[str, Any]],
+                                      lyrics: List[str],
+                                      start_i: int,
+                                      end_i: int,
+                                      seg_start: float,
+                                      seg_end: float,
+                                      score: float,
+                                      seg_idx: int,
+                                      seg_idx_end: Optional[int] = None,
+                                      source: str = "block",
+                                      asr_text: str = "",
+                                      low_confidence: bool = False,
+                                      match_kind: str = "strong") -> None:
+        """把一个 ASR/SRT 时间区间按字符权重分配给连续歌词块。
+
+        这个时间区间可以来自单个 ASR segment，也可以来自多个相邻 segment 的合并。
+        """
+        if end_i <= start_i:
+            return
+
+        seg_start = float(seg_start)
+        seg_end = float(seg_end)
+        duration = max(0.05, seg_end - seg_start)
+        indices = list(range(start_i, end_i))
+        weights = [self._line_weight(lyrics[i]) for i in indices]
+        total_weight = max(1, sum(weights))
+        matched_block = "".join(lyrics[start_i:end_i])
+        if seg_idx_end is None:
+            seg_idx_end = seg_idx
+
+        cursor = seg_start
+        for pos, i in enumerate(indices):
+            if pos == len(indices) - 1:
+                line_end = seg_end
+            else:
+                line_end = cursor + duration * weights[pos] / total_weight
+
+            # 这里只保证切分不产生 0 长度。可读时长约束在候选区间层面判断，
+            # 不在这里强行拉长，否则会撑爆原始 ASR 区间。
+            min_line_duration = min(0.20, duration / max(1, len(indices)))
+            line_end = max(cursor + min_line_duration, line_end)
+            if pos != len(indices) - 1:
+                line_end = min(line_end, seg_end)
+            else:
+                line_end = seg_end
+
+            old_score = float(result[i].get("score", 0.0) or 0.0)
+            old_source = str(result[i].get("_source", "") or "")
+            # 只有真正的兜底插值可以被较低分 ASR 锚点覆盖。
+            # 连续歌词块切分出来的行也会 interpolated=True，但它们仍然是 ASR 锚点，
+            # 不能被后续低分匹配覆盖，否则会造成副歌/Bridge 错位。
+            should_update = (
+                not result[i].get("matched")
+                or score > old_score + 0.05
+                or old_source in ("interpolate", "uniform_fallback")
+            )
+
+            if should_update:
+                result[i].update({
+                    "start": cursor,
+                    "end": max(cursor + 0.05, line_end),
+                    "score": float(score),
+                    "matched": True,
+                    "interpolated": len(indices) > 1 or seg_idx_end != seg_idx,
+                    "_source": source,
+                    "_srt_idx": seg_idx,
+                    "_srt_idx_end": seg_idx_end,
+                    "_asr_text": asr_text,
+                    "_matched_block": matched_block,
+                    "low_confidence": bool(low_confidence),
+                    "_match_kind": match_kind,
+                })
+
+            cursor = max(cursor + 0.05, line_end)
+
+    def _find_best_lyric_block_for_segment(self,
+                                           asr_text: str,
+                                           lyrics: List[str],
+                                           lyric_ptr: int,
+                                           max_block_lines: int = 4,
+                                           look_back: int = 2,
+                                           look_ahead: Optional[int] = None,
+                                           seg_duration: Optional[float] = None,
+                                           min_duration_ratio: float = 0.45,
+                                           allow_any_position: bool = False) -> Optional[Dict[str, Any]]:
+        """为一个 ASR 时间区间寻找最佳连续歌词块。
+
+        关键改动：评分时同时看“ASR 区间总时长是否足够承载歌词块”。
+        这样短 segment 不会直接承载完整长歌词；但如果多个短 segment 合并后
+        区间足够，则可以正常匹配，避免走插值导致字幕提前。
+        """
+        M = len(lyrics)
+        if M == 0:
+            return None
+
+        if look_ahead is None:
+            look_ahead = max(6, int(self.search_window))
+
+        norm_asr = SimilarityScorer.normalize(asr_text)
+        if not norm_asr:
+            return None
+
+        if allow_any_position:
+            start_min = 0
+            start_max = M
+        else:
+            start_min = max(0, lyric_ptr - look_back)
+            start_max = min(M, lyric_ptr + look_ahead)
+
+        if seg_duration is None:
+            seg_duration = 0.0
+
+        best: Optional[Dict[str, Any]] = None
+
+        for start_i in range(start_min, start_max):
+            candidate_parts: List[str] = []
+            for block_size in range(1, max_block_lines + 1):
+                end_i = start_i + block_size
+                if end_i > M:
+                    break
+                candidate_parts.append(lyrics[end_i - 1])
+                candidate = "".join(candidate_parts)
+
+                duration_ratio, required_duration = self._duration_fit(
+                    lyrics, start_i, end_i, float(seg_duration)
+                )
+                # 严重时长不足直接拒绝。这样“0.35s 承载 7 个字”不会通过。
+                if float(seg_duration) > 0 and duration_ratio < min_duration_ratio:
                     continue
-                s = SimilarityScorer.score_pair(text, lyrics[j])
-                if s > best_score:
-                    best_score = s
-                    best_li = j
 
-            if best_score >= self.threshold_1 and best_li >= 0:
-                # 互为最佳验证：检查所选歌词行 best_li 是否真的最适合 ASR段 i
-                # 如果存在另一个更晚的ASR段匹配 best_li 的分数显著更高，跳过
-                lyric_text = lyrics[best_li]
-                better_match_exists = False
-                for k in range(i + 1, min(i + self.search_window + 2, N)):
-                    if asr_assigned[k]:
-                        continue
-                    other_text = asr_entries[k][2]
-                    if len(other_text) < 2:
-                        continue
-                    other_score = SimilarityScorer.score_pair(other_text, lyric_text)
-                    # 显著更高（>1.3倍）才认为更好的匹配存在
-                    if other_score > best_score * 1.3:
-                        better_match_exists = True
-                        logger.debug("ASR段%d \"%s\"(%.2f) 放弃匹配行%d，让位给更佳的ASR段%d(%.2f)",
-                                     i, text[:20], best_score, best_li + 1, k, other_score)
-                        break
+                raw_score = SimilarityScorer.score_pair(norm_asr, candidate)
 
-                if not better_match_exists:
-                    if best_li in align_map:
-                        a = align_map[best_li]
-                        align_map[best_li] = (a[0], end, a[2] + best_score, a[3] + 1)
-                    else:
-                        align_map[best_li] = (start, end, best_score, 1)
-                    lyric_assigned[best_li] = True
-                    asr_assigned[i] = True
-                    lyric_idx = best_li + 1
-
-        # ── 第二遍：补漏（包括已分配的ASR段用于多行匹配） ──
-        for j in range(M):
-            if lyric_assigned[j]:
-                continue
-
-            best_score = 0
-            best_entry = None
-
-            # 首先在未分配的ASR段中查找
-            for i in range(N):
-                if asr_assigned[i]:
-                    continue
-                start, end, text = asr_entries[i]
-                s = SimilarityScorer.score_pair(text, lyrics[j])
-                if s > best_score:
-                    best_score = s
-                    best_entry = (i, start, end)
-
-            # 如果未找到，对于最后几行，允许匹配到已分配的ASR段
-            # （处理"一个ASR段包含多行歌词"的情况）
-            if j >= M - 3 and (best_score < 0.15 or best_entry is None):
-                for i in range(N):
-                    start, end, text = asr_entries[i]
-                    s = SimilarityScorer.score_pair(text, lyrics[j])
-                    if s > best_score:
-                        best_score = s
-                        best_entry = (i, start, end)
-
-            # 宽松阈值：对最后几行的歌词降低门槛
-            threshold = self.threshold_2
-            if j >= M - 3:  # 最后三行更容易匹配
-                threshold = max(self.threshold_2 * 0.5, 0.10)
-            if best_score >= threshold and best_entry:
-                asr_i, start, end = best_entry
-                if j in align_map:
-                    a = align_map[j]
-                    align_map[j] = (a[0], end, a[2] + best_score, a[3] + 1)
+                # 位置惩罚：顺序主流程优先匹配当前进度附近；重复插入时不使用。
+                if allow_any_position:
+                    position_penalty = 0.0
                 else:
-                    align_map[j] = (start, end, best_score, 1)
-                lyric_assigned[j] = True
-                # 仅在匹配到未分配的ASR时标记为已分配
-                if not asr_assigned[asr_i]:
-                    asr_assigned[asr_i] = True
+                    distance = abs(start_i - lyric_ptr)
+                    position_penalty = min(0.25, distance * 0.025)
 
-        # ── 后处理修正 ──
-        # 修正1: 第一行未匹配 → 分配第一个有效 ASR 时间
-        if not lyric_assigned[0] and asr_entries:
-            for start, end, text in asr_entries:
-                if len(text) >= 2:
-                    align_map[0] = (start, end, 0.0, 0)
-                    lyric_assigned[0] = True
-                    logger.debug("第1行分配到首个ASR (%.1fs)", start)
+                # 没有明显证据时，轻微偏向少行块，避免一个区间吃太多歌词。
+                block_penalty = max(0, block_size - 1) * 0.012
+
+                # 时长惩罚：不拒绝边界略短的真实演唱，但会降分。
+                duration_penalty = 0.0
+                if float(seg_duration) > 0:
+                    duration_penalty = max(0.0, 1.0 - min(1.0, duration_ratio)) * 0.18
+
+                final_score = raw_score - position_penalty - block_penalty - duration_penalty
+
+                if best is None or final_score > best["score"]:
+                    best = {
+                        "start_i": start_i,
+                        "end_i": end_i,
+                        "score": final_score,
+                        "raw_score": raw_score,
+                        "block_size": block_size,
+                        "candidate": candidate,
+                        "duration_ratio": duration_ratio,
+                        "required_duration": required_duration,
+                    }
+
+        return best
+
+    def _find_best_segment_group(self,
+                                 srt_entries: List[Tuple[float, float, str]],
+                                 consumed: List[bool],
+                                 start_idx: int,
+                                 lyrics: List[str],
+                                 lyric_ptr: int,
+                                 min_duration_ratio: float = 0.45,
+                                 sequential_only: bool = False) -> Optional[Dict[str, Any]]:
+        """从 start_idx 开始尝试单段或相邻多段合并，返回最佳候选。
+
+        这是解决“短 ASR segment 被拒绝后插值提前”的核心：
+        单个短段不够承载歌词时，先尝试与后续相邻短段合并成更大的演唱区间。
+        """
+        N = len(srt_entries)
+        if start_idx >= N or consumed[start_idx]:
+            return None
+
+        best_group: Optional[Dict[str, Any]] = None
+        max_merge_segments = 5
+        max_gap = self._merge_gap_limit()
+
+        for end_idx in range(start_idx, min(N, start_idx + max_merge_segments)):
+            if consumed[end_idx]:
+                break
+            if end_idx > start_idx:
+                prev_end = float(srt_entries[end_idx - 1][1])
+                cur_start = float(srt_entries[end_idx][0])
+                if cur_start - prev_end > max_gap:
                     break
 
-        # 修正2: 处理多个歌词行在同一ASR段的情况
-        # 如果有相邻的歌词都匹配到同一ASR段，按比例分割时间
-        for j in range(M - 1):
-            if lyric_assigned[j] and lyric_assigned[j + 1]:
-                a_j = align_map[j]
-                a_j_next = align_map[j + 1]
-                # 如果两行分配到完全相同的时间段，则分割
-                if abs(a_j[0] - a_j_next[0]) < 0.01 and abs(a_j[1] - a_j_next[1]) < 0.01:
-                    duration = a_j[1] - a_j[0]
-                    mid_point = a_j[0] + duration / 2
-                    align_map[j] = (a_j[0], mid_point, a_j[2], a_j[3])
-                    align_map[j + 1] = (mid_point, a_j[1], a_j_next[2], a_j_next[3])
-                    logger.debug("行 %d 和 %d 共享ASR段，已分割时间", j + 1, j + 2)
+            seg_start, seg_end, merged_text = self._build_segment_group(srt_entries, start_idx, end_idx)
+            if not SimilarityScorer.normalize(merged_text):
+                continue
 
-        # 修正3: 插值填充跳行
-        for j in range(1, M):
-            if not lyric_assigned[j]:
-                prev_li = -1
-                next_li = -1
-                for k in range(j - 1, -1, -1):
-                    if lyric_assigned[k]:
-                        prev_li = k
+            duration = seg_end - seg_start
+            max_block_lines = self._estimate_max_block_lines(merged_text, duration, lyrics)
+            if sequential_only:
+                # weak 顺序锚点不要一次吃掉过多歌词行；长段强匹配仍可通过 broad strong 处理。
+                max_block_lines = min(max_block_lines, 6)
+                look_back = self.weak_anchor_max_offset
+                look_ahead = self.weak_anchor_max_offset + 1
+            else:
+                look_back = 2
+                look_ahead = max(6, int(self.search_window))
+
+            best = self._find_best_lyric_block_for_segment(
+                merged_text,
+                lyrics,
+                lyric_ptr=lyric_ptr,
+                max_block_lines=max_block_lines,
+                look_back=look_back,
+                look_ahead=look_ahead,
+                seg_duration=duration,
+                min_duration_ratio=min_duration_ratio,
+                allow_any_position=False,
+            )
+            if not best:
+                continue
+
+            merge_count = end_idx - start_idx + 1
+            merge_penalty = max(0, merge_count - 1) * 0.018
+            adjusted_score = float(best["score"]) - merge_penalty
+
+            candidate = {
+                **best,
+                "score": adjusted_score,
+                "base_score": float(best["score"]),
+                "seg_start": seg_start,
+                "seg_end": seg_end,
+                "seg_idx": start_idx,
+                "seg_idx_end": end_idx,
+                "seg_text": merged_text,
+                "merge_count": merge_count,
+            }
+
+            if best_group is None or candidate["score"] > best_group["score"]:
+                best_group = candidate
+
+        return best_group
+
+    def _interpolate_missing_lines(self,
+                                   result: List[Dict[str, Any]],
+                                   audio_duration: float = 0.0,
+                                   default_duration: float = 1.6) -> None:
+        """只给未匹配的原始歌词行补时间，不改变已匹配锚点。"""
+        M = len(result)
+        if M == 0:
+            return
+
+        matched_indices = [i for i, a in enumerate(result) if a.get("matched")]
+        if not matched_indices:
+            total = audio_duration if audio_duration > 0 else M * default_duration
+            step = total / max(1, M)
+            for i, a in enumerate(result):
+                a.update({
+                    "start": i * step,
+                    "end": max(i * step + 0.3, (i + 1) * step),
+                    "matched": True,
+                    "interpolated": True,
+                    "_source": "uniform_fallback",
+                })
+            return
+
+        for i, a in enumerate(result):
+            if a.get("matched"):
+                continue
+
+            prev_i = None
+            next_i = None
+            for k in range(i - 1, -1, -1):
+                if result[k].get("matched"):
+                    prev_i = k
+                    break
+            for k in range(i + 1, M):
+                if result[k].get("matched"):
+                    next_i = k
+                    break
+
+            if prev_i is not None and next_i is not None:
+                prev_end = float(result[prev_i]["end"])
+                next_start = float(result[next_i]["start"])
+                slots = next_i - prev_i
+                gap = max(0.2, (next_start - prev_end) / max(1, slots))
+                start = prev_end + gap * (i - prev_i - 1)
+                end = min(next_start - 0.05, start + max(0.3, gap * 0.85))
+                if end <= start:
+                    end = start + 0.5
+            elif prev_i is not None:
+                prev_end = float(result[prev_i]["end"])
+                prev_dur = max(0.6, float(result[prev_i]["end"]) - float(result[prev_i]["start"]))
+                start = prev_end + 0.05
+                end = start + min(2.5, prev_dur)
+                if audio_duration > 0:
+                    end = min(end, audio_duration)
+                    if end <= start:
+                        end = start + 0.5
+            elif next_i is not None:
+                next_start = float(result[next_i]["start"])
+                missing_count = next_i + 1
+                span = max(0.6 * missing_count, next_start)
+                step = span / max(1, missing_count)
+                start = max(0.0, i * step)
+                end = min(next_start - 0.05, start + max(0.3, step * 0.85))
+                if end <= start:
+                    end = start + 0.5
+            else:
+                start = i * default_duration
+                end = start + default_duration
+
+            a.update({
+                "start": float(start),
+                "end": float(max(start + 0.05, end)),
+                "score": 0.0,
+                "matched": True,
+                "interpolated": True,
+                "_source": "interpolate",
+            })
+
+    def _find_best_repeat_block_for_group(self,
+                                          lyrics: List[str],
+                                          seg_text: str,
+                                          duration: float,
+                                          min_duration_ratio: float = 0.58) -> Optional[Dict[str, Any]]:
+        """未消耗 ASR 组用于重复/额外段插入时，匹配任意位置的连续歌词块。"""
+        max_block_lines = self._estimate_max_block_lines(seg_text, duration, lyrics)
+        return self._find_best_lyric_block_for_segment(
+            seg_text,
+            lyrics,
+            lyric_ptr=0,
+            max_block_lines=max_block_lines,
+            look_back=0,
+            look_ahead=len(lyrics),
+            seg_duration=duration,
+            min_duration_ratio=min_duration_ratio,
+            allow_any_position=True,
+        )
+
+    def _append_unmatched_segments_as_repeats(self,
+                                             result: List[Dict[str, Any]],
+                                             lyrics: List[str],
+                                             srt_entries: List[Tuple[float, float, str]],
+                                             consumed: List[bool],
+                                             min_repeat_score: float = 0.55) -> List[Dict[str, Any]]:
+        """把未消耗但可信的 ASR 段作为重复副歌/额外歌词块插入。
+
+        与主流程一样，这里也先尝试合并相邻未消耗 ASR 段，再匹配连续歌词块。
+        这样一整段副歌不会被压成最像的一行；同时重复插入使用更高阈值和
+        更严格的时长比例，降低误插风险。
+        """
+        if not lyrics:
+            return result
+
+        output = list(result)
+        start_times = [float(a.get("start", 0.0) or 0.0) for a in output]
+        next_idx = max((int(a.get("idx", 0)) for a in output), default=-1) + 1
+        local_consumed = list(consumed)
+        max_gap = self._merge_gap_limit()
+        max_merge_segments = 5
+        seg_idx = 0
+        N = len(srt_entries)
+
+        while seg_idx < N:
+            if local_consumed[seg_idx]:
+                seg_idx += 1
+                continue
+
+            best_group: Optional[Dict[str, Any]] = None
+            for end_idx in range(seg_idx, min(N, seg_idx + max_merge_segments)):
+                if local_consumed[end_idx]:
+                    break
+                if end_idx > seg_idx:
+                    prev_end = float(srt_entries[end_idx - 1][1])
+                    cur_start = float(srt_entries[end_idx][0])
+                    if cur_start - prev_end > max_gap:
                         break
-                for k in range(j + 1, M):
-                    if lyric_assigned[k]:
-                        next_li = k
-                        break
 
-                if prev_li >= 0 and next_li >= 0:
-                    prev_start, prev_end = (
-                        align_map[prev_li][0], align_map[prev_li][1]
-                    )
-                    next_start = align_map[next_li][0]
-                    gap = (next_start - prev_end) / (next_li - prev_li + 1)
-                    fill_start = prev_end + gap * (j - prev_li)
-                    fill_end = fill_start + (prev_end - prev_start)
-                    align_map[j] = (fill_start, fill_end, 0.0, 0)
-                    lyric_assigned[j] = True
-                # 如果是最后一行且仍未匹配，尝试使用最后一个已匹配行的时间
-                elif j == M - 1 and prev_li >= 0:
-                    prev_start, prev_end = (
-                        align_map[prev_li][0], align_map[prev_li][1]
-                    )
-                    duration = prev_end - prev_start
-                    # 在最后一行分配一段合理的时间
-                    align_map[j] = (prev_end, prev_end + duration, 0.0, 0)
-                    lyric_assigned[j] = True
-                    logger.debug("最后一行 %d 使用插值分配 (%.1fs-%.1fs)", j + 1, prev_end, prev_end + duration)
+                seg_start, seg_end, merged_text = self._build_segment_group(srt_entries, seg_idx, end_idx)
+                if not SimilarityScorer.normalize(merged_text):
+                    continue
+                duration = seg_end - seg_start
+                best = self._find_best_repeat_block_for_group(
+                    lyrics, merged_text, duration, min_duration_ratio=0.58
+                )
+                if not best:
+                    continue
+                merge_count = end_idx - seg_idx + 1
+                adjusted_score = float(best["score"]) - max(0, merge_count - 1) * 0.020
+                candidate = {
+                    **best,
+                    "score": adjusted_score,
+                    "seg_start": seg_start,
+                    "seg_end": seg_end,
+                    "seg_idx": seg_idx,
+                    "seg_idx_end": end_idx,
+                    "seg_text": merged_text,
+                    "merge_count": merge_count,
+                }
+                if best_group is None or candidate["score"] > best_group["score"]:
+                    best_group = candidate
 
-        # ── 填入结果 ──
-        for i in range(M):
-            if i in align_map:
-                start, end, score, count = align_map[i]
-                result[i]["start"] = start
-                result[i]["end"] = end
-                result[i]["score"] = score / max(count, 1)
-                result[i]["matched"] = True
+            if not best_group or float(best_group["score"]) < min_repeat_score:
+                seg_idx += 1
+                continue
 
-        return result
+            # 插入重复歌词块。这里创建临时 result 承接切分，再按时间插入 output。
+            block_start = int(best_group["start_i"])
+            block_end = int(best_group["end_i"])
+            temp = [
+                {
+                    "idx": next_idx + k,
+                    "text": lyrics[i],
+                    "start": 0.0,
+                    "end": 0.0,
+                    "score": 0.0,
+                    "matched": False,
+                    "interpolated": True,
+                    "_source": "repeat_block",
+                    "_srt_idx": int(best_group["seg_idx"]),
+                    "_srt_idx_end": int(best_group["seg_idx_end"]),
+                    "_asr_text": str(best_group.get("seg_text", "")),
+                    "_matched_block": "".join(lyrics[block_start:block_end]),
+                    "low_confidence": False,
+                    "_match_kind": "repeat_strong",
+                }
+                for k, i in enumerate(range(block_start, block_end))
+            ]
+            # 复用切分逻辑需要歌词索引从 0 开始，因此传入块歌词。
+            block_lyrics = lyrics[block_start:block_end]
+            self._assign_segment_to_lyric_block(
+                result=temp,
+                lyrics=block_lyrics,
+                start_i=0,
+                end_i=len(block_lyrics),
+                seg_start=float(best_group["seg_start"]),
+                seg_end=float(best_group["seg_end"]),
+                score=float(best_group["score"]),
+                seg_idx=int(best_group["seg_idx"]),
+                seg_idx_end=int(best_group["seg_idx_end"]),
+                source="repeat_block",
+                asr_text=str(best_group.get("seg_text", "")),
+                low_confidence=False,
+                match_kind="repeat_strong",
+            )
+            for entry in temp:
+                entry["idx"] = next_idx
+                next_idx += 1
+                insert_pos = bisect.bisect_right(start_times, float(entry["start"]))
+                output.insert(insert_pos, entry)
+                start_times.insert(insert_pos, float(entry["start"]))
+
+            for i in range(int(best_group["seg_idx"]), int(best_group["seg_idx_end"]) + 1):
+                local_consumed[i] = True
+
+            seg_idx = int(best_group["seg_idx_end"]) + 1
+
+        return output
+
+    def _can_accept_weak_anchor(self, best: Optional[Dict[str, Any]], lyric_ptr: int) -> bool:
+        """判断低文本分数候选是否可作为 weak sequential anchor。
+
+        使用前提：lyrics.txt 是权威文本，ASR 来自人声分离后的 vocals。
+        因此 ASR 文本可以错，但时间段若在当前歌词进度附近且时长合理，
+        就比纯插值更有价值。
+        """
+        if not self.enable_weak_anchor or not best:
+            return False
+
+        start_i = int(best.get("start_i", -999))
+        end_i = int(best.get("end_i", -999))
+        if start_i < 0 or end_i <= start_i:
+            return False
+
+        # weak anchor 只允许绑定当前歌词进度附近的连续块，不能拿来跳远匹配副歌。
+        if abs(start_i - lyric_ptr) > self.weak_anchor_max_offset:
+            return False
+
+        raw_score = float(best.get("raw_score", best.get("score", 0.0)) or 0.0)
+        if raw_score < float(self.weak_anchor_threshold):
+            return False
+
+        if float(best.get("duration_ratio", 0.0) or 0.0) < self.weak_anchor_min_duration_ratio:
+            return False
+
+        asr_text = str(best.get("seg_text", "") or "")
+        if self._is_probably_non_lyric_text(asr_text):
+            return False
+
+        return True
+
+    def _alignment_debug_payload(self, alignments: List[Dict]) -> List[Dict[str, Any]]:
+        """返回对齐调试信息，便于定位字幕提前、缺行、重复等问题。"""
+        fields = (
+            "idx", "text", "start", "end", "score", "matched",
+            "interpolated", "low_confidence", "_match_kind", "_source",
+            "_srt_idx", "_srt_idx_end", "_asr_text", "_matched_block",
+        )
+        return [{k: a.get(k) for k in fields if k in a} for a in alignments]
 
     def _align_manual(self, lyrics: List[str],
                       srt_segments: List[dict]) -> List[Dict]:
-        """手动模式对齐：每个歌词行匹配最佳 SRT 片段，用片段原始时间戳。
+        """歌词对齐核心算法：ASR/SRT 区间匹配连续歌词块。
 
-        与 _align 的区别：不走两遍贪心+时间重组，
-        而是直接用 SRT 片段的时间戳，多个歌词行共享同一片段时按字数比例分割。
-        这样能保证字幕时间戳与提供的 SRT 完全一致，不会产生时间漂移。
-
-        返回:
-            [{"idx": int, "text": str, "start": float, "end": float,
-              "score": float, "matched": bool, "interpolated": bool}, ...]
+        关键点：
+        1. 不再只用单个 ASR segment 判断时长，先尝试合并相邻 segment。
+        2. strong/normal match 依赖文本相似度；weak sequential anchor 依赖
+           当前歌词进度、合理时长和 vocals ASR 时间锚点。
+        3. weak 只用于主顺序流程，不用于重复/乱序插入。
+        4. 实在没有 ASR 锚点时才插值。
         """
         M, N = len(lyrics), len(srt_segments)
+        result = self._init_alignment_result(lyrics)
 
-        result = []
-        for i in range(M):
-            result.append({
-                "idx": i,
-                "text": lyrics[i],
-                "start": 0.0,
-                "end": 0.0,
-                "score": 0.0,
-                "matched": False,
-                "interpolated": False,
-                "_srt_idx": -1,  # 记录最初匹配到的 SRT 片段索引（用于时间分割）
-            })
-
+        if M == 0:
+            return result
         if N == 0:
+            self._interpolate_missing_lines(result, audio_duration=0.0)
             return result
 
-        # 把 SRT 片段转为 (start, end, text) 格式
-        srt_entries = [
-            (float(seg["start"]), float(seg["end"]), str(seg.get("text", "") or "").strip())
-            for seg in srt_segments
-        ]
-
-        # 计算每个歌词行的中文字符数（用于时间分割）
-        lyric_weights = [
-            max(1, len(re.findall(r'[一-鿿]', lyrics[i])) or len(lyrics[i]))
-            for i in range(M)
-        ]
-
-        lyric_assigned = [False] * M
-        srt_assigned = [False] * N
-
-        # 第一遍：每个歌词行找最佳 SRT 片段
-        for i in range(M):
-            best_score = 0.0
-            best_j = -1
-            for j in range(N):
-                if srt_assigned[j]:
-                    continue
-                start, end, text = srt_entries[j]
-                if len(text) < 1:
-                    continue
-                score = SimilarityScorer.score_pair(text, lyrics[i])
-                if score > best_score:
-                    best_score = score
-                    best_j = j
-
-            if best_j >= 0:
-                start, end, text = srt_entries[best_j]
-                result[i]["start"] = start
-                result[i]["end"] = end
-                result[i]["score"] = best_score
-                result[i]["matched"] = True
-                result[i]["_srt_idx"] = best_j
-                lyric_assigned[i] = True
-                srt_assigned[best_j] = True
-
-        # 第二遍：处理未匹配的歌词行（向前或向后找最近的未分配 SRT 片段）
-        for i in range(M):
-            if lyric_assigned[i]:
+        srt_entries: List[Tuple[float, float, str]] = []
+        for seg in srt_segments:
+            try:
+                start = float(seg.get("start", 0.0) or 0.0)
+                end = float(seg.get("end", 0.0) or 0.0)
+                text = str(seg.get("text", "") or "").strip()
+                if end > start:
+                    srt_entries.append((start, end, text))
+            except Exception:
                 continue
 
-            # 先向前找最近的未分配片段
-            found = False
-            for j in range(N):
-                if srt_assigned[j]:
-                    continue
-                start, end, text = srt_entries[j]
-                if len(text) >= 1:
-                    result[i]["start"] = start
-                    result[i]["end"] = end
-                    result[i]["score"] = 0.0
-                    result[i]["matched"] = True
-                    result[i]["_srt_idx"] = j
-                    lyric_assigned[i] = True
-                    srt_assigned[j] = True
-                    found = True
-                    break
-            if not found:
-                # 向后找
-                for j in range(N - 1, -1, -1):
-                    if srt_assigned[j]:
-                        continue
-                    start, end, text = srt_entries[j]
-                    if len(text) >= 1:
-                        result[i]["start"] = start
-                        result[i]["end"] = end
-                        result[i]["score"] = 0.0
-                        result[i]["matched"] = True
-                        result[i]["_srt_idx"] = j
-                        lyric_assigned[i] = True
-                        srt_assigned[j] = True
-                        break
+        if not srt_entries:
+            self._interpolate_missing_lines(result, audio_duration=0.0)
+            return result
 
-        # 第三遍：处理多个歌词行共享同一 SRT 片段的情况——按字数比例分割时间
-        # 找出所有共享同一片段的歌词行
-        segment_lyrics: Dict[int, List[int]] = {}  # srt_idx -> [lyric_idx, ...]
-        for i in range(M):
-            if not result[i].get("matched"):
-                continue
-            srt_idx = result[i].get("_srt_idx", -1)
-            if srt_idx >= 0:
-                segment_lyrics.setdefault(srt_idx, []).append(i)
+        N = len(srt_entries)
+        consumed = [False] * N
+        strong_threshold = float(self.threshold_1 or 0.42)
+        weak_threshold = float(self.threshold_2 or 0.35)
+        lyric_ptr = 0
+        seg_idx = 0
 
-        for j, lyric_indices in segment_lyrics.items():
-            if len(lyric_indices) <= 1:
+        while seg_idx < N and lyric_ptr < M:
+            if consumed[seg_idx]:
+                seg_idx += 1
                 continue
 
-            # 多个歌词行共享 SRT 片段 j，按字数比例分割时间
-            s_start, s_end, _ = srt_entries[j]
-            total_weight = sum(lyric_weights[i] for i in lyric_indices)
-            cursor = s_start
-            for idx, i in enumerate(lyric_indices):
-                weight = lyric_weights[i]
-                if idx == len(lyric_indices) - 1:
-                    # 最后一个歌词行拿到剩余全部时间
-                    line_end = s_end
-                else:
-                    duration = s_end - s_start
-                    line_end = cursor + duration * weight / total_weight
-                result[i]["start"] = cursor
-                result[i]["end"] = max(cursor + 0.3, line_end)
-                result[i]["interpolated"] = True
-                cursor = result[i]["end"]
+            # 主流程优先顺序：
+            # 1) 当前位置附近 strong/normal match；
+            # 2) 更宽搜索的 strong match（允许跳过 ASR 没覆盖的歌词，后续插值）；
+            # 3) 当前位置附近 weak sequential anchor。
+            #
+            # 注意：weak 不能早于 broad strong。否则当某段歌词实际漏识别时，
+            # 可能会把后面明确识别出的 Bridge/Refrain 时间强行绑给当前缺失歌词。
+            sequential_best = self._find_best_segment_group(
+                srt_entries=srt_entries,
+                consumed=consumed,
+                start_idx=seg_idx,
+                lyrics=lyrics,
+                lyric_ptr=lyric_ptr,
+                min_duration_ratio=0.42,
+                sequential_only=True,
+            )
 
-        # 第四遍：处理未匹配歌词（插值填充）
-        for i in range(M):
-            if not result[i].get("matched"):
-                # 找前后最近的已匹配歌词
-                prev_i = -1
-                next_i = -1
-                for k in range(i - 1, -1, -1):
-                    if result[k].get("matched"):
-                        prev_i = k
-                        break
-                for k in range(i + 1, M):
-                    if result[k].get("matched"):
-                        next_i = k
-                        break
+            best = None
+            accept_kind = ""
+            low_confidence = False
 
-                if prev_i >= 0 and next_i >= 0:
-                    p_start, p_end = result[prev_i]["start"], result[prev_i]["end"]
-                    n_start = result[next_i]["start"]
-                    gap = (n_start - p_end) / (next_i - prev_i + 1)
-                    fill_start = p_end + gap * (i - prev_i)
-                    fill_end = fill_start + gap * 0.8
-                    result[i]["start"] = fill_start
-                    result[i]["end"] = fill_end
-                    result[i]["score"] = 0.0
-                    result[i]["matched"] = True
-                    result[i]["interpolated"] = True
-                elif prev_i >= 0:
-                    # 最后一行，延用前一个的时间段
-                    p_start, p_end = result[prev_i]["start"], result[prev_i]["end"]
-                    duration = p_end - p_start
-                    result[i]["start"] = p_end
-                    result[i]["end"] = p_end + duration
-                    result[i]["score"] = 0.0
-                    result[i]["matched"] = True
-                    result[i]["interpolated"] = True
+            if sequential_best:
+                seq_threshold = weak_threshold
+                if float(sequential_best["score"]) >= seq_threshold:
+                    best = sequential_best
+                    accept_kind = "strong" if float(sequential_best["score"]) >= strong_threshold else "normal"
 
+            broad_best = None
+            if best is None:
+                broad_best = self._find_best_segment_group(
+                    srt_entries=srt_entries,
+                    consumed=consumed,
+                    start_idx=seg_idx,
+                    lyrics=lyrics,
+                    lyric_ptr=lyric_ptr,
+                    min_duration_ratio=0.42,
+                    sequential_only=False,
+                )
+                if broad_best:
+                    threshold = weak_threshold if int(broad_best["start_i"]) <= lyric_ptr <= int(broad_best["end_i"]) else strong_threshold
+                    if float(broad_best["score"]) >= threshold:
+                        best = broad_best
+                        accept_kind = "strong" if float(broad_best["score"]) >= strong_threshold else "normal"
+
+            if best is None and self._can_accept_weak_anchor(sequential_best, lyric_ptr):
+                best = sequential_best
+                accept_kind = "weak"
+                low_confidence = True
+
+            if not best:
+                logger.debug("未找到可接受 ASR 区间 seg=%d lyric_ptr=%d", seg_idx, lyric_ptr)
+                seg_idx += 1
+                continue
+
+            if accept_kind == "weak":
+                logger.debug(
+                    "使用 weak anchor %d-%d [%.1f-%.1f] raw=%.3f score=%.3f ratio=%.2f lyric=%d-%d asr=%s",
+                    int(best["seg_idx"]), int(best["seg_idx_end"]),
+                    float(best["seg_start"]), float(best["seg_end"]),
+                    float(best.get("raw_score", 0.0)), float(best.get("score", 0.0)),
+                    float(best.get("duration_ratio", 0.0)),
+                    int(best["start_i"]), int(best["end_i"]),
+                    str(best.get("seg_text", ""))[:40],
+                )
+
+            source_prefix = "weak" if accept_kind == "weak" else "block"
+            is_group = int(best["seg_idx_end"]) > int(best["seg_idx"])
+            source = f"{source_prefix}_group" if is_group else source_prefix
+
+            self._assign_segment_to_lyric_block(
+                result=result,
+                lyrics=lyrics,
+                start_i=int(best["start_i"]),
+                end_i=int(best["end_i"]),
+                seg_start=float(best["seg_start"]),
+                seg_end=float(best["seg_end"]),
+                score=float(best["score"]),
+                seg_idx=int(best["seg_idx"]),
+                seg_idx_end=int(best["seg_idx_end"]),
+                source=source,
+                asr_text=str(best.get("seg_text", "")),
+                low_confidence=low_confidence,
+                match_kind=accept_kind,
+            )
+
+            for i in range(int(best["seg_idx"]), int(best["seg_idx_end"]) + 1):
+                consumed[i] = True
+
+            lyric_ptr = max(lyric_ptr, int(best["end_i"]))
+            seg_idx = int(best["seg_idx_end"]) + 1
+
+        audio_duration = max((end for _, end, _ in srt_entries), default=0.0)
+
+        # 先补齐原始歌词行，保持 result[0:M] 的索引稳定。
+        self._interpolate_missing_lines(result, audio_duration=audio_duration)
+
+        # 原始歌词稳定后，再插入可信的重复段。重复/乱序插入更严格，避免多插。
+        result = self._append_unmatched_segments_as_repeats(
+            result=result,
+            lyrics=lyrics,
+            srt_entries=srt_entries,
+            consumed=consumed,
+            min_repeat_score=max(0.55, strong_threshold + 0.08),
+        )
+
+        result.sort(key=lambda a: (float(a.get("start", 0.0) or 0.0), int(a.get("idx", 0))))
         return result
 
     @staticmethod
     def _repair_alignment_timeline(alignments: List[Dict],
-                                   min_gap: float = 0.05,
-                                   min_duration: float = 0.6,
-                                   fallback_duration: float = 2.0,
+                                   min_gap: float = 0.03,
+                                   min_duration: float = 0.35,
+                                   fallback_duration: float = 1.2,
                                    audio_duration: float = 0.0) -> None:
-        """Ensure SRT entries follow lyric order on a monotonic timeline.
+        """轻量修复 SRT 时间线。
 
-        Whisper matching can occasionally attach a later lyric line to an
-        earlier ASR segment, especially with repeated chorus lines. SRT players
-        render by timestamp, so non-monotonic or overlapping entries make
-        multi-line captions appear out of order. Keep lyric order authoritative
-        and repair timestamps in place.
-
-        参数:
-            alignments: 对齐结果列表
-            audio_duration: 音频总时长（秒），用于扩展最后一行到音频末尾
+        只做合法化，不承担核心对齐职责：
+        - end <= start 时补一个最小时长；
+        - 轻微重叠时优先缩短上一条；
+        - 只有上一条不能再缩短时，才小幅移动当前条；
+        - 裁剪超出音频总时长的字幕。
         """
         matched = [a for a in alignments if a.get("matched")]
         if not matched:
             return
 
+        matched.sort(key=lambda a: (float(a.get("start", 0.0) or 0.0), int(a.get("idx", 0))))
         repaired = 0
+
         for a in matched:
-            start = float(a.get("start", 0.0) or 0.0)
+            start = max(0.0, float(a.get("start", 0.0) or 0.0))
             end = float(a.get("end", 0.0) or 0.0)
+
             if end <= start:
-                a["end"] = start + fallback_duration
+                end = start + fallback_duration
                 a["interpolated"] = True
                 repaired += 1
+
+            if audio_duration > 0:
+                start = min(start, max(0.0, audio_duration - min_duration))
+                end = min(end, audio_duration)
+                if end <= start:
+                    start = max(0.0, end - min_duration)
+
+            a["start"] = start
+            a["end"] = max(start + min_duration, end)
 
         for prev, cur in zip(matched, matched[1:]):
             prev_start = float(prev["start"])
@@ -1547,546 +2041,36 @@ class LyricsAligner:
             cur_end = float(cur["end"])
 
             if cur_start < prev_end + min_gap:
-                if prev_end - prev_start > min_duration:
-                    prev["end"] = max(prev_start + min_duration, cur_start - min_gap)
-                    prev_end = float(prev["end"])
+                target_prev_end = cur_start - min_gap
 
-                if cur_start < prev_end + min_gap:
-                    shift = prev_end + min_gap - cur_start
-                    cur["start"] = cur_start + shift
-                    cur["end"] = max(cur_end + shift, cur["start"] + min_duration)
-                    cur["interpolated"] = True
+                # 优先缩短上一条，避免把当前和后续字幕整体推迟。
+                if target_prev_end >= prev_start + min_duration:
+                    prev["end"] = target_prev_end
+                    prev["interpolated"] = True
                     repaired += 1
+                else:
+                    prev["end"] = prev_start + min_duration
+                    needed_start = prev["end"] + min_gap
+                    max_shift = 0.5
+                    shift = min(max_shift, max(0.0, needed_start - cur_start))
+                    if shift > 0:
+                        cur["start"] = cur_start + shift
+                        cur["end"] = max(cur_end + shift, cur["start"] + min_duration)
+                        cur["interpolated"] = True
+                        repaired += 1
 
-            if cur["end"] <= cur["start"]:
-                cur["end"] = cur["start"] + fallback_duration
+            if audio_duration > 0 and cur["end"] > audio_duration:
+                cur["end"] = audio_duration
+                if cur["start"] >= cur["end"]:
+                    cur["start"] = max(0.0, cur["end"] - min_duration)
                 cur["interpolated"] = True
                 repaired += 1
 
-        # 不再把最后一句字幕强行扩展到音频末尾。
-        # 音频尾部可能是尾奏/纯音乐，字幕应保留 ASR 的真实演唱时间。
-        if matched and audio_duration > 0:
-            last = matched[-1]
-            last_end = float(last.get("end", 0.0) or 0.0)
-            if last_end > audio_duration + 0.5:
-                last_start = float(last.get("start", 0.0) or 0.0)
-                if last_start >= audio_duration:
-                    last["start"] = max(0.0, audio_duration - min_duration)
-                last["end"] = audio_duration
-                last["interpolated"] = True
-                logger.debug("裁剪最后一行到音频末尾 (%.1fs)", audio_duration)
-                repaired += 1
-
         if repaired:
-            logger.info("修正 %d 个非单调/重叠字幕时间戳", repaired)
+            logger.info("轻量修复 %d 个字幕时间戳", repaired)
 
     @staticmethod
-    def _alignment_timeline_is_suspicious(alignments: List[Dict],
-                                          audio_duration: float = 0.0) -> bool:
-        """Detect globally drifted alignments before writing SRT.
-
-        A technically monotonic timeline can still be unusable when repeated
-        chorus lines are matched to a late ASR segment. In that case all lyric
-        entries are present, but the first subtitle starts near the end of the
-        song and the lyric span covers only a small part of the audio.
-        """
-        if audio_duration <= 0:
-            return False
-
-        matched = [a for a in alignments if a.get("matched")]
-        if len(matched) < 3:
-            return False
-
-        first_start = float(matched[0].get("start", 0.0) or 0.0)
-        last_end = max(float(a.get("end", 0.0) or 0.0) for a in matched)
-        span = max(0.0, last_end - first_start)
-        max_gap = 0.0
-        max_gap_after_idx = 0
-        short_count = 0
-        for idx, (prev, cur) in enumerate(zip(matched, matched[1:]), start=1):
-            prev_end = float(prev.get("end", 0.0) or 0.0)
-            cur_start = float(cur.get("start", 0.0) or 0.0)
-            if float(prev.get("end", 0.0) or 0.0) - float(prev.get("start", 0.0) or 0.0) <= 0.7:
-                short_count += 1
-            gap = cur_start - prev_end
-            if gap > max_gap:
-                max_gap = gap
-                max_gap_after_idx = idx
-        last = matched[-1]
-        if float(last.get("end", 0.0) or 0.0) - float(last.get("start", 0.0) or 0.0) <= 0.7:
-            short_count += 1
-
-        if first_start > max(30.0, audio_duration * 0.45):
-            logger.warning("字幕首句过晚: %.1fs / %.1fs", first_start, audio_duration)
-            return True
-
-        if span < audio_duration * 0.35 and first_start > audio_duration * 0.25:
-            logger.warning("字幕覆盖范围过窄且整体偏后: span=%.1fs, first=%.1fs, audio=%.1fs",
-                           span, first_start, audio_duration)
-            return True
-
-        if max_gap > max(12.0, audio_duration * 0.18):
-            remaining = len(matched) - max_gap_after_idx
-            if remaining >= max(3, len(matched) // 5):
-                gap_pct = max_gap / audio_duration * 100 if audio_duration > 0 else 0
-                after_pct = max_gap_after_idx / len(matched) * 100 if matched else 0
-                logger.warning(
-                    "字幕局部断层过大: gap=%.1fs (占歌曲 %.0f%%)，"
-                    "发生在第 %d 行（%.0f%% 处），剩余 %d 行。"
-                    "若此处为间奏/纯音乐段属正常，否则建议检查 ASR 对齐结果",
-                    max_gap, gap_pct, max_gap_after_idx, after_pct, remaining,
-                )
-                return True
-
-        if short_count >= max(4, int(len(matched) * 0.25)):
-            logger.warning("短字幕过多: %d/%d (<=0.7s)，疑似长 ASR 段拆分失败",
-                           short_count, len(matched))
-            return True
-
-        if last_end > audio_duration + 5.0:
-            logger.warning("字幕末句超出音频过多: %.1fs / %.1fs", last_end, audio_duration)
-            return True
-
-        return False
-
-    @staticmethod
-    def _apply_asr_segment_timeline(alignments: List[Dict],
-                                    lyrics: List[str],
-                                    asr_segments: List[dict],
-                                    audio_duration: float = 0.0) -> bool:
-        """Rebuild lyric-line timestamps from ASR segment timings.
-
-        This keeps the final subtitle text authoritative from the original
-        lyrics, while using Whisper only for the real sung time ranges. It is
-        safer than a full-song uniform fallback when the line-level matcher has
-        drifted to a repeated late chorus.
-        """
-        if not lyrics or not asr_segments:
-            return False
-
-        valid_segments = []
-        for seg in sorted(asr_segments, key=lambda x: float(x.get("start", 0.0) or 0.0)):
-            start = float(seg.get("start", 0.0) or 0.0)
-            end = float(seg.get("end", 0.0) or 0.0)
-            text = str(seg.get("text", "") or "").strip()
-            if end <= start or len(text) < 2:
-                continue
-            if audio_duration > 0:
-                start = max(0.0, min(start, audio_duration))
-                end = max(start + 0.1, min(end, audio_duration))
-            valid_segments.append({
-                "start": start,
-                "end": end,
-                "text": text,
-                "words": seg.get("words") or [],
-            })
-
-        if not valid_segments:
-            return False
-
-        lyric_idx = 0
-        total_lyrics = len(lyrics)
-        total_segments = len(valid_segments)
-
-        if total_segments >= total_lyrics:
-            return LyricsAligner._apply_asr_groups_to_lyrics(
-                alignments, lyrics, valid_segments
-            )
-
-        for seg_idx, seg in enumerate(valid_segments):
-            if lyric_idx >= total_lyrics:
-                break
-
-            remaining_lyrics = total_lyrics - lyric_idx
-            remaining_segments = total_segments - seg_idx
-            if remaining_segments <= 1:
-                group_size = remaining_lyrics
-            else:
-                max_group = min(8, remaining_lyrics - (remaining_segments - 1))
-                max_group = max(1, max_group)
-                target_group = remaining_lyrics / max(1, remaining_segments)
-                group_size = LyricsAligner._best_lyric_group_size(
-                    seg["text"], lyrics, lyric_idx, max_group,
-                    target_size=target_group,
-                )
-
-            group = lyrics[lyric_idx: lyric_idx + group_size]
-            LyricsAligner._assign_group_to_segment(
-                alignments, group, lyric_idx,
-                float(seg["start"]), float(seg["end"]),
-                seg=seg,
-            )
-            lyric_idx += group_size
-
-        if lyric_idx < total_lyrics:
-            start = valid_segments[-1]["end"]
-            end = audio_duration if audio_duration > start else start + max(0.6, total_lyrics - lyric_idx)
-            remaining = lyrics[lyric_idx:]
-            LyricsAligner._assign_group_to_segment(
-                alignments, remaining, lyric_idx, start, end,
-                seg=None,
-            )
-
-        return all(
-            i < len(alignments) and alignments[i].get("matched")
-            for i in range(total_lyrics)
-        ) and lyric_idx >= total_lyrics
-
-    @staticmethod
-    def _apply_asr_groups_to_lyrics(alignments: List[Dict],
-                                    lyrics: List[str],
-                                    valid_segments: List[dict]) -> bool:
-        """Assign consecutive ASR segment groups to consecutive lyric lines.
-
-        When Whisper returns more segments than lyric lines, consuming one lyric
-        per ASR segment makes subtitles end too early and discards the later
-        native speech timeline. This path keeps every ASR segment in order and
-        only decides how many neighboring segments belong to the current lyric.
-        """
-        total_lyrics = len(lyrics)
-        total_segments = len(valid_segments)
-        if total_lyrics <= 0 or total_segments < total_lyrics:
-            return False
-
-        seg_idx = 0
-        for lyric_idx, lyric in enumerate(lyrics):
-            remaining_lyrics = total_lyrics - lyric_idx
-            remaining_segments = total_segments - seg_idx
-            if remaining_lyrics <= 1:
-                take = remaining_segments
-            else:
-                max_take = max(1, remaining_segments - (remaining_lyrics - 1))
-                min_take = max(1, remaining_segments - (remaining_lyrics - 1) * 6)
-                max_take = min(max_take, max(min_take, 6))
-                target_take = remaining_segments / remaining_lyrics
-                take = LyricsAligner._best_asr_group_size_for_lyric(
-                    lyric, valid_segments, seg_idx, min_take, max_take, target_take
-                )
-
-            group = valid_segments[seg_idx: seg_idx + take]
-            if not group:
-                return False
-
-            start = float(group[0]["start"])
-            end = float(group[-1]["end"])
-            if end <= start:
-                end = start + 0.1
-            alignments[lyric_idx].update({
-                "idx": lyric_idx,
-                "text": lyric,
-                "start": start,
-                "end": end,
-                "score": 0.0,
-                "matched": True,
-                "interpolated": True,
-                "fallback": "asr_native_timeline",
-            })
-            seg_idx += take
-
-        if seg_idx < total_segments:
-            appended = LyricsAligner._append_repeated_tail_segments(
-                alignments, lyrics, valid_segments, seg_idx
-            )
-            if appended:
-                logger.info("追加重复歌词字幕: %d 行", appended)
-
-        return all(
-            i < len(alignments) and alignments[i].get("matched")
-            for i in range(total_lyrics)
-        )
-
-    @staticmethod
-    def _append_repeated_tail_segments(alignments: List[Dict],
-                                       lyrics: List[str],
-                                       valid_segments: List[dict],
-                                       start_seg_idx: int) -> int:
-        """Append ASR tail segments that repeat earlier lyrics.
-
-        Generated songs often repeat the final chorus even when the original
-        lyrics file contains it only once. The native ASR timeline is correct,
-        so preserve those extra sung segments by mapping each tail ASR segment
-        back to the most similar original lyric line and appending a new SRT row.
-        """
-        appended = 0
-        next_idx = len(alignments)
-        recent_window_start = max(0, len(lyrics) - 10)
-        candidates = list(range(recent_window_start, len(lyrics)))
-
-        for seg in valid_segments[start_seg_idx:]:
-            text = str(seg.get("text", "") or "").strip()
-            if len(text) < 2:
-                continue
-
-            best_idx = -1
-            best_score = 0.0
-            for lyric_idx in candidates:
-                score = SimilarityScorer.score_pair(text, lyrics[lyric_idx])
-                if score > best_score:
-                    best_score = score
-                    best_idx = lyric_idx
-
-            if best_idx < 0 or best_score < 0.20:
-                continue
-
-            start = float(seg.get("start", 0.0) or 0.0)
-            end = float(seg.get("end", 0.0) or 0.0)
-            if end <= start:
-                continue
-
-            alignments.append({
-                "idx": next_idx,
-                "source_idx": best_idx,
-                "text": lyrics[best_idx],
-                "start": start,
-                "end": end,
-                "score": best_score,
-                "matched": True,
-                "interpolated": True,
-                "fallback": "asr_repeated_tail",
-            })
-            next_idx += 1
-            appended += 1
-
-        return appended
-
-    @staticmethod
-    def _best_asr_group_size_for_lyric(lyric: str,
-                                       valid_segments: List[dict],
-                                       start_idx: int,
-                                       min_take: int,
-                                       max_take: int,
-                                       target_take: float) -> int:
-        """Choose a local consecutive ASR group for one lyric line."""
-        best_take = min_take
-        best_score = -1.0
-        lyric_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', lyric)) or len(lyric))
-
-        for take in range(min_take, max_take + 1):
-            group_text = "".join(
-                str(seg.get("text", "") or "")
-                for seg in valid_segments[start_idx: start_idx + take]
-            )
-            asr_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', group_text)) or len(group_text))
-            raw_score = SimilarityScorer.score_pair(group_text, lyric)
-            length_ratio = min(asr_chars, lyric_chars) / max(asr_chars, lyric_chars)
-            cadence_delta = abs(take - target_take) / max(1.0, target_take)
-            cadence_factor = 1.0 - min(0.25, cadence_delta * 0.25)
-            score = raw_score * (0.65 + 0.35 * length_ratio) * cadence_factor
-            if score > best_score:
-                best_score = score
-                best_take = take
-
-        return best_take
-
-    @staticmethod
-    def _best_lyric_group_size(asr_text: str, lyrics: List[str],
-                               start_idx: int, max_group: int,
-                               target_size: float = 0.0) -> int:
-        """Choose how many original lyric lines belong to one ASR segment."""
-        best_size = 1
-        best_score = -1.0
-        asr_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', asr_text)))
-        target_size = float(target_size or 0.0)
-
-        for size in range(1, max_group + 1):
-            candidate = "".join(lyrics[start_idx:start_idx + size])
-            lyric_chars = max(1, len(re.findall(r'[\u4e00-\u9fff]', candidate)))
-            raw_score = SimilarityScorer.score_pair(asr_text, candidate)
-            length_ratio = min(asr_chars, lyric_chars) / max(asr_chars, lyric_chars)
-            target_score = 0.0
-            if target_size > 0:
-                target_score = max(
-                    0.0,
-                    1.0 - abs(size - target_size) / max(1.0, target_size),
-                )
-
-            # ASR often returns long segments containing several lyric lines.
-            # length_ratio（字数比）比文字相似度更可靠：
-            # 当 ASR 误识别某行歌词时，raw_score 会因文字不匹配而下降，
-            # 导致算法错误地选择更小的分组，把最后几行歌词推到下一段的起点。
-            # 降低 raw_score 权重、提高 length_ratio 权重可减少此类 1-2 秒偏移。
-            score = raw_score * 0.25 + length_ratio * 0.60 + target_score * 0.15
-            if score > best_score:
-                best_score = score
-                best_size = size
-
-        return best_size
-
-    @staticmethod
-    def _assign_group_to_segment(alignments: List[Dict],
-                                 group: List[str],
-                                 start_idx: int,
-                                 seg_start: float,
-                                 seg_end: float,
-                                 seg: Optional[dict] = None) -> None:
-        """Distribute lyric lines inside one ASR segment by text length."""
-        if not group:
-            return
-
-        if seg and LyricsAligner._assign_group_to_segment_by_words(
-            alignments, group, start_idx, seg_start, seg_end, seg
-        ):
-            return
-
-        duration = max(0.1, seg_end - seg_start)
-        weights = [
-            max(1, len(re.findall(r'[\u4e00-\u9fff]', text)) or len(text))
-            for text in group
-        ]
-        total_weight = max(1, sum(weights))
-        cursor = seg_start
-
-        for offset, text in enumerate(group):
-            idx = start_idx + offset
-            if offset == len(group) - 1:
-                line_end = seg_end
-            else:
-                line_end = cursor + duration * weights[offset] / total_weight
-            if line_end <= cursor:
-                line_end = cursor + 0.1
-            if idx >= len(alignments):
-                alignments.append({"idx": idx})
-            alignments[idx].update({
-                "idx": idx,
-                "text": text,
-                "start": cursor,
-                "end": line_end,
-                "score": 0.0,
-                "matched": True,
-                "interpolated": True,
-                "fallback": "asr_segment_timeline",
-            })
-            cursor = line_end
-
-    @staticmethod
-    def _assign_group_to_segment_by_words(alignments: List[Dict],
-                                          group: List[str],
-                                          start_idx: int,
-                                          seg_start: float,
-                                          seg_end: float,
-                                          seg: dict) -> bool:
-        """Distribute lyric lines with faster-whisper word timestamps."""
-        raw_words = seg.get("words") or []
-        words = []
-        for word in raw_words:
-            try:
-                start = float(word.get("start"))
-                end = float(word.get("end"))
-            except Exception:
-                continue
-            text = str(word.get("word", "") or "").strip()
-            if not text or end <= start:
-                continue
-            units = len(re.findall(r'[\u4e00-\u9fff]', text)) or len(text)
-            if units <= 0:
-                continue
-            words.append({
-                "start": max(seg_start, min(start, seg_end)),
-                "end": max(seg_start, min(end, seg_end)),
-                "text": text,
-                "units": units,
-            })
-
-        if len(words) < max(2, len(group)):
-            return False
-
-        line_units = [
-            max(1, len(re.findall(r'[\u4e00-\u9fff]', text)) or len(text))
-            for text in group
-        ]
-        total_line_units = max(1, sum(line_units))
-        total_word_units = max(1, sum(word["units"] for word in words))
-
-        boundaries = [0]
-        consumed_line_units = 0
-        word_unit_cursor = 0
-        word_idx = 0
-        for units in line_units[:-1]:
-            consumed_line_units += units
-            target_units = consumed_line_units / total_line_units * total_word_units
-            while (
-                word_idx < len(words) - 1
-                and word_unit_cursor + words[word_idx]["units"] < target_units
-            ):
-                word_unit_cursor += words[word_idx]["units"]
-                word_idx += 1
-            boundary = max(boundaries[-1] + 1, min(word_idx + 1, len(words) - 1))
-            boundaries.append(boundary)
-        boundaries.append(len(words))
-
-        previous_end = seg_start
-        for offset, text in enumerate(group):
-            idx = start_idx + offset
-            begin = boundaries[offset]
-            end_idx = boundaries[offset + 1]
-            slice_words = words[begin:end_idx]
-            if slice_words:
-                line_start = max(previous_end, float(slice_words[0]["start"]))
-                line_end = float(slice_words[-1]["end"])
-            else:
-                portion_start = sum(line_units[:offset]) / total_line_units
-                portion_end = sum(line_units[:offset + 1]) / total_line_units
-                line_start = seg_start + (seg_end - seg_start) * portion_start
-                line_end = seg_start + (seg_end - seg_start) * portion_end
-
-            if offset == 0:
-                line_start = min(line_start, seg_start)
-            if offset == len(group) - 1:
-                line_end = max(line_end, seg_end)
-            if line_end <= line_start:
-                line_end = min(seg_end, line_start + 0.25)
-                if line_end <= line_start:
-                    line_end = line_start + 0.25
-
-            if idx >= len(alignments):
-                alignments.append({"idx": idx})
-            alignments[idx].update({
-                "idx": idx,
-                "text": text,
-                "start": line_start,
-                "end": line_end,
-                "score": 0.0,
-                "matched": True,
-                "interpolated": True,
-                "fallback": "asr_word_timeline",
-            })
-            previous_end = max(previous_end, line_end)
-
-        return True
-
-    @staticmethod
-    def _apply_uniform_timeline(alignments: List[Dict],
-                                lyrics: List[str],
-                                audio_duration: float = 0.0) -> None:
-        """Replace a bad ASR timeline with evenly distributed lyric timing."""
-        clean_count = len(lyrics)
-        if clean_count <= 0 or audio_duration <= 0:
-            return
-
-        line_duration = max(0.6, audio_duration / clean_count)
-        for i, text in enumerate(lyrics):
-            start = min(i * line_duration, max(0.0, audio_duration - 0.6))
-            end = min((i + 1) * line_duration, audio_duration)
-            if end <= start:
-                end = min(start + 0.6, audio_duration)
-            if i >= len(alignments):
-                alignments.append({
-                    "idx": i,
-                    "text": text,
-                    "score": 0.0,
-                })
-            alignments[i].update({
-                "idx": i,
-                "text": text,
-                "start": start,
-                "end": end,
-                "score": 0.0,
-                "matched": True,
-                "interpolated": True,
-                "fallback": "uniform_timeline",
-            })
-
-    def _generate_srt(self, alignments: List[Dict],
+    def _generate_srt(alignments: List[Dict],
                       lyrics: List[str]) -> str:
         """生成 SRT 格式内容"""
         srt_parts = []
