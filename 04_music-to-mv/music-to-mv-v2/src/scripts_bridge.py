@@ -178,48 +178,20 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
     """歌词时间轴对齐（Step 03）
 
     策略链：
-      1. 原版 Shell (align_lyrics.sh, 需要 bash)
-      2. -> Python + Whisper (src.align.LyricsAligner)
-      3. -> 基础均匀时间戳 SRT
+      1. Python + Whisper (src.align.LyricsAligner)
+      2. -> 基础均匀时间戳 SRT
 
     返回:
         {"srt_path", "aligned_lines", "total_lines", "srt_entries", "status", "engine"}
     """
     timeout = timeout if timeout is not None else _configured_timeout("align_timeout_sec", 600)
-    # 策略 1: 原版 Shell
-    try:
-        shell_args = ["--align-mode", align_mode]
-        if srt_file:
-            shell_args += ["--srt-file", srt_file]
-        result = run_script("align_lyrics.sh", project_dir, shell_args, timeout=timeout)
-        if result and result.returncode == 0:
-            srt_path = os.path.join(project_dir, "audio", "song.srt")
-            if os.path.exists(srt_path):
-                with open(srt_path, "r", encoding="utf-8") as f:
-                    srt = f.read()
-                entries = [e for e in srt.strip().split("\n\n") if " --> " in e]
-                lyrics_path = os.path.join(project_dir, "audio", "lyrics.txt")
-                if os.path.exists(lyrics_path):
-                    with open(lyrics_path, encoding="utf-8") as f:
-                        _, clean = _parse_lyrics_text(f.read())
-                    return {
-                        "srt_path": srt_path,
-                        "aligned_lines": len(entries),
-                        "total_lines": len(clean),
-                        "srt_entries": len(entries),
-                        "status": "completed",
-                        "engine": "shell",
-                    }
-    except (FileNotFoundError, RuntimeError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
-        pass
 
-    # 策略 2: Python + Whisper
-    print("\n  [..] Try pure Python align (src.align)...")
     from src.align import LyricsAligner, generate_basic_srt
     from src.config_manager import ConfigManager
 
     lyrics_path = os.path.join(project_dir, "audio", "lyrics.txt")
 
+    # 策略 1: Python + Whisper
     try:
         cfg = ConfigManager()
         if not cfg.get_bool("align_asr_enabled", True):
@@ -235,6 +207,7 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         else:
             import whisper  # noqa: F401
         aligner = LyricsAligner()
+        print("  [..] ASR 对齐中（Demucs 人声分离 + Whisper 转写，可能需要 5-15 分钟）...", flush=True)
         result = aligner.run(
             project_dir=project_dir,
             align_mode=align_mode,
@@ -244,9 +217,12 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         result["engine"] = "python+whisper"
         return result
     except ImportError as e:
-        print(f"  [..] Whisper/ASR 不可用或已关闭，使用基础均匀 SRT: {e}")
+        print(f"  [..] Whisper/ASR 不可用或已关闭，降级到均匀 SRT: {e}", flush=True)
+    except Exception as e:
+        print(f"  [!!] ASR 对齐失败（{type(e).__name__}: {e}），降级到均匀 SRT", flush=True)
+        logger.warning("ASR alignment failed, falling back to basic SRT: %s", e)
 
-    # 策略 3: 基础 SRT
+    # 策略 2: 基础 SRT
     from src.project_manager import ProjectManager
     pm = ProjectManager(project_dir)
     audio_duration = pm.get("audio_duration_sec", 0)
@@ -257,8 +233,8 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         srt_path = os.path.join(project_dir, "audio", "song.srt")
         entries = generate_basic_srt(lyrics_text, float(audio_duration), srt_path)
         _, clean = _parse_lyrics_text(lyrics_text)
-        print(f"  [OK] Basic SRT done (uniform timestamps)")
-        print(f"  [OK] SRT: {srt_path} | entries: {entries}")
+        print(f"  [OK] Basic SRT done (uniform timestamps)", flush=True)
+        print(f"  [OK] SRT: {srt_path} | entries: {entries}", flush=True)
         return {
             "srt_path": srt_path,
             "aligned_lines": entries,
@@ -269,7 +245,7 @@ def run_align_lyrics(project_dir: str, align_mode: str = "auto",
         }
 
     raise RuntimeError(
-        "Lyrics alignment failed. No bash/Whisper/audio_duration available."
+        "Lyrics alignment failed. No Whisper/audio_duration available."
     )
 
 

@@ -138,6 +138,93 @@ def _configured_model_chain(primary: str, fallbacks: str) -> List[str]:
     return chain or ["medium", "small", "base", "tiny"]
 
 
+def _kill_process_tree(proc: subprocess.Popen):
+    """杀掉进程及其所有子进程（Windows 上 subprocess.kill 只杀直接进程）"""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True, timeout=10,
+            )
+        else:
+            import signal
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def _run_subprocess_with_live_output(cmd: list, cwd: str = None,
+                                     env: dict = None,
+                                     timeout: int = 600,
+                                     label: str = "") -> subprocess.CompletedProcess:
+    """启动子进程，stderr 实时透传到终端，超时后杀整棵进程树。
+
+    使用线程读取 stdout/stderr，兼容 Windows（Windows 的 select/selectors
+    不支持 pipe 句柄，只支持 socket）。
+    """
+    import threading
+
+    kwargs = dict(
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="backslashreplace",
+    )
+    if cwd:
+        kwargs["cwd"] = cwd
+    if env:
+        kwargs["env"] = env
+    if sys.platform != "win32":
+        kwargs["start_new_session"] = True
+
+    proc = subprocess.Popen(cmd, **kwargs)
+    stdout_lines = []
+    stderr_lines = []
+
+    def _read_stdout():
+        for line in proc.stdout:
+            stdout_lines.append(line)
+
+    def _read_stderr():
+        for line in proc.stderr:
+            stderr_lines.append(line)
+            stripped = line.rstrip()
+            if not stripped:
+                continue
+            # 过滤 tqdm 进度条（含 \r 回车、百分号+竖线、大量非 ASCII）
+            if '\r' in line or '|' in stripped and '%' in stripped:
+                continue
+            # 过滤高比例非 ASCII 乱码行（GBK 全角字符等）
+            non_ascii = sum(1 for c in stripped if ord(c) > 127)
+            if len(stripped) > 10 and non_ascii / len(stripped) > 0.3:
+                continue
+            print(f"    [{label}] {stripped}", flush=True)
+
+    t_out = threading.Thread(target=_read_stdout, daemon=True)
+    t_err = threading.Thread(target=_read_stderr, daemon=True)
+    t_out.start()
+    t_err.start()
+
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"  [!!] {label} 子进程超时 ({timeout}s)，强制终止...", flush=True)
+        _kill_process_tree(proc)
+        raise
+
+    # 等待读取线程结束（进程已退出，pipe 会关闭，线程会自然结束）
+    t_out.join(timeout=10)
+    t_err.join(timeout=10)
+
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode,
+        stdout="".join(stdout_lines),
+        stderr="".join(stderr_lines),
+    )
+
+
 def _run_faster_whisper_worker(audio_path: str,
                                model_sizes: List[str],
                                device: str,
@@ -148,7 +235,6 @@ def _run_faster_whisper_worker(audio_path: str,
     cfg = ConfigManager()
     compute_type = str(cfg.get("align_whisper_compute_type", "default") or "default")
     beam_size = int(cfg.get_int("align_whisper_beam_size", 5))
-    # force_no_vad=True 时忽略配置，Demucs 已分离人声后不需要 VAD
     vad_filter = bool(cfg.get_bool("align_whisper_vad_filter", True)) and not force_no_vad
     word_timestamps = bool(cfg.get_bool("align_whisper_word_timestamps", False))
     timeout = int(cfg.get_int("align_timeout_sec", 600))
@@ -176,20 +262,13 @@ def _run_faster_whisper_worker(audio_path: str,
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
 
-    result = subprocess.run(
+    result = _run_subprocess_with_live_output(
         cmd,
         cwd=str(Path(__file__).resolve().parents[1]),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
         env=env,
+        timeout=timeout,
+        label="whisper",
     )
-    if result.stdout:
-        logger.debug("faster-whisper worker stdout: %s", result.stdout.rstrip())
-    if result.stderr:
-        logger.debug("faster-whisper worker stderr: %s", result.stderr.rstrip())
 
     if output_path.exists() and output_path.stat().st_size > 0:
         payload = json.loads(output_path.read_text(encoding="utf-8"))
@@ -213,7 +292,7 @@ def _run_faster_whisper_worker(audio_path: str,
 
     raise RuntimeError(
         f"faster-whisper worker failed with code {result.returncode}: "
-        f"{(result.stderr or result.stdout or '')[-1000:]}"
+        f"{(result.stderr or '')[-1000:]}"
     )
 
 
@@ -319,7 +398,7 @@ class WhisperTranscriber:
     @staticmethod
     def is_available() -> bool:
         """检查 whisper 是否已安装"""
-        logger.info("检查 Whisper 是否可用...")
+        logger.debug("检查 Whisper 是否可用...")
         cfg = ConfigManager()
         backend = cfg.get_str("align_asr_backend", "faster-whisper").lower()
         try:
@@ -394,14 +473,14 @@ class WhisperTranscriber:
                     and cached.get("_asr_backend") == backend_cache_key
                     and cached.get("_asr_models") == model_cache_key
                 ):
-                    logger.info("Whisper 缓存命中，跳过转写")
+                    logger.debug("Whisper 缓存命中，跳过转写")
                     return cached
             except (json.JSONDecodeError, KeyError):
                 pass
 
         fp16 = device.startswith("cuda")
 
-        logger.info("Whisper 转写中（模型链: %s, device=%s）...", f" -> ".join(model_sizes), device)
+        logger.debug("Whisper 转写中（模型链: %s, device=%s）...", f" -> ".join(model_sizes), device)
         logger.debug("音频: %s", audio_path)
         if initial_prompt:
             logger.debug("Initial prompt: %s", initial_prompt[:50])
@@ -473,7 +552,7 @@ class WhisperTranscriber:
                     except Exception as cache_err:
                         logger.warning("缓存写入失败（非致命）: %s", cache_err)
 
-                logger.info("Whisper %s (%s): %d 段, %s...",
+                logger.debug("Whisper %s (%s): %d 段, %s...",
                             model_size, device, len(result["segments"]), result.get("text", "")[:50])
                 return result
 
@@ -520,7 +599,7 @@ class DemucsVocalSeparator:
     def is_available() -> bool:
         """检查 demucs 是否已安装（用 importlib 检查，避免启动子进程触发 torch 冷启动超时）"""
         import importlib.util
-        logger.info("检查 Demucs 是否可用...")
+        logger.debug("检查 Demucs 是否可用...")
         return importlib.util.find_spec("demucs") is not None
 
     def separate(self, audio_path: str, temp_dir: str,
@@ -532,7 +611,7 @@ class DemucsVocalSeparator:
         """
         cfg = ConfigManager()
         demucs_device = _resolve_torch_device(str(cfg.get("align_demucs_device", "auto")))
-        logger.info("Demucs 人声分离中（device=%s）...", demucs_device)
+        logger.debug("Demucs 人声分离中（device=%s）...", demucs_device)
 
         demucs_out = Path(temp_dir) / "demucs_out"
         demucs_out.mkdir(parents=True, exist_ok=True)
@@ -556,11 +635,8 @@ class DemucsVocalSeparator:
             logger.debug("demucs cmd (attempt %d): %s", attempt + 1, " ".join(cmd))
 
             try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True, text=True,
-                    encoding="utf-8", errors="replace",
-                    timeout=timeout,
+                result = _run_subprocess_with_live_output(
+                    cmd, timeout=timeout, label="demucs",
                 )
                 log_path.write_text(
                     f"[attempt {attempt + 1}]\n"
@@ -581,18 +657,9 @@ class DemucsVocalSeparator:
                         "Demucs CUDA 崩溃 (code=%d)，自动降级 CPU 重试 (attempt %d/%d)",
                         result.returncode, attempt + 1, max_retries + 1,
                     )
-                    # 替换 device 参数为 cpu，重新构建命令
-                    cmd = [
-                        sys.executable, "-m", "demucs",
-                        "--two-stems", "vocals",
-                        "-o", str(demucs_out),
-                        "--device", "cpu",
-                        str(audio_path),
-                    ]
-                    demucs_device = "cpu"  # 后续使用 CPU
-                    continue  # 重试
+                    demucs_device = "cpu"
+                    continue
 
-                # 非崩溃错误 或 已是最后一次重试 → 回退原始音频
                 logger.warning(
                     "Demucs 失败 (code=%d, attempt %d/%d), 使用原始音频",
                     result.returncode, attempt + 1, max_retries + 1,
@@ -603,6 +670,7 @@ class DemucsVocalSeparator:
                 logger.warning("demucs 命令未找到，使用原始音频")
                 return None
             except subprocess.TimeoutExpired:
+                print(f"  [!!] Demucs 超时 ({timeout}s)，跳过人声分离", flush=True)
                 logger.warning("Demucs 超时 (%ds, attempt %d/%d), 使用原始音频",
                               timeout, attempt + 1, max_retries + 1)
                 return None
@@ -611,7 +679,7 @@ class DemucsVocalSeparator:
                               attempt + 1, max_retries + 1, e)
                 if attempt < max_retries:
                     import time as _time
-                    _time.sleep(min(2 ** attempt, 8))  # 指数退避，上限 8s
+                    _time.sleep(min(2 ** attempt, 8))
                     continue
                 return None
 
@@ -624,12 +692,12 @@ class DemucsVocalSeparator:
         ]
         for candidate in candidates:
             if candidate.exists():
-                logger.info("人声分离完成: %s", candidate)
+                logger.debug("人声分离完成: %s", candidate)
                 return str(candidate)
 
         found = list(demucs_out.rglob("vocals.wav"))
         if found:
-            logger.info("人声分离完成: %s", found[0])
+            logger.debug("人声分离完成: %s", found[0])
             return str(found[0])
 
         logger.warning("Demucs 输出未找到: %s", candidates[0])
@@ -857,7 +925,7 @@ class LyricsAligner:
             logger.debug(message, *args)
 
     def _log_alignment_parameters(self, mode: str) -> None:
-        logger.info(
+        logger.debug(
             "对齐参数: mode=%s threshold_1=%.2f threshold_2=%.2f search_window=%d "
             "max_gap=%.1fs weak_anchor=%s weak_threshold=%.2f weak_offset=%d",
             mode,
@@ -869,7 +937,7 @@ class LyricsAligner:
             self.weak_anchor_threshold,
             self.weak_anchor_max_offset,
         )
-        logger.info(
+        logger.debug(
             "高级对齐策略: block_matching=true merge_adjacent_asr=true max_merge_segments=%d "
             "merge_max_gap=%.1fs max_block_lines=%d duration_check=true repeat_min_score=%.2f debug_decisions=%s",
             self.max_merge_segments,
@@ -897,7 +965,7 @@ class LyricsAligner:
             kinds = Counter(str(a.get("_match_kind") or "unknown") for a in matched)
             low_conf = sum(1 for a in matched if a.get("low_confidence"))
             interpolated = sum(1 for a in matched if str(a.get("_source")) in ("interpolate", "uniform_fallback"))
-            logger.info(
+            logger.debug(
                 "对齐来源统计: sources=%s kinds=%s low_confidence=%d interpolated=%d matched=%d",
                 dict(sources), dict(kinds), low_conf, interpolated, len(matched)
             )
@@ -931,7 +999,7 @@ class LyricsAligner:
                 filtered.append(seg)
 
         if removed:
-            logger.info("过滤 %d 个明显非歌词/幻觉 ASR 段", len(removed))
+            logger.debug("过滤 %d 个明显非歌词/幻觉 ASR 段", len(removed))
             for seg in removed:
                 self._decision_debug(
                     "过滤ASR: %.2f-%.2f text=%s",
@@ -959,7 +1027,7 @@ class LyricsAligner:
                 )
             output_path.write_text("\n".join(parts), encoding="utf-8")
             if parts:
-                logger.info("ASR 原生字幕: %s", output_path)
+                logger.debug("ASR 原生字幕: %s", output_path)
         except Exception as exc:
             logger.warning("ASR 原生字幕写入失败: %s", exc)
 
@@ -1070,15 +1138,14 @@ class LyricsAligner:
                 raise ValueError(f"SRT 文件无法解析出有效片段: {srt_file}")
 
             _, clean_lyrics = parse_lyrics(str(lyrics_path))
-            logger.info("手动模式: 从 SRT 解析到 %d 个时间片段", len(user_segments))
+            logger.debug("手动模式: 从 SRT 解析到 %d 个时间片段", len(user_segments))
             user_segments = self._filter_misrecognized_asr(user_segments, clean_lyrics)
-            logger.info("过滤后: %d 段", len(user_segments))
+            logger.debug("过滤后: %d 段", len(user_segments))
 
             metadata_duration = self._load_project_audio_duration(project_dir)
             audio_duration = metadata_duration if metadata_duration > 0 else max((seg.get("end", 0.0) for seg in user_segments), default=0.0)
 
-            logger.info("对齐中: %d 行歌词 <-> %d 段 SRT...", len(clean_lyrics), len(user_segments))
-            logger.info("音频时长: %.1fs", audio_duration)
+            logger.debug("对齐中: %d 行歌词 <-> %d 段 SRT, 音频时长: %.1fs", len(clean_lyrics), len(user_segments), audio_duration)
             alignments = self._align_manual(clean_lyrics, user_segments)
             self._repair_alignment_timeline(alignments, audio_duration=audio_duration)
             self._log_alignment_summary(alignments)
@@ -1088,9 +1155,7 @@ class LyricsAligner:
             matched = sum(1 for a in alignments if a.get("matched"))
             srt_entries = len([a for a in alignments if a.get("matched")])
 
-            logger.info("手动模式对齐完成: %d/%d 行", matched, len(clean_lyrics))
-            logger.info("SRT: %d 条目", srt_entries)
-            logger.info("输出: %s", output_srt)
+            logger.debug("手动模式对齐完成: %d/%d 行, SRT %d 条目, 输出: %s", matched, len(clean_lyrics), srt_entries, output_srt)
             return {
                 "srt_path": str(output_srt),
                 "aligned_lines": matched,
@@ -1109,9 +1174,11 @@ class LyricsAligner:
         demucs_enabled = cfg.get_bool("align_demucs_enabled", True)
         demucs_succeeded = False
         if demucs_enabled and DemucsVocalSeparator.is_available():
+            print("  [..] Demucs 人声分离中（CPU 上约需 3-8 分钟）...", flush=True)
             vocal_path = DemucsVocalSeparator().separate(str(audio_path), str(temp_dir), timeout)
             audio_for_asr = vocal_path or str(audio_path)
             demucs_succeeded = bool(vocal_path)
+            print(f"  [OK] Demucs 完成: {'成功分离人声' if demucs_succeeded else '回退使用原始音频'}", flush=True)
         elif not demucs_enabled:
             audio_for_asr = str(audio_path)
             logger.info("Demucs 已通过配置关闭，使用原始音频")
@@ -1126,12 +1193,14 @@ class LyricsAligner:
             )
 
         _, clean_lyrics = parse_lyrics(str(lyrics_path))
+        print("  [..] Whisper ASR 转写中（CPU 上约需 5-15 分钟）...", flush=True)
         whisper_result = WhisperTranscriber().transcribe(
             audio_for_asr,
             str(temp_dir),
             initial_prompt="简体中文歌曲歌词转写。",
             force_no_vad=demucs_succeeded,
         )
+        print(f"  [OK] Whisper 转写完成: {len(whisper_result.get('segments', []))} 段", flush=True)
 
         asr_segments = whisper_result.get("segments", [])
         logger.debug("ASR segments: %d 段", len(asr_segments))
@@ -1141,7 +1210,6 @@ class LyricsAligner:
             logger.debug("第一段 start/end: %s -> %s", asr_segments[0].get("start"), asr_segments[0].get("end"))
         logger.debug("clean_lyrics: %d 行", len(clean_lyrics))
 
-        logger.info("过滤 ASR 幻觉/非歌词段...")
         asr_segments = self._filter_misrecognized_asr(asr_segments, clean_lyrics)
         logger.debug("过滤后: %d 段", len(asr_segments))
         raw_srt_path = project_dir / "audio" / "asr_raw.srt"
@@ -1150,8 +1218,7 @@ class LyricsAligner:
         metadata_duration = self._load_project_audio_duration(project_dir)
         audio_duration = metadata_duration if metadata_duration > 0 else max((seg.get("end", 0.0) for seg in asr_segments), default=0.0)
 
-        logger.info("对齐中: %d 行歌词 <-> %d 段 ASR...", len(clean_lyrics), len(asr_segments))
-        logger.info("音频时长: %.1fs", audio_duration)
+        logger.debug("对齐中: %d 行歌词 <-> %d 段 ASR, 音频时长: %.1fs", len(clean_lyrics), len(asr_segments), audio_duration)
         alignments = self._align_manual(clean_lyrics, asr_segments)
         self._repair_alignment_timeline(alignments, audio_duration=audio_duration)
         self._log_alignment_summary(alignments)
@@ -1163,10 +1230,7 @@ class LyricsAligner:
         elapsed = time.time() - start_time
         srt_entries = len([a for a in alignments if a.get("matched")])
 
-        logger.info("对齐完成 (%.1fs)", elapsed)
-        logger.info("对齐: %d/%d 行", matched, len(clean_lyrics))
-        logger.info("SRT: %d 条目", srt_entries)
-        logger.info("输出: %s", output_srt)
+        logger.debug("对齐详情: %.1fs, %d/%d 行, SRT %d 条目, 输出: %s", elapsed, matched, len(clean_lyrics), srt_entries, output_srt)
 
         for a in alignments:
             if a.get("_source") in ("interpolate", "uniform_fallback"):
@@ -1860,7 +1924,7 @@ class LyricsAligner:
                 cur["interpolated"] = True
                 repaired += 1
         if repaired:
-            logger.info("轻量修复 %d 个字幕时间戳", repaired)
+            logger.debug("轻量修复 %d 个字幕时间戳", repaired)
 
     @staticmethod
     def _generate_srt(alignments: List[Dict], lyrics: List[str]) -> str:
