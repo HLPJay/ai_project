@@ -921,11 +921,16 @@ class SceneImageGenerator:
             return None
 
         api_url = "https://api.minimaxi.com/v1/chat/completions"
-        payload = json.dumps({
-            "model": self.cfg.get("llm_model", "MiniMax-M2.7"),
+        model = self.cfg.get("llm_model", "MiniMax-M2.7")
+        payload_dict = {
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 512,
-        }).encode("utf-8")
+            "max_tokens": 2048,
+        }
+        # 思考模型需要 reasoning_split 将思考链与输出分离，避免思考链占满 max_tokens
+        if "highspeed" in model.lower() or "m2.7" in model.lower():
+            payload_dict["reasoning_split"] = True
+        payload = json.dumps(payload_dict).encode("utf-8")
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
